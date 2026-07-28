@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Xml.Linq;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Exceptions;
@@ -11,6 +12,60 @@ namespace WindowsScriptRunner.SecurityTests;
 
 public sealed class ProjectBoundaryTests
 {
+    public static TheoryData<string, string[]> AllowedProjectReferences => new()
+    {
+        { "WindowsScriptRunner.Domain", [] },
+        { "WindowsScriptRunner.Contracts", [] },
+        {
+            "WindowsScriptRunner.Application",
+            ["WindowsScriptRunner.Contracts", "WindowsScriptRunner.Domain"]
+        },
+        {
+            "WindowsScriptRunner.Infrastructure",
+            [
+                "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Contracts",
+                "WindowsScriptRunner.Domain",
+            ]
+        },
+        {
+            "WindowsScriptRunner.PowerShell",
+            [
+                "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Contracts",
+                "WindowsScriptRunner.Domain",
+            ]
+        },
+        {
+            "WindowsScriptRunner.Reporting",
+            [
+                "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Contracts",
+                "WindowsScriptRunner.Domain",
+            ]
+        },
+        {
+            "WindowsScriptRunner.Web",
+            [
+                "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Contracts",
+                "WindowsScriptRunner.Infrastructure",
+                "WindowsScriptRunner.Reporting",
+            ]
+        },
+        {
+            "WindowsScriptRunner.Worker",
+            [
+                "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Contracts",
+                "WindowsScriptRunner.Domain",
+                "WindowsScriptRunner.Infrastructure",
+                "WindowsScriptRunner.PowerShell",
+                "WindowsScriptRunner.Reporting",
+            ]
+        },
+    };
+
     public static TheoryData<string, string> ForbiddenReferences => new()
     {
         { "WindowsScriptRunner.Web", "WindowsScriptRunner.PowerShell" },
@@ -28,6 +83,28 @@ public sealed class ProjectBoundaryTests
         var references = Assembly.Load(assemblyName).GetReferencedAssemblies();
 
         Assert.DoesNotContain(references, reference => reference.Name == forbiddenName);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllowedProjectReferences))]
+    public void ProjectFileReferencesMatchAllowedArchitecture(
+        string projectName,
+        string[] expectedReferences)
+    {
+        var actualReferences = ReadProjectReferences(projectName);
+
+        Assert.Equal(
+            expectedReferences.Order(StringComparer.Ordinal),
+            actualReferences.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void WebProjectFileDoesNotReferenceWorkerOrPowerShell()
+    {
+        var references = ReadProjectReferences("WindowsScriptRunner.Web");
+
+        Assert.DoesNotContain("WindowsScriptRunner.Worker", references);
+        Assert.DoesNotContain("WindowsScriptRunner.PowerShell", references);
     }
 
     [Fact]
@@ -131,4 +208,34 @@ public sealed class ProjectBoundaryTests
             [],
             DateTimeOffset.UtcNow,
             new UserIdentity("DOMAIN\\user"));
+
+    private static IReadOnlyCollection<string> ReadProjectReferences(string projectName)
+    {
+        var root = FindRepositoryRoot();
+        var projectPath = Path.Combine(root, "src", projectName, $"{projectName}.csproj");
+        var document = XDocument.Load(projectPath);
+
+        return document.Descendants("ProjectReference")
+            .Select(element => element.Attribute("Include")?.Value)
+            .Where(include => !string.IsNullOrWhiteSpace(include))
+            .Select(include => Path.GetFileNameWithoutExtension(include!))
+            .ToArray();
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "WindowsScriptRunner.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate the repository root from the test execution directory.");
+    }
 }

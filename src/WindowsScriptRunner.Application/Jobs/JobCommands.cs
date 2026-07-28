@@ -30,4 +30,18 @@ public sealed record TransitionJobCommand(
     JobStatus NewStatus,
     UserIdentity ActingUser);
 
+public sealed record ApproveJobCommand(
+    JobId JobId,
+    string ApprovalFingerprint,
+    string? Comment,
+    UserIdentity ActingUser);
+
+public sealed record RejectJobCommand(
+    JobId JobId,
+    string ApprovalFingerprint,
+    string? Comment,
+    UserIdentity ActingUser);
+
+public sealed record CompleteReadOnlyJobCommand(JobId JobId, UserIdentity ActingUser);
+
 public sealed record GetJobQuery(JobId JobId);

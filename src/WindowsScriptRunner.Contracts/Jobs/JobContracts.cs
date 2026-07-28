@@ -17,6 +17,16 @@ public sealed record SubmitJobRequest(Guid JobId);
 
 public sealed record TransitionJobRequest(Guid JobId, string NewStatus);
 
+public sealed record ApproveJobRequest(
+    Guid JobId,
+    string ApprovalFingerprint,
+    string? Comment);
+
+public sealed record RejectJobRequest(
+    Guid JobId,
+    string ApprovalFingerprint,
+    string? Comment);
+
 public sealed record JobSummaryResponse(
     Guid Id,
     Guid ScriptDefinitionId,

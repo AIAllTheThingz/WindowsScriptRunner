@@ -22,7 +22,6 @@ public sealed class ApprovalWorkerAndCredentialTests
 
         Assert.Throws<DomainValidationException>(
             () => job.RecordApproval(
-                riskLevel,
                 TestDomainFactory.User,
                 TestDomainFactory.Fingerprint,
                 null,
@@ -39,7 +38,6 @@ public sealed class ApprovalWorkerAndCredentialTests
         TestDomainFactory.AdvanceToAwaitingApproval(job);
 
         job.RecordApproval(
-            RiskLevel.ReadOnly,
             TestDomainFactory.User,
             TestDomainFactory.Fingerprint,
             null,
@@ -57,7 +55,6 @@ public sealed class ApprovalWorkerAndCredentialTests
 
         Assert.Throws<DomainValidationException>(
             () => job.RecordApproval(
-                RiskLevel.Low,
                 TestDomainFactory.OtherUser,
                 "invalid",
                 null,

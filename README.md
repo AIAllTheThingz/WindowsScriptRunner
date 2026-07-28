@@ -4,7 +4,7 @@ Windows Script Runner is a Windows-hosted .NET application foundation for future
 
 ## Status
 
-The solution contains a validated domain model, application commands and queries, public DTOs, a Razor Pages scaffold, a configurable heartbeat worker, architectural boundaries, and meaningful tests. No persistence or operational automation is implemented.
+The solution contains a validated domain model, application commands and queries, public DTOs, a Razor Pages scaffold, a configurable heartbeat worker, architectural boundaries, and meaningful tests. Phase 2 review remediation protects evidence-bearing lifecycle transitions, derives approval and read-only rules from an immutable submission-time policy snapshot, validates aggregate changes before mutation, and keeps unexpected worker failures observable. No persistence or operational automation is implemented.
 
 ## Solution structure
 
@@ -42,6 +42,7 @@ dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker
 - No PowerShell scripts are executed.
 - No production job processing exists.
 - No authentication or authorization model is complete.
+- Approval fingerprints are supplied and validated structurally, but trusted fingerprint calculation is future work.
 - Deployment documentation is planning-only.
 - The project is not production-ready.
 

@@ -102,25 +102,17 @@ internal static class TestDomainFactory
             job.SetParameter(parameter.Definition, parameter.Value, User, Time.AddMinutes(2));
         }
 
-        job.Submit(version, User, Time.AddMinutes(3));
+        job.Submit(script, User, Time.AddMinutes(3));
         return job;
     }
 
     public static void AdvanceToAwaitingApproval(Job job)
     {
         var time = job.UpdatedUtc;
-        JobStatus[] statuses =
-        [
-            JobStatus.Validated,
-            JobStatus.DryRunQueued,
-            JobStatus.DryRunRunning,
-            JobStatus.DryRunCompleted,
-            JobStatus.AwaitingApproval,
-        ];
-        foreach (var status in statuses)
-        {
-            time = time.AddMinutes(1);
-            job.TransitionTo(status, OtherUser, time);
-        }
+        job.MarkValidated(OtherUser, time = time.AddMinutes(1));
+        job.QueueDryRun(OtherUser, time = time.AddMinutes(1));
+        job.StartDryRun(OtherUser, time = time.AddMinutes(1));
+        job.CompleteDryRun(OtherUser, time = time.AddMinutes(1));
+        job.RequireApproval(OtherUser, time.AddMinutes(1));
     }
 }

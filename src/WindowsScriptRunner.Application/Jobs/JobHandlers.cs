@@ -172,7 +172,7 @@ public sealed class SubmitJobHandler(
             job.ScriptDefinitionId,
             cancellationToken);
         var now = clock.UtcNow;
-        job.Submit(script.GetVersion(job.ScriptVersionId), command.ActingUser, now);
+        job.Submit(script, command.ActingUser, now);
 
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
@@ -203,7 +203,7 @@ public sealed class TransitionJobHandler(
             cancellationToken);
         var previous = job.Status;
         var now = clock.UtcNow;
-        job.TransitionTo(command.NewStatus, command.ActingUser, now);
+        ApplyOperationalTransition(job, command, now);
 
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
@@ -218,6 +218,149 @@ public sealed class TransitionJobHandler(
                     ["PreviousStatus"] = previous.ToString(),
                     ["NewStatus"] = command.NewStatus.ToString(),
                 }),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    private static void ApplyOperationalTransition(
+        Job job,
+        TransitionJobCommand command,
+        DateTimeOffset now)
+    {
+        switch (command.NewStatus)
+        {
+            case Domain.JobStatus.Validated:
+                job.MarkValidated(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.DryRunQueued:
+                job.QueueDryRun(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.DryRunRunning:
+                job.StartDryRun(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.DryRunCompleted:
+                job.CompleteDryRun(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.AwaitingApproval:
+                job.RequireApproval(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.ExecutionQueued:
+                job.QueueExecution(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.Claimed:
+                job.Claim(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.PostValidation:
+                job.BeginPostValidation(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.Failed:
+                job.Fail(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.Cancelled:
+                job.Cancel(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.TimedOut:
+                job.MarkTimedOut(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.Blocked:
+                job.Block(command.ActingUser, now);
+                break;
+            case Domain.JobStatus.NotRun:
+                job.MarkNotRun(command.ActingUser, now);
+                break;
+            default:
+                throw new ApplicationValidationException(
+                    $"Status {command.NewStatus} requires a dedicated application operation.");
+        }
+    }
+}
+
+public sealed class ApproveJobHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(ApproveJobCommand command, CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        job.RecordApproval(
+            command.ActingUser,
+            command.ApprovalFingerprint,
+            command.Comment,
+            now);
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            CreateDraftJobHandler.Audit(
+                "JobApproved",
+                job,
+                command.ActingUser,
+                now,
+                "Approval evidence was recorded and the job was approved."),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+}
+
+public sealed class RejectJobHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(RejectJobCommand command, CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        job.RecordRejection(
+            command.ActingUser,
+            command.ApprovalFingerprint,
+            command.Comment,
+            now);
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            CreateDraftJobHandler.Audit(
+                "JobRejected",
+                job,
+                command.ActingUser,
+                now,
+                "Rejection evidence was recorded and the job was rejected."),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+}
+
+public sealed class CompleteReadOnlyJobHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(
+        CompleteReadOnlyJobCommand command,
+        CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        job.CompleteReadOnlyAfterDryRun(command.ActingUser, now);
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            CreateDraftJobHandler.Audit(
+                "ReadOnlyJobCompleted",
+                job,
+                command.ActingUser,
+                now,
+                "The trusted read-only, non-Execute job completed after dry-run."),
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }

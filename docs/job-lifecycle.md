@@ -1,6 +1,6 @@
 # Job lifecycle
 
-`Job` owns status changes. Callers cannot assign `JobStatus`, skip required states, transition to the same state, or leave a terminal state. Every successful transition receives an acting user and UTC timestamp and updates `LastActingUser` and `UpdatedUtc`.
+`Job` owns status changes. Callers cannot assign `JobStatus`, skip required states, transition to the same state, or leave a terminal state. There is no public generic status transition method. Every successful transition receives an acting user and UTC timestamp and updates `LastActingUser` and `UpdatedUtc`.
 
 ## Normal transitions
 
@@ -11,7 +11,7 @@
 | Validated | DryRunQueued |
 | DryRunQueued | DryRunRunning |
 | DryRunRunning | DryRunCompleted |
-| DryRunCompleted | AwaitingApproval |
+| DryRunCompleted | AwaitingApproval, or Completed under the trusted read-only rule |
 | AwaitingApproval | Approved or Rejected |
 | Approved | ExecutionQueued |
 | ExecutionQueued | Claimed |
@@ -20,6 +20,8 @@
 | PostValidation | Completed or CompletedWithWarnings |
 
 A dedicated rule permits `DryRunCompleted -> Completed` only for `ReadOnly` work when the version has no Execute phase.
+
+Submitted is reachable only through `Submit`; Approved and Rejected only through evidence-recording decision operations; Executing only through creation of an execution attempt; and Completed or CompletedWithWarnings only through a terminal execution outcome, except for the read-only rule above. The retained application transition command exposes only an explicit allowlist of non-protected operational transitions.
 
 Appropriate non-terminal states may end as Failed, Cancelled, TimedOut, Blocked, or NotRun. Rejected is reachable only from AwaitingApproval. Failure is never represented as Completed.
 
@@ -30,3 +32,5 @@ Completed, CompletedWithWarnings, Failed, Rejected, Cancelled, TimedOut, Blocked
 ## Approval fingerprint
 
 Phase 2 accepts a supplied 64-character hexadecimal SHA-256 fingerprint. A future implementation will bind it to the script version, requested phase, targets, parameters, execution window, and dry-run evidence.
+
+Approval policy is evaluated from the immutable policy snapshot captured from the published script at submission. Medium, High, and Critical requesters cannot self-approve; the documented Phase 2 policy permits Low and ReadOnly self-approval. Validation precedes decision-record and status mutation.

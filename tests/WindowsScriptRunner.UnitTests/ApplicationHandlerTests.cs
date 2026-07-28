@@ -96,8 +96,116 @@ public sealed class ApplicationHandlerTests
             CancellationToken.None);
 
         Assert.Equal(JobStatus.Validated, fixture.Jobs.Job.Status);
+        Assert.NotNull(fixture.Jobs.Job.PolicySnapshot);
+        Assert.Equal(fixture.Scripts.Script!.RiskLevel, fixture.Jobs.Job.PolicySnapshot.RiskLevel);
         Assert.Equal(2, fixture.UnitOfWork.CommitCount);
         Assert.Equal(["JobSubmitted", "JobStatusChanged"], fixture.Audits.Events.Select(item => item.EventType));
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Draft)]
+    [InlineData(JobStatus.Submitted)]
+    [InlineData(JobStatus.Approved)]
+    [InlineData(JobStatus.Rejected)]
+    [InlineData(JobStatus.Executing)]
+    [InlineData(JobStatus.Completed)]
+    [InlineData(JobStatus.CompletedWithWarnings)]
+    public async Task GenericTransitionHandlerRejectsProtectedLifecycleOperations(JobStatus status)
+    {
+        var fixture = HandlerFixture.WithSubmittedJob();
+        var originalStatus = fixture.Jobs.Job!.Status;
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.TransitionHandler.HandleAsync(
+                new TransitionJobCommand(
+                    fixture.Jobs.Job.Id,
+                    status,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(originalStatus, fixture.Jobs.Job.Status);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task ApprovalHandlerRecordsEvidenceBeforePersistence()
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        await fixture.ApproveHandler.HandleAsync(
+            new ApproveJobCommand(
+                fixture.Jobs.Job!.Id,
+                TestDomainFactory.Fingerprint,
+                "Reviewed.",
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Approved, fixture.Jobs.Job.Status);
+        Assert.Equal(ApprovalDecision.Approved, Assert.Single(fixture.Jobs.Job.Approvals).Decision);
+        Assert.Equal("JobApproved", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task FailedApprovalDoesNotPersistAuditOrCommit()
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob(RiskLevel.High);
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.ApproveHandler.HandleAsync(
+                new ApproveJobCommand(
+                    fixture.Jobs.Job!.Id,
+                    TestDomainFactory.Fingerprint,
+                    null,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.AwaitingApproval, fixture.Jobs.Job!.Status);
+        Assert.Empty(fixture.Jobs.Job.Approvals);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task RejectionHandlerRecordsEvidenceBeforePersistence()
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        await fixture.RejectHandler.HandleAsync(
+            new RejectJobCommand(
+                fixture.Jobs.Job!.Id,
+                TestDomainFactory.Fingerprint,
+                "Rejected after review.",
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Rejected, fixture.Jobs.Job.Status);
+        Assert.Equal(ApprovalDecision.Rejected, Assert.Single(fixture.Jobs.Job.Approvals).Decision);
+        Assert.Equal("JobRejected", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task ReadOnlyCompletionHandlerUsesCapturedPolicy()
+    {
+        var fixture = HandlerFixture.WithDryRunCompletedJob(
+            RiskLevel.ReadOnly,
+            [ExecutionPhase.DryRun]);
+
+        await fixture.CompleteReadOnlyHandler.HandleAsync(
+            new CompleteReadOnlyJobCommand(
+                fixture.Jobs.Job!.Id,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Completed, fixture.Jobs.Job.Status);
+        Assert.Equal("ReadOnlyJobCompleted", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]
@@ -152,6 +260,9 @@ public sealed class ApplicationHandlerTests
                 Clock);
             SubmitHandler = new SubmitJobHandler(Jobs, Scripts, Audits, UnitOfWork, Clock);
             TransitionHandler = new TransitionJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            ApproveHandler = new ApproveJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            RejectHandler = new RejectJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
             GetHandler = new GetJobHandler(Jobs);
         }
 
@@ -165,6 +276,9 @@ public sealed class ApplicationHandlerTests
         public SetJobParameterHandler SetParameterHandler { get; }
         public SubmitJobHandler SubmitHandler { get; }
         public TransitionJobHandler TransitionHandler { get; }
+        public ApproveJobHandler ApproveHandler { get; }
+        public RejectJobHandler RejectHandler { get; }
+        public CompleteReadOnlyJobHandler CompleteReadOnlyHandler { get; }
         public GetJobHandler GetHandler { get; }
         public IEnumerable<CancellationToken> ObservedTokens =>
             Jobs.ObservedTokens.Concat(Audits.ObservedTokens).Concat(UnitOfWork.ObservedTokens);
@@ -178,6 +292,40 @@ public sealed class ApplicationHandlerTests
             fixture.Jobs.Job = TestDomainFactory.DraftJob(script, version);
             return fixture;
         }
+
+        public static HandlerFixture WithSubmittedJob(RiskLevel riskLevel = RiskLevel.Low)
+        {
+            var fixture = new HandlerFixture();
+            var version = TestDomainFactory.Version();
+            var script = TestDomainFactory.Script(version, riskLevel);
+            fixture.Scripts.Script = script;
+            fixture.Jobs.Job = TestDomainFactory.SubmittedJob(script, version);
+            return fixture;
+        }
+
+        public static HandlerFixture WithAwaitingApprovalJob(RiskLevel riskLevel = RiskLevel.Low)
+        {
+            var fixture = WithSubmittedJob(riskLevel);
+            TestDomainFactory.AdvanceToAwaitingApproval(fixture.Jobs.Job!);
+            return fixture;
+        }
+
+        public static HandlerFixture WithDryRunCompletedJob(
+            RiskLevel riskLevel,
+            IEnumerable<ExecutionPhase> phases)
+        {
+            var fixture = new HandlerFixture();
+            var version = TestDomainFactory.Version(phases: phases);
+            var script = TestDomainFactory.Script(version, riskLevel);
+            fixture.Scripts.Script = script;
+            var job = TestDomainFactory.SubmittedJob(script, version);
+            job.MarkValidated(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+            job.QueueDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+            job.StartDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+            job.CompleteDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job = job;
+            return fixture;
+        }
     }
 
     private sealed class TestClock(DateTimeOffset utcNow) : IClock
@@ -188,6 +336,7 @@ public sealed class ApplicationHandlerTests
     private sealed class FakeJobRepository : IJobRepository
     {
         public Job? Job { get; set; }
+        public int UpdateCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken)
@@ -213,6 +362,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             Job = job;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }

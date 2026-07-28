@@ -45,6 +45,7 @@ public sealed class Job
     public DateTimeOffset CreatedUtc { get; }
     public DateTimeOffset UpdatedUtc { get; private set; }
     public DateTimeOffset? SubmittedUtc { get; private set; }
+    public JobPolicySnapshot? PolicySnapshot { get; private set; }
     public ChangeReference? ChangeReference { get; private set; }
     public string? Description { get; private set; }
     public IReadOnlyCollection<JobTarget> Targets => _targets.AsReadOnly();
@@ -74,18 +75,21 @@ public sealed class Job
     public void AddTarget(TargetName targetName, UserIdentity actingUser, DateTimeOffset addedUtc)
     {
         EnsureDraft();
+        ValidateMutation(actingUser, addedUtc);
         if (_targets.Any(target => target.Name.Equals(targetName)))
         {
             throw new DuplicateJobTargetException(targetName.Value);
         }
 
-        _targets.Add(new JobTarget(targetName, addedUtc, actingUser));
-        Touch(actingUser, addedUtc);
+        var target = new JobTarget(targetName, addedUtc, actingUser);
+        _targets.Add(target);
+        ApplyTouch(actingUser, addedUtc);
     }
 
     public void RemoveTarget(TargetName targetName, UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureDraft();
+        ValidateMutation(actingUser, updatedUtc);
         var target = _targets.SingleOrDefault(existing => existing.Name.Equals(targetName));
         if (target is null)
         {
@@ -93,7 +97,7 @@ public sealed class Job
         }
 
         _targets.Remove(target);
-        Touch(actingUser, updatedUtc);
+        ApplyTouch(actingUser, updatedUtc);
     }
 
     public void SetParameter(
@@ -105,26 +109,28 @@ public sealed class Job
         EnsureDraft();
         ArgumentNullException.ThrowIfNull(definition);
         definition.ValidateSerializedValue(serializedValue);
-
+        ValidateMutation(actingUser, updatedUtc);
+        var replacement = new JobParameter(
+            definition.Name,
+            serializedValue,
+            definition.ParameterType,
+            definition.IsSensitive);
         var existing = _parameters.SingleOrDefault(parameter =>
             string.Equals(parameter.Name, definition.Name, StringComparison.OrdinalIgnoreCase));
+
         if (existing is not null)
         {
             _parameters.Remove(existing);
         }
 
-        _parameters.Add(
-            new JobParameter(
-                definition.Name,
-                serializedValue,
-                definition.ParameterType,
-                definition.IsSensitive));
-        Touch(actingUser, updatedUtc);
+        _parameters.Add(replacement);
+        ApplyTouch(actingUser, updatedUtc);
     }
 
     public void RemoveParameter(string name, UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureDraft();
+        ValidateMutation(actingUser, updatedUtc);
         var existing = _parameters.SingleOrDefault(parameter =>
             string.Equals(parameter.Name, name, StringComparison.OrdinalIgnoreCase));
         if (existing is null)
@@ -133,14 +139,16 @@ public sealed class Job
         }
 
         _parameters.Remove(existing);
-        Touch(actingUser, updatedUtc);
+        ApplyTouch(actingUser, updatedUtc);
     }
 
     public void UpdateDescription(string? description, UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureDraft();
-        Description = ValidateDescription(description);
-        Touch(actingUser, updatedUtc);
+        var normalized = ValidateDescription(description);
+        ValidateMutation(actingUser, updatedUtc);
+        Description = normalized;
+        ApplyTouch(actingUser, updatedUtc);
     }
 
     public void SetChangeReference(
@@ -149,24 +157,26 @@ public sealed class Job
         DateTimeOffset updatedUtc)
     {
         EnsureDraft();
+        ValidateMutation(actingUser, updatedUtc);
         ChangeReference = changeReference;
-        Touch(actingUser, updatedUtc);
+        ApplyTouch(actingUser, updatedUtc);
     }
 
-    public void Submit(ScriptVersion version, UserIdentity actingUser, DateTimeOffset submittedUtc)
+    public void Submit(
+        ScriptDefinition scriptDefinition,
+        UserIdentity actingUser,
+        DateTimeOffset submittedUtc)
     {
         EnsureDraft();
-        ArgumentNullException.ThrowIfNull(version);
-        if (version.Id != ScriptVersionId)
+        ArgumentNullException.ThrowIfNull(scriptDefinition);
+        ValidateTransition(JobStatus.Submitted, actingUser, submittedUtc);
+        if (scriptDefinition.Id != ScriptDefinitionId)
         {
-            throw new DomainValidationException("The supplied script version does not match the job.");
+            throw new DomainValidationException("The supplied script definition does not match the job.");
         }
 
-        if (!version.IsPublished)
-        {
-            throw new DomainValidationException("Only a published script version can be submitted.");
-        }
-
+        var version = scriptDefinition.GetVersion(ScriptVersionId);
+        var policySnapshot = JobPolicySnapshot.Capture(scriptDefinition, ScriptVersionId);
         if (!version.SupportedPhases.Contains(RequestedPhase))
         {
             throw new DomainValidationException($"Script version does not support the {RequestedPhase} phase.");
@@ -189,62 +199,87 @@ public sealed class Job
             version.GetParameterDefinition(parameter.Name).ValidateSerializedValue(parameter.SerializedValue);
         }
 
-        TransitionTo(JobStatus.Submitted, actingUser, submittedUtc);
+        PolicySnapshot = policySnapshot;
         SubmittedUtc = submittedUtc;
+        ApplyValidatedTransition(JobStatus.Submitted, actingUser, submittedUtc);
     }
 
-    public void TransitionTo(JobStatus newStatus, UserIdentity actingUser, DateTimeOffset updatedUtc)
-    {
-        JobStatusPolicy.EnsureAllowed(Status, newStatus);
-        Status = newStatus;
-        Touch(actingUser, updatedUtc);
-    }
+    public void MarkValidated(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.Validated, actingUser, updatedUtc);
 
-    public void CompleteReadOnlyAfterDryRun(
-        RiskLevel riskLevel,
-        bool supportsExecutePhase,
-        UserIdentity actingUser,
-        DateTimeOffset updatedUtc)
+    public void QueueDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.DryRunQueued, actingUser, updatedUtc);
+
+    public void StartDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.DryRunRunning, actingUser, updatedUtc);
+
+    public void CompleteDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+
+    public void RequireApproval(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.AwaitingApproval, actingUser, updatedUtc);
+
+    public void QueueExecution(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.ExecutionQueued, actingUser, updatedUtc);
+
+    public void Claim(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.Claimed, actingUser, updatedUtc);
+
+    public void BeginPostValidation(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.PostValidation, actingUser, updatedUtc);
+
+    public void Fail(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.Failed, actingUser, updatedUtc);
+
+    public void Cancel(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.Cancelled, actingUser, updatedUtc);
+
+    public void MarkTimedOut(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.TimedOut, actingUser, updatedUtc);
+
+    public void Block(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.Blocked, actingUser, updatedUtc);
+
+    public void MarkNotRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+        ApplyTransition(JobStatus.NotRun, actingUser, updatedUtc);
+
+    public void CompleteReadOnlyAfterDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
+        var policy = RequirePolicySnapshot();
         if (Status != JobStatus.DryRunCompleted ||
-            riskLevel != RiskLevel.ReadOnly ||
-            supportsExecutePhase)
+            policy.RiskLevel != RiskLevel.ReadOnly ||
+            policy.SupportsExecutePhase)
         {
             throw new InvalidJobStateTransitionException(Status, JobStatus.Completed);
         }
 
-        Status = JobStatus.Completed;
-        Touch(actingUser, updatedUtc);
+        ApplyTransition(JobStatus.Completed, actingUser, updatedUtc);
     }
 
     public void RecordApproval(
-        RiskLevel riskLevel,
         UserIdentity approver,
         string approvalFingerprint,
         string? comment,
         DateTimeOffset decisionUtc)
     {
-        if (Status != JobStatus.AwaitingApproval)
-        {
-            throw new InvalidJobStateTransitionException(Status, JobStatus.Approved);
-        }
-
-        if (riskLevel is RiskLevel.Medium or RiskLevel.High or RiskLevel.Critical &&
+        var policy = RequirePolicySnapshot();
+        ValidateTransition(JobStatus.Approved, approver, decisionUtc);
+        if (policy.RiskLevel is RiskLevel.Medium or RiskLevel.High or RiskLevel.Critical &&
             RequestedBy == approver)
         {
             throw new DomainValidationException(
-                $"{riskLevel} jobs cannot be approved by their requester.");
+                $"{policy.RiskLevel} jobs cannot be approved by their requester.");
         }
 
-        _approvals.Add(
-            new JobApproval(
-                JobApprovalId.New(),
-                ApprovalDecision.Approved,
-                approver,
-                decisionUtc,
-                comment,
-                approvalFingerprint));
-        TransitionTo(JobStatus.Approved, approver, decisionUtc);
+        var approval = new JobApproval(
+            JobApprovalId.New(),
+            ApprovalDecision.Approved,
+            approver,
+            decisionUtc,
+            comment,
+            approvalFingerprint);
+        _approvals.Add(approval);
+        ApplyValidatedTransition(JobStatus.Approved, approver, decisionUtc);
     }
 
     public void RecordRejection(
@@ -253,20 +288,17 @@ public sealed class Job
         string? comment,
         DateTimeOffset decisionUtc)
     {
-        if (Status != JobStatus.AwaitingApproval)
-        {
-            throw new InvalidJobStateTransitionException(Status, JobStatus.Rejected);
-        }
-
-        _approvals.Add(
-            new JobApproval(
-                JobApprovalId.New(),
-                ApprovalDecision.Rejected,
-                approver,
-                decisionUtc,
-                comment,
-                approvalFingerprint));
-        TransitionTo(JobStatus.Rejected, approver, decisionUtc);
+        _ = RequirePolicySnapshot();
+        ValidateTransition(JobStatus.Rejected, approver, decisionUtc);
+        var rejection = new JobApproval(
+            JobApprovalId.New(),
+            ApprovalDecision.Rejected,
+            approver,
+            decisionUtc,
+            comment,
+            approvalFingerprint);
+        _approvals.Add(rejection);
+        ApplyValidatedTransition(JobStatus.Rejected, approver, decisionUtc);
     }
 
     public JobExecution StartExecutionAttempt(
@@ -274,11 +306,7 @@ public sealed class Job
         UserIdentity actingUser,
         DateTimeOffset startedUtc)
     {
-        if (Status != JobStatus.Claimed)
-        {
-            throw new InvalidJobStateTransitionException(Status, JobStatus.Executing);
-        }
-
+        ValidateTransition(JobStatus.Executing, actingUser, startedUtc);
         var execution = new JobExecution(
             JobExecutionId.New(),
             _executions.Count + 1,
@@ -286,7 +314,7 @@ public sealed class Job
             startedUtc);
         execution.Start(startedUtc);
         _executions.Add(execution);
-        TransitionTo(JobStatus.Executing, actingUser, startedUtc);
+        ApplyValidatedTransition(JobStatus.Executing, actingUser, startedUtc);
         return execution;
     }
 
@@ -304,7 +332,6 @@ public sealed class Job
 
         var execution = _executions.LastOrDefault()
             ?? throw new DomainValidationException("No execution attempt exists.");
-        execution.Complete(outcome, exitCode, summary, completedUtc);
         var status = outcome switch
         {
             ExecutionOutcome.Succeeded => JobStatus.Completed,
@@ -316,7 +343,10 @@ public sealed class Job
             ExecutionOutcome.NotRun => JobStatus.NotRun,
             _ => throw new DomainValidationException($"Unsupported outcome {outcome}."),
         };
-        TransitionTo(status, actingUser, completedUtc);
+
+        ValidateTransition(status, actingUser, completedUtc);
+        execution.Complete(outcome, exitCode, summary, completedUtc);
+        ApplyValidatedTransition(status, actingUser, completedUtc);
     }
 
     private void EnsureDraft()
@@ -327,14 +357,52 @@ public sealed class Job
         }
     }
 
-    private void Touch(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    private JobPolicySnapshot RequirePolicySnapshot() =>
+        PolicySnapshot ?? throw new DomainValidationException(
+            "A trusted script policy snapshot is required after submission.");
+
+    private void ApplyTransition(
+        JobStatus newStatus,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
     {
-        ArgumentNullException.ThrowIfNull(actingUser);
+        ValidateTransition(newStatus, actingUser, updatedUtc);
+        ApplyValidatedTransition(newStatus, actingUser, updatedUtc);
+    }
+
+    private void ValidateTransition(
+        JobStatus newStatus,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        JobStatusPolicy.EnsureAllowed(Status, newStatus);
+        ValidateMutation(actingUser, updatedUtc);
+    }
+
+    private void ValidateMutation(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        if (actingUser is null)
+        {
+            throw new DomainValidationException("Acting user is required.");
+        }
+
         if (updatedUtc < UpdatedUtc)
         {
             throw new DomainValidationException("Job timestamps cannot move backward.");
         }
+    }
 
+    private void ApplyValidatedTransition(
+        JobStatus newStatus,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        Status = newStatus;
+        ApplyTouch(actingUser, updatedUtc);
+    }
+
+    private void ApplyTouch(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
         LastActingUser = actingUser;
         UpdatedUtc = updatedUtc;
     }

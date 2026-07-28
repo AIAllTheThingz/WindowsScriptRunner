@@ -2,7 +2,7 @@ using WindowsScriptRunner.Domain.Exceptions;
 
 namespace WindowsScriptRunner.Domain.Jobs;
 
-public static class JobStatusPolicy
+internal static class JobStatusPolicy
 {
     private static readonly IReadOnlyDictionary<JobStatus, IReadOnlySet<JobStatus>> NormalTransitions =
         new Dictionary<JobStatus, IReadOnlySet<JobStatus>>
@@ -12,7 +12,7 @@ public static class JobStatusPolicy
             [JobStatus.Validated] = Set(JobStatus.DryRunQueued),
             [JobStatus.DryRunQueued] = Set(JobStatus.DryRunRunning),
             [JobStatus.DryRunRunning] = Set(JobStatus.DryRunCompleted),
-            [JobStatus.DryRunCompleted] = Set(JobStatus.AwaitingApproval),
+            [JobStatus.DryRunCompleted] = Set(JobStatus.AwaitingApproval, JobStatus.Completed),
             [JobStatus.AwaitingApproval] = Set(JobStatus.Approved, JobStatus.Rejected),
             [JobStatus.Approved] = Set(JobStatus.ExecutionQueued),
             [JobStatus.ExecutionQueued] = Set(JobStatus.Claimed),
@@ -41,12 +41,10 @@ public static class JobStatusPolicy
         JobStatus.Blocked,
         JobStatus.NotRun);
 
-    public static bool IsTerminal(JobStatus status) => TerminalStates.Contains(status);
-
-    public static void EnsureAllowed(JobStatus current, JobStatus requested)
+    internal static void EnsureAllowed(JobStatus current, JobStatus requested)
     {
         if (current == requested ||
-            IsTerminal(current) ||
+            TerminalStates.Contains(current) ||
             (!IsNormalTransition(current, requested) && !IsControlledTerminalTransition(current, requested)))
         {
             throw new InvalidJobStateTransitionException(current, requested);
@@ -66,7 +64,7 @@ public static class JobStatusPolicy
         return requested switch
         {
             JobStatus.Failed or JobStatus.TimedOut => current is not JobStatus.Draft,
-            JobStatus.Cancelled or JobStatus.Blocked or JobStatus.NotRun => !IsTerminal(current),
+            JobStatus.Cancelled or JobStatus.Blocked or JobStatus.NotRun => !TerminalStates.Contains(current),
             _ => false,
         };
     }
