@@ -17,7 +17,7 @@ public sealed class AuditEvent
         string summary,
         IReadOnlyDictionary<string, string>? properties = null)
     {
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Audit event identifier is required.");
         EventType = ValidateText(eventType, nameof(EventType), 200);
         EntityType = ValidateText(entityType, nameof(EntityType), 200);
         EntityId = ValidateText(entityId, nameof(EntityId), 500);

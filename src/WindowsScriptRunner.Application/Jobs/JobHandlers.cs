@@ -106,6 +106,7 @@ public sealed class AddJobTargetHandler(
 public sealed class SetJobParameterHandler(
     IJobRepository jobRepository,
     IScriptDefinitionRepository scriptRepository,
+    ICredentialReferenceRepository credentialRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
     IClock clock)
@@ -124,25 +125,27 @@ public sealed class SetJobParameterHandler(
             cancellationToken);
         var definition = script.GetVersion(job.ScriptVersionId)
             .GetParameterDefinition(command.ParameterName);
+        var serializedValue = command.SerializedValue;
+        if (definition.ParameterType == Domain.ScriptParameterType.SecureReference)
+        {
+            serializedValue = await ResolveCredentialReferenceAsync(
+                credentialRepository,
+                command.SerializedValue,
+                cancellationToken);
+        }
+
         var now = clock.UtcNow;
-        job.SetParameter(definition, command.SerializedValue, command.ActingUser, now);
+        job.SetParameter(definition, serializedValue, command.ActingUser, now);
+        var audit = CreateDraftJobHandler.Audit(
+            "JobParameterSet",
+            job,
+            command.ActingUser,
+            now,
+            "A draft job parameter was set.",
+            CreateParameterAuditProperties(definition, serializedValue));
 
         await jobRepository.UpdateAsync(job, cancellationToken);
-        await auditWriter.WriteAsync(
-            CreateDraftJobHandler.Audit(
-                "JobParameterSet",
-                job,
-                command.ActingUser,
-                now,
-                "A draft job parameter was set.",
-                new Dictionary<string, string>
-                {
-                    ["Parameter"] = definition.Name,
-                    ["Value"] = definition.IsSensitive
-                        ? "[REDACTED]"
-                        : command.SerializedValue ?? "(null)",
-                }),
-            cancellationToken);
+        await auditWriter.WriteAsync(audit, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }
 
@@ -152,6 +155,50 @@ public sealed class SetJobParameterHandler(
         CancellationToken cancellationToken) =>
         await repository.GetByIdAsync(id, cancellationToken)
         ?? throw new EntityNotFoundException(nameof(ScriptDefinition), id.ToString());
+
+    private static async Task<string> ResolveCredentialReferenceAsync(
+        ICredentialReferenceRepository credentialRepository,
+        string? serializedValue,
+        CancellationToken cancellationToken)
+    {
+        if (!CredentialReferenceId.TryParse(serializedValue, out var credentialReferenceId))
+        {
+            throw new ApplicationValidationException("SecureReference value must be a valid credential reference identifier.");
+        }
+
+        var credentialReference = await credentialRepository.GetByIdAsync(
+            credentialReferenceId!,
+            cancellationToken);
+        if (credentialReference is null)
+        {
+            throw new EntityNotFoundException("Credential reference", "[REDACTED]");
+        }
+
+        if (!credentialReference.IsEnabled)
+        {
+            throw new ApplicationValidationException("Credential reference is disabled.");
+        }
+
+        return credentialReference.Id.ToString();
+    }
+
+    private static IReadOnlyDictionary<string, string> CreateParameterAuditProperties(
+        ScriptParameterDefinition definition,
+        string? serializedValue) =>
+        new Dictionary<string, string>
+        {
+            ["Parameter"] = definition.Name,
+            ["ParameterType"] = definition.ParameterType.ToString(),
+            ["IsSensitive"] = definition.IsSensitive.ToString(),
+            ["ValueProvided"] = (!string.IsNullOrWhiteSpace(serializedValue)).ToString(),
+            ["SerializedLength"] = (serializedValue?.Length ?? 0).ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
+            ["ReferenceSupplied"] = (definition.ParameterType == Domain.ScriptParameterType.SecureReference &&
+                !string.IsNullOrWhiteSpace(serializedValue)).ToString(),
+            ["Value"] = definition.ParameterType == Domain.ScriptParameterType.SecureReference
+                ? "[REDACTED]"
+                : "[OMITTED]",
+        };
 }
 
 public sealed class SubmitJobHandler(
@@ -361,6 +408,64 @@ public sealed class CompleteReadOnlyJobHandler(
                 command.ActingUser,
                 now,
                 "The trusted read-only, non-Execute job completed after dry-run."),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+}
+
+public sealed class CompleteValidationJobHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(
+        CompleteValidationJobCommand command,
+        CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        job.CompleteRequestedValidation(command.ActingUser, now);
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            CreateDraftJobHandler.Audit(
+                "ValidationJobCompleted",
+                job,
+                command.ActingUser,
+                now,
+                "The validation-only job completed after validation."),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+}
+
+public sealed class CompleteDryRunJobHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(
+        CompleteDryRunJobCommand command,
+        CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        job.CompleteRequestedDryRun(command.ActingUser, now);
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            CreateDraftJobHandler.Audit(
+                "DryRunJobCompleted",
+                job,
+                command.ActingUser,
+                now,
+                "The dry-run-only job completed after dry-run."),
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }

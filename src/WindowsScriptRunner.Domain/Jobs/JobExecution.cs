@@ -13,7 +13,7 @@ public sealed class JobExecution
             throw new DomainValidationException("Execution attempt number must be positive.");
         }
 
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Job execution identifier is required.");
         AttemptNumber = attemptNumber;
         WorkerNodeId = workerNodeId;
         CreatedUtc = createdUtc;

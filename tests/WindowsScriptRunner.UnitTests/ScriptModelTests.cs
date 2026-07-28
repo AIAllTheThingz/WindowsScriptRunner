@@ -1,6 +1,8 @@
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
+using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Scripts;
+using WindowsScriptRunner.Domain.ValueObjects;
 
 namespace WindowsScriptRunner.UnitTests;
 
@@ -29,6 +31,56 @@ public sealed class ScriptModelTests
 
         Assert.Throws<InvalidScriptVersionException>(
             () => script.AddVersion(duplicate, TestDomainFactory.Time.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void DuplicateVersionIdentifierIsRejectedWithoutMutation()
+    {
+        var existing = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(existing);
+        var originalUpdatedUtc = script.UpdatedUtc;
+        var duplicateId = new ScriptVersion(
+            existing.Id,
+            ScriptVersionNumber.Parse("2.0.0"),
+            "scripts/Other.ps1",
+            new string('c', 64),
+            null,
+            "7.4",
+            30,
+            [ExecutionPhase.DryRun],
+            [],
+            TestDomainFactory.Time,
+            TestDomainFactory.User);
+
+        Assert.Throws<InvalidScriptVersionException>(
+            () => script.AddVersion(duplicateId, TestDomainFactory.Time.AddMinutes(1)));
+
+        Assert.Single(script.Versions);
+        Assert.Equal(originalUpdatedUtc, script.UpdatedUtc);
+        Assert.Same(existing, script.GetVersion(existing.Id));
+    }
+
+    [Fact]
+    public void DifferentVersionIdentifierAndNumberAreAccepted()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        var next = new ScriptVersion(
+            ScriptVersionId.New(),
+            ScriptVersionNumber.Parse("1.1.0"),
+            "scripts/Next.ps1",
+            new string('d', 64),
+            null,
+            "7.4",
+            30,
+            [ExecutionPhase.DryRun],
+            [],
+            TestDomainFactory.Time,
+            TestDomainFactory.User);
+
+        script.AddVersion(next, TestDomainFactory.Time.AddMinutes(1));
+
+        Assert.Equal(2, script.Versions.Count);
+        Assert.Same(next, script.GetVersion(next.Id));
     }
 
     [Fact]
@@ -71,10 +123,17 @@ public sealed class ScriptModelTests
     [Fact]
     public void EnumAndSecureReferenceRulesAreEnforced()
     {
+        var credentialReferenceId = CredentialReferenceId.New().ToString();
         _ = TestDomainFactory.Parameter(
             "Mode",
             ScriptParameterType.Enum,
             allowedValues: ["Safe", "Fast"]);
+        var secureReference = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            sensitive: true);
+        secureReference.ValidateSerializedValue(credentialReferenceId);
+
         Assert.Throws<InvalidParameterDefinitionException>(
             () => TestDomainFactory.Parameter("Mode", ScriptParameterType.Enum));
         Assert.Throws<InvalidParameterDefinitionException>(
@@ -82,6 +141,14 @@ public sealed class ScriptModelTests
                 "Credential",
                 ScriptParameterType.SecureReference,
                 sensitive: false));
+        Assert.Throws<InvalidJobParameterException>(
+            () => secureReference.ValidateSerializedValue("hunter2"));
+        Assert.Throws<InvalidJobParameterException>(
+            () => secureReference.ValidateSerializedValue(Guid.Empty.ToString("D")));
+        Assert.Throws<InvalidJobParameterException>(
+            () => secureReference.ValidateSerializedValue("not-a-guid"));
+        Assert.Throws<InvalidJobParameterException>(
+            () => secureReference.ValidateSerializedValue(credentialReferenceId.ToUpperInvariant()));
     }
 
     [Theory]

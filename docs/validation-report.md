@@ -411,3 +411,163 @@ No database access, PowerShell child process, job claim, or script execution occ
 - Corrected or superseded intermediate items are recorded above and were not represented as passing.
 - SQL Server, Entity Framework Core, migrations, repository implementations, PowerShell execution, authentication, authorization, APIs, UI additions, deployment, and all Phase 3 work: **NotRun** because they are outside this focused Phase 2 remediation.
 - GitHub Actions: **NotRun** because PR #1 reports no checks; no CI success is claimed.
+
+# Phase 2 Second Review Remediation
+
+Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from `C:\Users\mez\Documents\WindowsScriptRunner` unless otherwise noted.
+
+## Baseline before editing
+
+- Command: `dotnet restore`
+- Outcome: All projects were up to date.
+- Important output: `All projects are up-to-date for restore.`
+- Limitations: Exact start/end timestamps were not printed by the initial shell wrapper for this baseline command.
+- Status: **Passed**
+
+- Command: `dotnet build --configuration Release`
+- Outcome: All projects compiled before remediation edits.
+- Important output: `Build succeeded. 0 Warning(s), 0 Error(s).`
+- Limitations: Exact start/end timestamps were not printed by the initial shell wrapper for this baseline command.
+- Status: **Passed**
+
+- Command: `dotnet test --configuration Release`
+- Outcome: The pre-remediation suite passed with 111 tests.
+- Important output: Unit 79, Integration 3, Worker 7, Security 20, PowerShell boundary 2; 0 failed and 0 skipped.
+- Limitations: Exact start/end timestamps were not printed by the initial shell wrapper for this baseline command.
+- Status: **Passed**
+
+- Command: `dotnet format --verify-no-changes`
+- Outcome: No formatting changes were required before remediation edits.
+- Important output: Exit code 0 with no diagnostics.
+- Limitations: Exact start/end timestamps were not printed by the initial shell wrapper for this baseline command.
+- Status: **Passed**
+
+## Focused test runs
+
+- Command: `dotnet test .\tests\WindowsScriptRunner.UnitTests\WindowsScriptRunner.UnitTests.csproj --configuration Release`
+- Outcome: Passed after correcting old approval tests to create Execute-requested jobs for approval-only scenarios.
+- Important output: 103 passed, 0 failed, 0 skipped.
+- Limitations: The first focused unit run after code changes failed 5 approval tests because their setup still used DryRun requests; that failure was corrected by making the requested phase explicit.
+- Status: **Passed**
+
+- Command: `dotnet test .\tests\WindowsScriptRunner.SecurityTests\WindowsScriptRunner.SecurityTests.csproj --configuration Release`
+- Outcome: Passed.
+- Important output: 20 passed, 0 failed, 0 skipped.
+- Limitations: Architecture/security tests do not claim production authentication, SQL security, or runtime sandboxing.
+- Status: **Passed**
+
+- Command: `dotnet test .\tests\WindowsScriptRunner.WorkerTests\WindowsScriptRunner.WorkerTests.csproj --configuration Release`
+- Outcome: Passed.
+- Important output: 7 passed, 0 failed, 0 skipped.
+- Limitations: Tests validate worker heartbeat/cancellation/failure behavior, not real job processing.
+- Status: **Passed**
+
+- Command: `dotnet test .\tests\WindowsScriptRunner.IntegrationTests\WindowsScriptRunner.IntegrationTests.csproj --configuration Release`
+- Outcome: Passed.
+- Important output: 3 passed, 0 failed, 0 skipped.
+- Limitations: Integration tests remain in-memory and database-free.
+- Status: **Passed**
+
+## Final restore
+
+- Command: `dotnet restore`
+- Start time: `2026-07-28T17:07:31.6663530-05:00`
+- End time: `2026-07-28T17:07:33.4990032-05:00`
+- Outcome: All projects were up to date.
+- Important output: `All projects are up-to-date for restore.`
+- Limitations: Restore validates dependencies, not runtime behavior.
+- Status: **Passed**
+
+## Final Release build
+
+- Command: `dotnet build --configuration Release`
+- Start time: `2026-07-28T17:07:39.1208598-05:00`
+- End time: `2026-07-28T17:07:43.5606898-05:00`
+- Outcome: All solution projects compiled.
+- Important output: `Build succeeded. 0 Warning(s), 0 Error(s).`
+- Limitations: No deployment or external infrastructure was exercised.
+- Status: **Passed**
+
+## Final test suite
+
+- Command: `dotnet test --configuration Release`
+- Start time: `2026-07-28T17:07:48.8589145-05:00`
+- End time: `2026-07-28T17:07:57.3061697-05:00`
+- Outcome: All 135 tests passed with 0 failures and 0 skips.
+- Important output: Unit 103, Integration 3, Worker 7, Security 20, and PowerShell boundary 2.
+- Limitations: No SQL, authentication, PowerShell execution, or external service integration is claimed.
+- Status: **Passed**
+
+## Formatting
+
+- Command: `dotnet format`
+- Start time: `2026-07-28T17:08:02.9891935-05:00`
+- End time: `2026-07-28T17:08:24.5118019-05:00`
+- Outcome: Formatting completed with exit code 0.
+- Important output: No diagnostics were emitted.
+- Limitations: Markdown prose is reviewed separately.
+- Status: **Passed**
+
+- Command: `dotnet format --verify-no-changes`
+- Start time: `2026-07-28T17:08:29.6021841-05:00`
+- End time: `2026-07-28T17:08:50.6895115-05:00`
+- Outcome: No formatting changes were required.
+- Important output: Exit code 0 with no diagnostics.
+- Limitations: None beyond formatter scope.
+- Status: **Passed**
+
+## Post-format build and test confirmation
+
+- Command: `dotnet build --configuration Release --no-restore`
+- Start time: `2026-07-28T17:08:57.2979583-05:00`
+- End time: `2026-07-28T17:09:00.5356426-05:00`
+- Outcome: All projects compiled after formatting.
+- Important output: `Build succeeded. 0 Warning(s), 0 Error(s).`
+- Limitations: No restore was attempted by design.
+- Status: **Passed**
+
+- Command: `dotnet test --configuration Release --no-build`
+- Start time: `2026-07-28T17:09:05.3577811-05:00`
+- End time: `2026-07-28T17:09:08.8121034-05:00`
+- Outcome: All 135 tests passed again with 0 failures and 0 skips.
+- Important output: Unit 103, Integration 3, Worker 7, Security 20, and PowerShell boundary 2.
+- Limitations: Tests used the immediately preceding Release build.
+- Status: **Passed**
+
+## Web startup and endpoints
+
+- Command: `dotnet run --no-launch-profile --project .\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj`, with validation-only `ASPNETCORE_URLS=http://127.0.0.1:5094`
+- Outcome: Web started and listened on `http://127.0.0.1:5094`. `/`, `/Scripts`, `/Jobs`, `/Workers`, `/Audit`, `/Administration`, and `/health` each returned HTTP 200; health returned 20 bytes.
+- Important output: `Now listening on: http://127.0.0.1:5094`; endpoint checks returned status 200 for every requested path.
+- Limitations: The command backend could not deliver Ctrl+C, so the exact listening process was resolved by port and stopped after successful endpoint validation; the `dotnet run` wrapper consequently returned exit code 1. The existing HTTPS redirect warning appeared under the validation-only HTTP URL.
+- Status: **Passed**
+
+No database connection, PowerShell child process, or sensitive value appeared in startup output. The validation listener was not left running.
+
+## Worker startup and shutdown
+
+- Command: `dotnet run --no-launch-profile --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker.csproj`, launched by an in-memory Python process-control harness
+- Start time: `2026-07-28T17:10:15.3782448-05:00`
+- End time: `2026-07-28T17:10:21.4509137-05:00`
+- Outcome: Worker started, logged the Phase 1 no-execution limitation, emitted a heartbeat, received Ctrl+Break cancellation, logged clean shutdown, and exited with code 0.
+- Important output: `Worker heartbeat`, `Worker cancellation requested.`, `Windows Script Runner worker stopped cleanly.`, and `WORKER_EXIT_CODE 0`.
+- Limitations: An environment-only one-second heartbeat interval was used. Checked-in configuration remains unchanged.
+- Status: **Passed**
+
+No database access, PowerShell child process, job claim, or script execution occurred.
+
+## Architecture and remediation coverage
+
+- Command/evidence: Final Security and Unit test results plus source/process inspection
+- Outcome: Source `.csproj` allowlists remain enforced; Domain and Contracts have no project references; Web has no Worker or PowerShell reference; no database or PowerShell process-launch implementation was found. Tests cover case-insensitive identity equality, requested-phase enforcement, secure credential-reference validation, bounded audit metadata, strong ID default-value protection, duplicate script-version IDs, disabled submission, and the prior remediation protections.
+- Important output: Security 20 passed and Unit 103 passed.
+- Limitations: These tests do not claim Phase 3 persistence, production authentication/authorization, external vault retrieval, script execution, or runtime governance for already-submitted jobs after script disable.
+- Status: **Passed**
+
+## Failed, blocked, and not-run summary
+
+- Required final checks: no Failed or Blocked items.
+- Corrected intermediate item: one focused unit run failed because existing approval tests still created DryRun-requested jobs; tests were corrected to request Execute for approval scenarios and the unit suite then passed.
+- Web process graceful Ctrl+C delivery through the command backend was **Blocked**; endpoint validation passed and the exact process was stopped by resolved listening PID.
+- SQL Server, Entity Framework Core, migrations, repository implementations, PowerShell execution, authentication, authorization, APIs, Razor Page feature work, deployment, and all Phase 3 work: **NotRun** because they are outside this remediation scope.
+- GitHub Actions: **NotRun** because PR #1 reports no checks; no CI success is claimed.

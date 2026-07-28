@@ -14,7 +14,7 @@ public sealed class WorkerNode
         DateTimeOffset registeredUtc,
         bool isEnabled = true)
     {
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Worker node identifier is required.");
         Name = Guard.RequiredTrimmed(name, nameof(Name), 200);
         RegisteredUtc = registeredUtc;
         IsEnabled = isEnabled;

@@ -27,7 +27,7 @@ public sealed class ScriptVersion
         DateTimeOffset createdUtc,
         UserIdentity createdBy)
     {
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Script version identifier is required.");
         Version = version;
         RelativeScriptPath = ValidateRelativePath(relativeScriptPath);
         Sha256 = ValidateSha256(sha256);

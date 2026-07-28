@@ -1,18 +1,25 @@
 # Phase 2 security properties
 
 - No raw credential property exists in the domain model; `CredentialReference` stores only an external identifier.
+- `SecureReference` job parameters must contain a canonical non-empty `CredentialReferenceId` GUID. Application handlers resolve the ID, reject missing or disabled references, store only the canonical ID, and never audit external vault identifiers.
 - Sensitive job parameters redact `ToString`, query responses, and audit values.
+- Parameter audit events store bounded metadata such as parameter name, type, sensitivity, value-present flag, and serialized length. Full parameter values are not written to audit properties.
 - Script paths must be relative and reject rooted or traversal forms.
 - Script SHA-256 metadata must contain exactly 64 hexadecimal characters.
 - Published script versions reject mutation.
 - Web has no direct reference to Worker or PowerShell.
 - Domain references no solution, ASP.NET Core, Entity Framework Core, or SQL client assembly.
 - Submission captures trusted script risk and Execute-phase capability in an immutable job policy snapshot.
+- New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured Phase 2 policy until future runtime governance is implemented.
+- Submitted jobs enforce the requested phase: Validation stops after validation, DryRun stops after dry-run, and only Execute requests may enter approval/execution states.
 - Requesters cannot self-approve Medium, High, or Critical work, and callers cannot lower risk at approval time. The documented Phase 2 policy permits ReadOnly and Low self-approval.
+- Windows user identities compare with ordinal case-insensitive equality so casing cannot bypass self-approval checks. Future authentication should map users to stable SIDs or equivalent principal identifiers.
 - Read-only completion requires captured ReadOnly risk and a captured absence of Execute support; callers cannot override either value.
 - Approval, rejection, execution, and completion states require dedicated evidence-bearing operations; the generic application transition handler rejects protected targets.
 - Aggregate actor, timestamp, lifecycle, and child-object validation occurs before mutation.
 - Source project files are parsed to enforce exact project-reference allowlists, including explicit Web-to-Worker and Web-to-PowerShell prohibitions.
+- Strong identifiers are immutable reference records with no public parameterless constructor; aggregate boundaries reject null identifiers.
+- Script definitions reject duplicate semantic versions and duplicate `ScriptVersionId` values before mutation.
 - Audit properties reject control characters and obvious sensitive key names.
 
-Authentication, authorization, executable signing, trusted hash calculation, SQL security, external credential retrieval, process isolation, and production approval controls are not implemented.
+Authentication, authorization, executable signing, trusted hash calculation, SQL security, external credential retrieval, process isolation, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.

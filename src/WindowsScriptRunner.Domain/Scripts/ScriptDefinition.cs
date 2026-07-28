@@ -17,12 +17,12 @@ public sealed class ScriptDefinition
         UserIdentity createdBy,
         DateTimeOffset createdUtc)
     {
-        Id = id;
-        Name = name;
+        Id = id ?? throw new DomainValidationException("Script definition identifier is required.");
+        Name = name ?? throw new DomainValidationException("Script name is required.");
         DisplayName = ValidateDisplayName(displayName);
         Description = ValidateDescription(description);
         RiskLevel = riskLevel;
-        CreatedBy = createdBy;
+        CreatedBy = createdBy ?? throw new DomainValidationException("Script creator is required.");
         CreatedUtc = createdUtc;
         UpdatedUtc = createdUtc;
         IsEnabled = true;
@@ -80,13 +80,25 @@ public sealed class ScriptDefinition
             throw new InvalidScriptVersionException($"Script version {version.Version} already exists.");
         }
 
+        if (_versions.Any(existing => existing.Id == version.Id))
+        {
+            throw new InvalidScriptVersionException($"Script version identifier {version.Id} already exists.");
+        }
+
         _versions.Add(version);
         UpdatedUtc = updatedUtc;
     }
 
-    public ScriptVersion GetVersion(ScriptVersionId id) =>
-        _versions.SingleOrDefault(version => version.Id == id)
-        ?? throw new InvalidScriptVersionException($"Script version '{id}' does not belong to this definition.");
+    public ScriptVersion GetVersion(ScriptVersionId id)
+    {
+        if (id is null)
+        {
+            throw new DomainValidationException("Script version identifier is required.");
+        }
+
+        return _versions.FirstOrDefault(version => version.Id == id)
+            ?? throw new InvalidScriptVersionException($"Script version '{id}' does not belong to this definition.");
+    }
 
     private void EnsureTimestamp(DateTimeOffset updatedUtc)
     {

@@ -12,8 +12,8 @@ public sealed record JobPolicySnapshot
         RiskLevel riskLevel,
         bool supportsExecutePhase)
     {
-        ScriptDefinitionId = scriptDefinitionId;
-        ScriptVersionId = scriptVersionId;
+        ScriptDefinitionId = scriptDefinitionId ?? throw new DomainValidationException("Script definition identifier is required.");
+        ScriptVersionId = scriptVersionId ?? throw new DomainValidationException("Script version identifier is required.");
         RiskLevel = riskLevel;
         SupportsExecutePhase = supportsExecutePhase;
     }

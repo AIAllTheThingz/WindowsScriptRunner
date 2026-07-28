@@ -81,21 +81,25 @@ internal static class TestDomainFactory
         return script;
     }
 
-    public static Job DraftJob(ScriptDefinition script, ScriptVersion version) =>
+    public static Job DraftJob(
+        ScriptDefinition script,
+        ScriptVersion version,
+        ExecutionPhase requestedPhase = ExecutionPhase.DryRun) =>
         Job.CreateDraft(
             JobId.New(),
             script.Id,
             version.Id,
-            ExecutionPhase.DryRun,
+            requestedPhase,
             User,
             Time);
 
     public static Job SubmittedJob(
         ScriptDefinition script,
         ScriptVersion version,
-        IEnumerable<(ScriptParameterDefinition Definition, string? Value)>? parameters = null)
+        IEnumerable<(ScriptParameterDefinition Definition, string? Value)>? parameters = null,
+        ExecutionPhase requestedPhase = ExecutionPhase.DryRun)
     {
-        var job = DraftJob(script, version);
+        var job = DraftJob(script, version, requestedPhase);
         job.AddTarget(new TargetName("server-01"), User, Time.AddMinutes(1));
         foreach (var parameter in parameters ?? [])
         {

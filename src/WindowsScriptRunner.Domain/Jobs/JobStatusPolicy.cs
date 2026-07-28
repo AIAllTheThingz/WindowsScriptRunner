@@ -9,7 +9,7 @@ internal static class JobStatusPolicy
         {
             [JobStatus.Draft] = Set(JobStatus.Submitted),
             [JobStatus.Submitted] = Set(JobStatus.Validated),
-            [JobStatus.Validated] = Set(JobStatus.DryRunQueued),
+            [JobStatus.Validated] = Set(JobStatus.DryRunQueued, JobStatus.Completed),
             [JobStatus.DryRunQueued] = Set(JobStatus.DryRunRunning),
             [JobStatus.DryRunRunning] = Set(JobStatus.DryRunCompleted),
             [JobStatus.DryRunCompleted] = Set(JobStatus.AwaitingApproval, JobStatus.Completed),

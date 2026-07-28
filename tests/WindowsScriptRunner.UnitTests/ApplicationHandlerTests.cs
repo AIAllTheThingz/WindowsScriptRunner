@@ -59,21 +59,176 @@ public sealed class ApplicationHandlerTests
             required: true,
             sensitive: true);
         var fixture = HandlerFixture.WithDraftJob(definition);
+        var credential = new CredentialReference(
+            CredentialReferenceId.New(),
+            "TestVault",
+            "path/to/credential",
+            "Test Credential",
+            TestDomainFactory.Time,
+            TestDomainFactory.User);
+        fixture.Credentials.CredentialReference = credential;
 
         await fixture.SetParameterHandler.HandleAsync(
             new SetJobParameterCommand(
                 fixture.Jobs.Job!.Id,
                 definition.Name,
-                "external-reference-1",
+                credential.Id.ToString(),
                 TestDomainFactory.User),
             CancellationToken.None);
 
         var audit = Assert.Single(fixture.Audits.Events);
         Assert.Equal("[REDACTED]", audit.Properties["Value"]);
         Assert.DoesNotContain(
-            "external-reference-1",
+            credential.Id.ToString(),
             string.Join(' ', audit.Properties.Values),
             StringComparison.Ordinal);
+        Assert.Equal(credential.Id.ToString(), Assert.Single(fixture.Jobs.Job.Parameters).SerializedValue);
+    }
+
+    [Theory]
+    [InlineData("hunter2")]
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public async Task SecureReferenceParameterRejectsInvalidCredentialReferenceFormat(string value)
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job!.Id,
+                    definition.Name,
+                    value,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task SecureReferenceParameterRejectsMissingAndDisabledReferences()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var credential = new CredentialReference(
+            CredentialReferenceId.New(),
+            "TestVault",
+            "path/to/credential",
+            "Test Credential",
+            TestDomainFactory.Time,
+            TestDomainFactory.User,
+            isEnabled: false);
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job!.Id,
+                    definition.Name,
+                    CredentialReferenceId.New().ToString(),
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        fixture.Credentials.CredentialReference = credential;
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job!.Id,
+                    definition.Name,
+                    credential.Id.ToString(),
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task SecureReferenceLookupPropagatesCancellationToken()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var credential = new CredentialReference(
+            CredentialReferenceId.New(),
+            "TestVault",
+            "path/to/credential",
+            "Test Credential",
+            TestDomainFactory.Time,
+            TestDomainFactory.User);
+        fixture.Credentials.CredentialReference = credential;
+        using var source = new CancellationTokenSource();
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job!.Id,
+                definition.Name,
+                credential.Id.ToString(),
+                TestDomainFactory.User),
+            source.Token);
+
+        Assert.Contains(source.Token, fixture.Credentials.ObservedTokens);
+    }
+
+    [Fact]
+    public async Task ParameterAuditUsesBoundedMetadataForLongAndMultilineValues()
+    {
+        var definition = TestDomainFactory.Parameter("Notes");
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var value = $"{new string('x', 2100)}\nsecond line";
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job!.Id,
+                definition.Name,
+                value,
+                TestDomainFactory.User),
+            CancellationToken.None);
+
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal("String", audit.Properties["ParameterType"]);
+        Assert.Equal("False", audit.Properties["IsSensitive"]);
+        Assert.Equal(value.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), audit.Properties["SerializedLength"]);
+        Assert.DoesNotContain(value, string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task ParameterAuditUsesBoundedMetadataForLargeStringArray()
+    {
+        var definition = TestDomainFactory.Parameter("Items", ScriptParameterType.StringArray);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var value = System.Text.Json.JsonSerializer.Serialize(
+            Enumerable.Range(1, 300).Select(number => $"item-{number:D3}").ToArray());
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job!.Id,
+                definition.Name,
+                value,
+                TestDomainFactory.User),
+            CancellationToken.None);
+
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal("StringArray", audit.Properties["ParameterType"]);
+        Assert.Equal(value.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), audit.Properties["SerializedLength"]);
+        Assert.DoesNotContain("item-001", string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
+        Assert.Equal(value, Assert.Single(fixture.Jobs.Job.Parameters).SerializedValue);
     }
 
     [Fact]
@@ -216,9 +371,10 @@ public sealed class ApplicationHandlerTests
             ScriptParameterType.SecureReference,
             sensitive: true);
         var fixture = HandlerFixture.WithDraftJob(definition);
+        var credentialReferenceId = CredentialReferenceId.New().ToString();
         fixture.Jobs.Job!.SetParameter(
             definition,
-            "credential-reference-1",
+            credentialReferenceId,
             TestDomainFactory.User,
             TestDomainFactory.Time.AddMinutes(1));
 
@@ -229,7 +385,7 @@ public sealed class ApplicationHandlerTests
 
         Assert.True(parameter.IsRedacted);
         Assert.Equal("[REDACTED]", parameter.DisplayValue);
-        Assert.DoesNotContain("credential-reference-1", parameter.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(credentialReferenceId, parameter.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -255,6 +411,7 @@ public sealed class ApplicationHandlerTests
             SetParameterHandler = new SetJobParameterHandler(
                 Jobs,
                 Scripts,
+                Credentials,
                 Audits,
                 UnitOfWork,
                 Clock);
@@ -263,11 +420,14 @@ public sealed class ApplicationHandlerTests
             ApproveHandler = new ApproveJobHandler(Jobs, Audits, UnitOfWork, Clock);
             RejectHandler = new RejectJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
             GetHandler = new GetJobHandler(Jobs);
         }
 
         public FakeJobRepository Jobs { get; } = new();
         public FakeScriptRepository Scripts { get; } = new();
+        public FakeCredentialRepository Credentials { get; } = new();
         public FakeAuditWriter Audits { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public TestClock Clock { get; } = new(TestDomainFactory.Time.AddHours(1));
@@ -279,9 +439,14 @@ public sealed class ApplicationHandlerTests
         public ApproveJobHandler ApproveHandler { get; }
         public RejectJobHandler RejectHandler { get; }
         public CompleteReadOnlyJobHandler CompleteReadOnlyHandler { get; }
+        public CompleteValidationJobHandler CompleteValidationHandler { get; }
+        public CompleteDryRunJobHandler CompleteDryRunHandler { get; }
         public GetJobHandler GetHandler { get; }
         public IEnumerable<CancellationToken> ObservedTokens =>
-            Jobs.ObservedTokens.Concat(Audits.ObservedTokens).Concat(UnitOfWork.ObservedTokens);
+            Jobs.ObservedTokens
+                .Concat(Credentials.ObservedTokens)
+                .Concat(Audits.ObservedTokens)
+                .Concat(UnitOfWork.ObservedTokens);
 
         public static HandlerFixture WithDraftJob(ScriptParameterDefinition? parameter = null)
         {
@@ -293,13 +458,19 @@ public sealed class ApplicationHandlerTests
             return fixture;
         }
 
-        public static HandlerFixture WithSubmittedJob(RiskLevel riskLevel = RiskLevel.Low)
+        public static HandlerFixture WithSubmittedJob(
+            RiskLevel riskLevel = RiskLevel.Low,
+            ExecutionPhase requestedPhase = ExecutionPhase.Execute,
+            IEnumerable<ExecutionPhase>? supportedPhases = null)
         {
             var fixture = new HandlerFixture();
-            var version = TestDomainFactory.Version();
+            var version = TestDomainFactory.Version(phases: supportedPhases);
             var script = TestDomainFactory.Script(version, riskLevel);
             fixture.Scripts.Script = script;
-            fixture.Jobs.Job = TestDomainFactory.SubmittedJob(script, version);
+            fixture.Jobs.Job = TestDomainFactory.SubmittedJob(
+                script,
+                version,
+                requestedPhase: requestedPhase);
             return fixture;
         }
 
@@ -425,19 +596,124 @@ public sealed class ApplicationHandlerTests
             Task.CompletedTask;
     }
 
-    private sealed class UnusedCredentialRepository : ICredentialReferenceRepository
+    private sealed class FakeCredentialRepository : ICredentialReferenceRepository
     {
+        public CredentialReference? CredentialReference { get; set; }
+        public List<CancellationToken> ObservedTokens { get; } = [];
+
         public Task<CredentialReference?> GetByIdAsync(
             CredentialReferenceId id,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<CredentialReference?>(null);
+            CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            return Task.FromResult(CredentialReference?.Id == id ? CredentialReference : null);
+        }
+
         public Task AddAsync(
             CredentialReference credentialReference,
-            CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            CredentialReference = credentialReference;
+            return Task.CompletedTask;
+        }
+
         public Task UpdateAsync(
             CredentialReference credentialReference,
-            CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            CredentialReference = credentialReference;
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task SubmitHandlerRejectsDisabledScriptWithoutPersistence()
+    {
+        var fixture = HandlerFixture.WithDraftJob();
+        fixture.Scripts.Script!.Disable(TestDomainFactory.Time.AddMinutes(1));
+        fixture.Jobs.Job!.AddTarget(
+            new TargetName("server-01"),
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.SubmitHandler.HandleAsync(
+                new SubmitJobCommand(fixture.Jobs.Job.Id, TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Draft, fixture.Jobs.Job.Status);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task TransitionHandlerDoesNotPersistWhenRequestedPhaseRuleFails()
+    {
+        var fixture = HandlerFixture.WithSubmittedJob(requestedPhase: ExecutionPhase.DryRun);
+        fixture.Jobs.Job!.MarkValidated(TestDomainFactory.OtherUser, fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        fixture.Jobs.Job.QueueDryRun(TestDomainFactory.OtherUser, fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        fixture.Jobs.Job.StartDryRun(TestDomainFactory.OtherUser, fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        fixture.Jobs.Job.CompleteDryRun(TestDomainFactory.OtherUser, fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.TransitionHandler.HandleAsync(
+                new TransitionJobCommand(
+                    fixture.Jobs.Job.Id,
+                    JobStatus.AwaitingApproval,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.DryRunCompleted, fixture.Jobs.Job.Status);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task RequestedPhaseCompletionHandlersPersistOnlyOnValidPhase()
+    {
+        var validationFixture = HandlerFixture.WithSubmittedJob(
+            requestedPhase: ExecutionPhase.Validation,
+            supportedPhases: [ExecutionPhase.Validation]);
+        validationFixture.Jobs.Job!.MarkValidated(
+            TestDomainFactory.OtherUser,
+            validationFixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+
+        await validationFixture.CompleteValidationHandler.HandleAsync(
+            new CompleteValidationJobCommand(
+                validationFixture.Jobs.Job.Id,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Completed, validationFixture.Jobs.Job.Status);
+        Assert.Equal("ValidationJobCompleted", Assert.Single(validationFixture.Audits.Events).EventType);
+
+        var dryRunFixture = HandlerFixture.WithSubmittedJob(
+            requestedPhase: ExecutionPhase.DryRun,
+            supportedPhases: [ExecutionPhase.DryRun]);
+        dryRunFixture.Jobs.Job!.MarkValidated(
+            TestDomainFactory.OtherUser,
+            dryRunFixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        dryRunFixture.Jobs.Job.QueueDryRun(
+            TestDomainFactory.OtherUser,
+            dryRunFixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        dryRunFixture.Jobs.Job.StartDryRun(
+            TestDomainFactory.OtherUser,
+            dryRunFixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        dryRunFixture.Jobs.Job.CompleteDryRun(
+            TestDomainFactory.OtherUser,
+            dryRunFixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+
+        await dryRunFixture.CompleteDryRunHandler.HandleAsync(
+            new CompleteDryRunJobCommand(
+                dryRunFixture.Jobs.Job.Id,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Completed, dryRunFixture.Jobs.Job.Status);
+        Assert.Equal("DryRunJobCompleted", Assert.Single(dryRunFixture.Audits.Events).EventType);
     }
 }

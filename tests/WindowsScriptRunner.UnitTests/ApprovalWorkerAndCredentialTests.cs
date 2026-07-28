@@ -17,7 +17,8 @@ public sealed class ApprovalWorkerAndCredentialTests
         var version = TestDomainFactory.Version();
         var job = TestDomainFactory.SubmittedJob(
             TestDomainFactory.Script(version, riskLevel),
-            version);
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
 
         Assert.Throws<DomainValidationException>(
@@ -34,7 +35,8 @@ public sealed class ApprovalWorkerAndCredentialTests
         var version = TestDomainFactory.Version();
         var job = TestDomainFactory.SubmittedJob(
             TestDomainFactory.Script(version, RiskLevel.ReadOnly),
-            version);
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
 
         job.RecordApproval(
@@ -50,7 +52,10 @@ public sealed class ApprovalWorkerAndCredentialTests
     public void InvalidApprovalFingerprintIsRejected()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
 
         Assert.Throws<DomainValidationException>(

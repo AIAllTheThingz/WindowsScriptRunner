@@ -15,7 +15,7 @@ public sealed class CredentialReference
         UserIdentity createdBy,
         bool isEnabled = true)
     {
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Credential reference identifier is required.");
         ProviderType = Validate(providerType, nameof(ProviderType), 200);
         ExternalIdentifier = ValidateExternalIdentifier(externalIdentifier);
         DisplayName = Validate(displayName, nameof(DisplayName), 200);

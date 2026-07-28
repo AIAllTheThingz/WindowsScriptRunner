@@ -60,7 +60,7 @@ public readonly record struct ScriptVersionNumber
     public override string ToString() => $"{Major}.{Minor}.{Patch}";
 }
 
-public sealed record UserIdentity
+public sealed class UserIdentity : IEquatable<UserIdentity>
 {
     public UserIdentity(string value)
     {
@@ -69,6 +69,16 @@ public sealed record UserIdentity
     }
 
     public string Value { get; }
+
+    public bool Equals(UserIdentity? other) =>
+        other is not null && StringComparer.OrdinalIgnoreCase.Equals(Value, other.Value);
+
+    public override bool Equals(object? obj) => obj is UserIdentity other && Equals(other);
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+    public static bool operator ==(UserIdentity? left, UserIdentity? right) =>
+        left is null ? right is null : left.Equals(right);
+
+    public static bool operator !=(UserIdentity? left, UserIdentity? right) => !(left == right);
     public override string ToString() => Value;
 }
 

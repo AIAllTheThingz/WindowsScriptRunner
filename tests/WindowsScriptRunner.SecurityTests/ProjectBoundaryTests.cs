@@ -156,9 +156,10 @@ public sealed class ProjectBoundaryTests
     [Fact]
     public void SensitiveRepresentationsAreRedacted()
     {
+        var credentialReferenceId = CredentialReferenceId.New().ToString();
         var parameter = new JobParameter(
             "Credential",
-            "external-reference-1",
+            credentialReferenceId,
             ScriptParameterType.SecureReference,
             isSensitive: true);
         var credential = new CredentialReference(
@@ -169,7 +170,7 @@ public sealed class ProjectBoundaryTests
             DateTimeOffset.UtcNow,
             new UserIdentity("DOMAIN\\user"));
 
-        Assert.DoesNotContain("external-reference-1", parameter.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(credentialReferenceId, parameter.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("vault/private/path", credential.ToString(), StringComparison.Ordinal);
     }
 

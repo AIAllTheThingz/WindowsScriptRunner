@@ -1,8 +1,13 @@
 using System.Reflection;
 using WindowsScriptRunner.Domain;
+using WindowsScriptRunner.Domain.Auditing;
+using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Exceptions;
+using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
+using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.UnitTests;
 
@@ -69,18 +74,19 @@ public sealed class JobAggregateTests
 
         job.SetParameter(
             definition,
-            "credential-reference-1",
+            CredentialReferenceId.New().ToString(),
             TestDomainFactory.User,
             TestDomainFactory.Time.AddMinutes(1));
+        var replacementId = CredentialReferenceId.New().ToString();
         job.SetParameter(
             definition,
-            "credential-reference-2",
+            replacementId,
             TestDomainFactory.User,
             TestDomainFactory.Time.AddMinutes(2));
         var parameter = Assert.Single(job.Parameters);
 
         Assert.Equal("[REDACTED]", parameter.GetSafeDisplayValue());
-        Assert.DoesNotContain("credential-reference-2", parameter.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(replacementId, parameter.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -163,7 +169,10 @@ public sealed class JobAggregateTests
     public void ExplicitLifecycleOperationsSupportNormalFlow()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         job.RecordApproval(
             TestDomainFactory.OtherUser,
@@ -199,7 +208,10 @@ public sealed class JobAggregateTests
     public void OutOfOrderExplicitOperationIsRejectedWithoutMutation()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         var status = job.Status;
         var updated = job.UpdatedUtc;
         var actor = job.LastActingUser;
@@ -216,7 +228,10 @@ public sealed class JobAggregateTests
     public void BackwardTimestampAndNullActorCannotPartiallyMutateTransition()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         var status = job.Status;
         var updated = job.UpdatedUtc;
         var actor = job.LastActingUser;
@@ -240,7 +255,10 @@ public sealed class JobAggregateTests
     public void NonTerminalJobSupportsControlledTerminalOperation(JobStatus terminalStatus)
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
 
         ApplyTerminalOperation(job, terminalStatus, job.UpdatedUtc.AddMinutes(1));
 
@@ -253,7 +271,10 @@ public sealed class JobAggregateTests
     public void RejectionRecordsDecisionAndTerminatesJob()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
 
         job.RecordRejection(
@@ -316,7 +337,10 @@ public sealed class JobAggregateTests
     public void InvalidApprovalLeavesJobAndDecisionCollectionUnchanged()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         var updated = job.UpdatedUtc;
         var actor = job.LastActingUser;
@@ -338,7 +362,10 @@ public sealed class JobAggregateTests
     public void InvalidApprovalTimestampLeavesJobAndDecisionCollectionUnchanged()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         var updated = job.UpdatedUtc;
         var actor = job.LastActingUser;
@@ -360,7 +387,10 @@ public sealed class JobAggregateTests
     public void InvalidRejectionTimestampLeavesJobAndDecisionCollectionUnchanged()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         var updated = job.UpdatedUtc;
         var actor = job.LastActingUser;
@@ -382,7 +412,10 @@ public sealed class JobAggregateTests
     public void InvalidExecutionStartLeavesJobAndAttemptCollectionUnchanged()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         job.RecordApproval(
             TestDomainFactory.OtherUser,
@@ -408,7 +441,10 @@ public sealed class JobAggregateTests
     public void InvalidTerminalOutcomeLeavesJobAndAttemptUnchanged()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         job.RecordApproval(
             TestDomainFactory.OtherUser,
@@ -441,7 +477,10 @@ public sealed class JobAggregateTests
     public void ExecutionAttemptCompletesOnce()
     {
         var version = TestDomainFactory.Version();
-        var job = TestDomainFactory.SubmittedJob(TestDomainFactory.Script(version), version);
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
         TestDomainFactory.AdvanceToAwaitingApproval(job);
         job.RecordApproval(
             TestDomainFactory.OtherUser,
@@ -472,6 +511,167 @@ public sealed class JobAggregateTests
                 job.UpdatedUtc.AddMinutes(1)));
     }
 
+    [Fact]
+    public void ValidationRequestCompletesAfterValidationAndCannotProceed()
+    {
+        var job = SubmittedForPhase(ExecutionPhase.Validation, [ExecutionPhase.Validation]);
+        job.MarkValidated(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+
+        Assert.Throws<DomainValidationException>(
+            () => job.QueueDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.RequireApproval(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.QueueExecution(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.StartExecutionAttempt(null, TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+
+        job.CompleteRequestedValidation(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+
+        Assert.Equal(JobStatus.Completed, job.Status);
+    }
+
+    [Fact]
+    public void DryRunRequestCompletesAfterDryRunAndCannotExecute()
+    {
+        var job = SubmittedForPhase(ExecutionPhase.DryRun, [ExecutionPhase.DryRun, ExecutionPhase.Execute]);
+        job.MarkValidated(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+        job.QueueDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+        job.StartDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+        job.CompleteDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RequireApproval(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.QueueExecution(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.StartExecutionAttempt(null, TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1)));
+
+        job.CompleteRequestedDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+
+        Assert.Equal(JobStatus.Completed, job.Status);
+    }
+
+    [Fact]
+    public void UnsupportedRequestedPhaseIsRejectedDuringSubmissionWithoutMutation()
+    {
+        var version = TestDomainFactory.Version(phases: [ExecutionPhase.Discovery]);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version, ExecutionPhase.Discovery);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        var updated = job.UpdatedUtc;
+        var actor = job.LastActingUser;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.Submit(script, TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Equal(actor, job.LastActingUser);
+    }
+
+    [Fact]
+    public void DisabledScriptDefinitionCannotBeSubmittedWithoutMutation()
+    {
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version);
+        script.Disable(TestDomainFactory.Time.AddMinutes(1));
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        var updated = job.UpdatedUtc;
+        var actor = job.LastActingUser;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.Submit(script, TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Equal(actor, job.LastActingUser);
+    }
+
+    [Fact]
+    public void EnabledPublishedScriptDefinitionCanBeSubmitted()
+    {
+        var job = SubmittedForPhase(ExecutionPhase.DryRun, [ExecutionPhase.DryRun]);
+
+        Assert.Equal(JobStatus.Submitted, job.Status);
+        Assert.NotNull(job.PolicySnapshot);
+    }
+
+    [Fact]
+    public void DisabledUnpublishedScriptDefinitionIsRejectedBeforePolicyCapture()
+    {
+        var version = TestDomainFactory.Version(publish: false);
+        var script = TestDomainFactory.Script(version);
+        script.Disable(TestDomainFactory.Time.AddMinutes(1));
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+
+        Assert.Throws<DomainValidationException>(
+            () => job.Submit(script, TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.PolicySnapshot);
+    }
+
+    [Theory]
+    [InlineData(RiskLevel.Medium)]
+    [InlineData(RiskLevel.High)]
+    [InlineData(RiskLevel.Critical)]
+    public void ElevatedRiskSelfApprovalFailsWhenRequesterCasingDiffers(RiskLevel riskLevel)
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version, riskLevel),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        TestDomainFactory.AdvanceToAwaitingApproval(job);
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordApproval(
+                new UserIdentity("domain\\REQUESTER"),
+                TestDomainFactory.Fingerprint,
+                null,
+                job.UpdatedUtc.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.AwaitingApproval, job.Status);
+        Assert.Empty(job.Approvals);
+    }
+
+    [Fact]
+    public void AggregateBoundariesRejectNullIdentifiers()
+    {
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version);
+
+        Assert.Throws<DomainValidationException>(
+            () => Job.CreateDraft(null!, script.Id, version.Id, ExecutionPhase.DryRun, TestDomainFactory.User, TestDomainFactory.Time));
+        Assert.Throws<DomainValidationException>(
+            () => Job.CreateDraft(JobId.New(), null!, version.Id, ExecutionPhase.DryRun, TestDomainFactory.User, TestDomainFactory.Time));
+        Assert.Throws<DomainValidationException>(
+            () => Job.CreateDraft(JobId.New(), script.Id, null!, ExecutionPhase.DryRun, TestDomainFactory.User, TestDomainFactory.Time));
+        Assert.Throws<DomainValidationException>(
+            () => ScriptDefinition.Create(null!, new ScriptName("valid.name"), "Valid", string.Empty, RiskLevel.Low, TestDomainFactory.User, TestDomainFactory.Time));
+        Assert.Throws<DomainValidationException>(
+            () => new ScriptVersion(null!, ScriptVersionNumber.Parse("1.0.0"), "scripts/Test.ps1", new string('a', 64), null, "7.4", 30, [ExecutionPhase.DryRun], [], TestDomainFactory.Time, TestDomainFactory.User));
+        Assert.Throws<DomainValidationException>(
+            () => new ScriptParameterDefinition(null!, "Mode", "Mode", null, ScriptParameterType.String, false, null, [], false));
+        Assert.Throws<DomainValidationException>(
+            () => new CredentialReference(null!, "Vault", "path", "Name", TestDomainFactory.Time, TestDomainFactory.User));
+        Assert.Throws<DomainValidationException>(
+            () => new WorkerNode(null!, "worker-01", TestDomainFactory.Time));
+        Assert.Throws<DomainValidationException>(
+            () => new AuditEvent(null!, "Event", "Entity", "id", TestDomainFactory.User, TestDomainFactory.Time, "Summary"));
+        Assert.Throws<DomainValidationException>(
+            () => new JobExecution(null!, 1, null, TestDomainFactory.Time));
+        Assert.Throws<DomainValidationException>(
+            () => new JobApproval(null!, ApprovalDecision.Approved, TestDomainFactory.OtherUser, TestDomainFactory.Time, null, TestDomainFactory.Fingerprint));
+    }
+
     private static void ApplyTerminalOperation(
         Job job,
         JobStatus terminalStatus,
@@ -497,5 +697,16 @@ public sealed class JobAggregateTests
             default:
                 throw new ArgumentOutOfRangeException(nameof(terminalStatus));
         }
+    }
+
+    private static Job SubmittedForPhase(
+        ExecutionPhase requestedPhase,
+        IEnumerable<ExecutionPhase> supportedPhases)
+    {
+        var version = TestDomainFactory.Version(phases: supportedPhases);
+        return TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: requestedPhase);
     }
 }

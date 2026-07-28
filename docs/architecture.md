@@ -24,3 +24,5 @@ Arrows represent compile-time dependencies. Domain has no solution-project depen
 Contracts contains immutable transport DTOs and does not reference Domain. Application maps Domain objects to safe contract responses. Neither Web nor Worker resolves persistence-dependent handlers during startup.
 
 Security tests parse each source `.csproj` and compare its `ProjectReference` entries with an explicit allowlist. Compiled-reference checks remain supplementary. The source-level rules explicitly prohibit Web from referencing Worker or PowerShell and require Domain and Contracts to have no project references.
+
+Phase 2 application handlers remain orchestration-only. They load domain objects, validate related references, delegate invariants to Domain, construct bounded audit events, then update repositories and commit. No handler accepts caller-provided risk, Execute capability, raw credential material, or generic completion status overrides.

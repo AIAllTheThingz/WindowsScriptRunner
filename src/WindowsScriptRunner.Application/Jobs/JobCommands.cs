@@ -44,4 +44,8 @@ public sealed record RejectJobCommand(
 
 public sealed record CompleteReadOnlyJobCommand(JobId JobId, UserIdentity ActingUser);
 
+public sealed record CompleteValidationJobCommand(JobId JobId, UserIdentity ActingUser);
+
+public sealed record CompleteDryRunJobCommand(JobId JobId, UserIdentity ActingUser);
+
 public sealed record GetJobQuery(JobId JobId);

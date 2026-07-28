@@ -22,9 +22,9 @@ public sealed class Job
         string? description,
         ChangeReference? changeReference)
     {
-        Id = id;
-        ScriptDefinitionId = scriptDefinitionId;
-        ScriptVersionId = scriptVersionId;
+        Id = id ?? throw new DomainValidationException("Job identifier is required.");
+        ScriptDefinitionId = scriptDefinitionId ?? throw new DomainValidationException("Script definition identifier is required.");
+        ScriptVersionId = scriptVersionId ?? throw new DomainValidationException("Script version identifier is required.");
         RequestedPhase = requestedPhase;
         RequestedBy = requestedBy ?? throw new DomainValidationException("Requester is required.");
         CreatedUtc = createdUtc;
@@ -175,8 +175,18 @@ public sealed class Job
             throw new DomainValidationException("The supplied script definition does not match the job.");
         }
 
+        if (!scriptDefinition.IsEnabled)
+        {
+            throw new DomainValidationException("Disabled script definitions cannot be submitted.");
+        }
+
+        if (RequestedPhase is not (ExecutionPhase.Validation or ExecutionPhase.DryRun or ExecutionPhase.Execute))
+        {
+            throw new DomainValidationException(
+                $"Requested phase {RequestedPhase} is not supported by the Phase 2 lifecycle.");
+        }
+
         var version = scriptDefinition.GetVersion(ScriptVersionId);
-        var policySnapshot = JobPolicySnapshot.Capture(scriptDefinition, ScriptVersionId);
         if (!version.SupportedPhases.Contains(RequestedPhase))
         {
             throw new DomainValidationException($"Script version does not support the {RequestedPhase} phase.");
@@ -199,6 +209,7 @@ public sealed class Job
             version.GetParameterDefinition(parameter.Name).ValidateSerializedValue(parameter.SerializedValue);
         }
 
+        var policySnapshot = JobPolicySnapshot.Capture(scriptDefinition, ScriptVersionId);
         PolicySnapshot = policySnapshot;
         SubmittedUtc = submittedUtc;
         ApplyValidatedTransition(JobStatus.Submitted, actingUser, submittedUtc);
@@ -207,8 +218,14 @@ public sealed class Job
     public void MarkValidated(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.Validated, actingUser, updatedUtc);
 
-    public void QueueDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void QueueDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureRequestedPhase(
+            ExecutionPhase.DryRun,
+            ExecutionPhase.Execute,
+            "Only DryRun or Execute requests can queue dry-run work.");
         ApplyTransition(JobStatus.DryRunQueued, actingUser, updatedUtc);
+    }
 
     public void StartDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.DryRunRunning, actingUser, updatedUtc);
@@ -216,17 +233,45 @@ public sealed class Job
     public void CompleteDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
 
-    public void RequireApproval(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void CompleteRequestedValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureRequestedPhase(
+            ExecutionPhase.Validation,
+            "Only Validation requests can complete immediately after validation.");
+        ApplyTransition(JobStatus.Completed, actingUser, updatedUtc);
+    }
+
+    public void CompleteRequestedDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureRequestedPhase(
+            ExecutionPhase.DryRun,
+            "Only DryRun requests can complete immediately after dry-run.");
+        ApplyTransition(JobStatus.Completed, actingUser, updatedUtc);
+    }
+
+    public void RequireApproval(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureExecuteRequested("Only Execute requests can require approval.");
         ApplyTransition(JobStatus.AwaitingApproval, actingUser, updatedUtc);
+    }
 
-    public void QueueExecution(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void QueueExecution(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureExecuteRequested("Only Execute requests can queue execution.");
         ApplyTransition(JobStatus.ExecutionQueued, actingUser, updatedUtc);
+    }
 
-    public void Claim(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void Claim(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureExecuteRequested("Only Execute requests can be claimed for execution.");
         ApplyTransition(JobStatus.Claimed, actingUser, updatedUtc);
+    }
 
-    public void BeginPostValidation(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void BeginPostValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureExecuteRequested("Only Execute requests can enter post-validation.");
         ApplyTransition(JobStatus.PostValidation, actingUser, updatedUtc);
+    }
 
     public void Fail(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.Failed, actingUser, updatedUtc);
@@ -306,6 +351,7 @@ public sealed class Job
         UserIdentity actingUser,
         DateTimeOffset startedUtc)
     {
+        EnsureExecuteRequested("Only Execute requests can start execution.");
         ValidateTransition(JobStatus.Executing, actingUser, startedUtc);
         var execution = new JobExecution(
             JobExecutionId.New(),
@@ -325,6 +371,7 @@ public sealed class Job
         UserIdentity actingUser,
         DateTimeOffset completedUtc)
     {
+        EnsureExecuteRequested("Only Execute requests can record execution outcomes.");
         if (Status is not (JobStatus.Executing or JobStatus.PostValidation))
         {
             throw new DomainValidationException("A terminal outcome requires an executing or post-validation job.");
@@ -389,6 +436,25 @@ public sealed class Job
         if (updatedUtc < UpdatedUtc)
         {
             throw new DomainValidationException("Job timestamps cannot move backward.");
+        }
+    }
+
+    private void EnsureExecuteRequested(string message) =>
+        EnsureRequestedPhase(ExecutionPhase.Execute, message);
+
+    private void EnsureRequestedPhase(ExecutionPhase expected, string message)
+    {
+        if (RequestedPhase != expected)
+        {
+            throw new DomainValidationException(message);
+        }
+    }
+
+    private void EnsureRequestedPhase(ExecutionPhase first, ExecutionPhase second, string message)
+    {
+        if (RequestedPhase != first && RequestedPhase != second)
+        {
+            throw new DomainValidationException(message);
         }
     }
 

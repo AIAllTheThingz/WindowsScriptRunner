@@ -26,7 +26,7 @@ public sealed class ScriptParameterDefinition
         IEnumerable<string>? allowedValues,
         bool isSensitive)
     {
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Script parameter definition identifier is required.");
         Name = ValidateName(name);
         DisplayName = Guard.RequiredTrimmed(displayName, nameof(DisplayName), 200);
         Description = NormalizeOptional(description, nameof(Description), 1000);
@@ -77,7 +77,7 @@ public sealed class ScriptParameterDefinition
                 DateTimeStyles.RoundtripKind,
                 out _),
             ScriptParameterType.Enum => _allowedValues.Contains(serializedValue, StringComparer.OrdinalIgnoreCase),
-            ScriptParameterType.SecureReference => IsSafeCredentialReference(serializedValue),
+            ScriptParameterType.SecureReference => IsCredentialReferenceId(serializedValue),
             _ => false,
         };
 
@@ -160,17 +160,9 @@ public sealed class ScriptParameterDefinition
         }
     }
 
-    private static bool IsSafeCredentialReference(string value)
-    {
-        if (value.Length > 500 || value.Any(char.IsControl))
-        {
-            return false;
-        }
-
-        return !value.Contains("password=", StringComparison.OrdinalIgnoreCase) &&
-            !value.Contains("pwd=", StringComparison.OrdinalIgnoreCase) &&
-            !value.Contains(';');
-    }
+    private static bool IsCredentialReferenceId(string value) =>
+        CredentialReferenceId.TryParse(value, out var id) &&
+        string.Equals(value.Trim(), id!.ToString(), StringComparison.Ordinal);
 
     private static IReadOnlyCollection<string> NormalizeAllowedValues(IEnumerable<string>? values)
     {

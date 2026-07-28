@@ -37,7 +37,7 @@ public sealed class JobApproval
                 "Approval fingerprint must contain exactly 64 hexadecimal characters.");
         }
 
-        Id = id;
+        Id = id ?? throw new DomainValidationException("Job approval identifier is required.");
         Decision = decision;
         Approver = approver ?? throw new DomainValidationException("Approver is required.");
         DecisionUtc = decisionUtc;
