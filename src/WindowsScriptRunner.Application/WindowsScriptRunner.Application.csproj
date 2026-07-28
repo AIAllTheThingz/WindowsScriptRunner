@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
+    <ProjectReference Include="..\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
+  </ItemGroup>
+</Project>

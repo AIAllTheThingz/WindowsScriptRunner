@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Application\WindowsScriptRunner.Application.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.PowerShell\WindowsScriptRunner.PowerShell.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Reporting\WindowsScriptRunner.Reporting.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj" />
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker.csproj" />
+  </ItemGroup>
+</Project>
