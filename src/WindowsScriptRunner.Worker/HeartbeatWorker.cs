@@ -14,7 +14,7 @@ public sealed class HeartbeatWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Windows Script Runner worker started.");
-        _logger.LogInformation("Job execution is not implemented in this Phase 1 scaffold.");
+        _logger.LogInformation("Job execution is not implemented in the current scaffold.");
 
         var stoppedNormally = false;
         try

@@ -1,6 +1,7 @@
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
 using WindowsScriptRunner.Domain.Identifiers;
+using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
 
@@ -93,6 +94,44 @@ public sealed class ScriptModelTests
     }
 
     [Fact]
+    public void ExecuteCapableVersionRequiresDryRunBeforePublication()
+    {
+        var executeOnly = TestDomainFactory.Version(
+            publish: false,
+            phases: [ExecutionPhase.Execute]);
+
+        Assert.Throws<InvalidScriptVersionException>(() => executeOnly.Publish());
+
+        Assert.False(executeOnly.IsPublished);
+    }
+
+    [Theory]
+    [InlineData(ExecutionPhase.DryRun)]
+    [InlineData(ExecutionPhase.Validation)]
+    public void NonExecuteVersionsCanPublishWithoutExecute(ExecutionPhase phase)
+    {
+        var version = TestDomainFactory.Version(
+            publish: false,
+            phases: [phase]);
+
+        version.Publish();
+
+        Assert.True(version.IsPublished);
+    }
+
+    [Fact]
+    public void DryRunAndExecuteVersionCanPublish()
+    {
+        var version = TestDomainFactory.Version(
+            publish: false,
+            phases: [ExecutionPhase.DryRun, ExecutionPhase.Execute]);
+
+        version.Publish();
+
+        Assert.True(version.IsPublished);
+    }
+
+    [Fact]
     public void DuplicateParameterNameIsRejectedCaseInsensitively()
     {
         var version = TestDomainFactory.Version(publish: false);
@@ -157,4 +196,81 @@ public sealed class ScriptModelTests
     [InlineData("has space")]
     public void InvalidParameterIdentifiersAreRejected(string name) =>
         Assert.Throws<InvalidParameterDefinitionException>(() => TestDomainFactory.Parameter(name));
+
+    [Theory]
+    [InlineData(RiskLevel.ReadOnly)]
+    [InlineData(RiskLevel.Low)]
+    [InlineData(RiskLevel.Medium)]
+    [InlineData(RiskLevel.High)]
+    [InlineData(RiskLevel.Critical)]
+    public void DefinedRiskLevelsAreAccepted(RiskLevel riskLevel)
+    {
+        var script = TestDomainFactory.Script(riskLevel: riskLevel);
+
+        Assert.Equal(riskLevel, script.RiskLevel);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedRiskLevelIsRejectedBeforeTrustedPolicyCapture(int riskLevel)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => TestDomainFactory.Script(riskLevel: (RiskLevel)riskLevel));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedExecutionPhaseIsRejectedByScriptVersion(int phase)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => TestDomainFactory.Version(
+                publish: false,
+                phases: [(ExecutionPhase)phase]));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedReportFormatIsRejectedByScriptVersion(int reportFormat)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new ScriptVersion(
+                ScriptVersionId.New(),
+                ScriptVersionNumber.Parse("1.0.0"),
+                "scripts/Test.ps1",
+                new string('a', 64),
+                null,
+                "7.4",
+                30,
+                [ExecutionPhase.Validation],
+                [(ReportFormat)reportFormat],
+                TestDomainFactory.Time,
+                TestDomainFactory.User));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedScriptParameterTypeIsRejectedByDefinitions(int parameterType)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => TestDomainFactory.Parameter(type: (ScriptParameterType)parameterType));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedApprovalDecisionIsRejected(int decision)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new JobApproval(
+                JobApprovalId.New(),
+                (ApprovalDecision)decision,
+                TestDomainFactory.OtherUser,
+                TestDomainFactory.Time,
+                null,
+                TestDomainFactory.Fingerprint));
+    }
 }

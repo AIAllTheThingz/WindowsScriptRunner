@@ -28,8 +28,9 @@ public sealed class JobExecution
     public ExecutionOutcome? Outcome { get; private set; }
     public int? ExitCode { get; private set; }
     public string? Summary { get; private set; }
+    public bool IsActive => StartedUtc is not null && CompletedUtc is null;
 
-    public void Start(DateTimeOffset startedUtc)
+    internal void Start(DateTimeOffset startedUtc)
     {
         if (StartedUtc is not null)
         {
@@ -44,12 +45,13 @@ public sealed class JobExecution
         StartedUtc = startedUtc;
     }
 
-    public void Complete(
+    internal void Complete(
         ExecutionOutcome outcome,
         int? exitCode,
         string? summary,
         DateTimeOffset completedUtc)
     {
+        outcome = EnumGuard.RequireDefined(outcome, nameof(ExecutionOutcome));
         if (StartedUtc is null)
         {
             throw new DomainValidationException("An execution attempt must start before completion.");

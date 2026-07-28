@@ -30,7 +30,7 @@ public sealed class ScriptParameterDefinition
         Name = ValidateName(name);
         DisplayName = Guard.RequiredTrimmed(displayName, nameof(DisplayName), 200);
         Description = NormalizeOptional(description, nameof(Description), 1000);
-        ParameterType = parameterType;
+        ParameterType = EnumGuard.RequireDefined(parameterType, nameof(ParameterType));
         IsRequired = isRequired;
         IsSensitive = isSensitive;
         DefaultValue = defaultValue;

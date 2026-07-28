@@ -19,6 +19,7 @@ public sealed class JobApproval
         string? comment,
         string approvalFingerprint)
     {
+        decision = EnumGuard.RequireDefined(decision, nameof(ApprovalDecision));
         if (decision == ApprovalDecision.Pending)
         {
             throw new DomainValidationException("A recorded approval decision cannot remain pending.");

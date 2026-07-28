@@ -1,3 +1,4 @@
+using System.Reflection;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
@@ -388,6 +389,155 @@ public sealed class ApplicationHandlerTests
         Assert.DoesNotContain(credentialReferenceId, parameter.ToString(), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(JobStatus.Failed, false)]
+    [InlineData(JobStatus.Cancelled, false)]
+    [InlineData(JobStatus.TimedOut, false)]
+    [InlineData(JobStatus.Blocked, false)]
+    [InlineData(JobStatus.NotRun, false)]
+    [InlineData(JobStatus.Failed, true)]
+    [InlineData(JobStatus.Cancelled, true)]
+    [InlineData(JobStatus.TimedOut, true)]
+    [InlineData(JobStatus.Blocked, true)]
+    [InlineData(JobStatus.NotRun, true)]
+    public async Task GenericTerminalTransitionRejectsActiveExecution(
+        JobStatus terminalStatus,
+        bool postValidation)
+    {
+        var fixture = HandlerFixture.WithExecutingJob(postValidation);
+        var originalStatus = fixture.Jobs.Job!.Status;
+        var execution = Assert.Single(fixture.Jobs.Job.Executions);
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.TransitionHandler.HandleAsync(
+                new TransitionJobCommand(
+                    fixture.Jobs.Job.Id,
+                    terminalStatus,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(originalStatus, fixture.Jobs.Job.Status);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Theory]
+    [InlineData(ExecutionOutcome.Failed, JobStatus.Failed, 1)]
+    [InlineData(ExecutionOutcome.Cancelled, JobStatus.Cancelled, null)]
+    [InlineData(ExecutionOutcome.TimedOut, JobStatus.TimedOut, null)]
+    [InlineData(ExecutionOutcome.Blocked, JobStatus.Blocked, null)]
+    [InlineData(ExecutionOutcome.NotRun, JobStatus.NotRun, null)]
+    public async Task RecordExecutionOutcomeHandlerPersistsTerminalOutcome(
+        ExecutionOutcome outcome,
+        JobStatus expectedStatus,
+        int? exitCode)
+    {
+        var fixture = HandlerFixture.WithExecutingJob();
+        using var source = new CancellationTokenSource();
+
+        await fixture.RecordExecutionOutcomeHandler.HandleAsync(
+            new RecordExecutionOutcomeCommand(
+                fixture.Jobs.Job!.Id,
+                outcome,
+                exitCode,
+                "  diagnostic summary  ",
+                TestDomainFactory.OtherUser),
+            source.Token);
+
+        var execution = Assert.Single(fixture.Jobs.Job.Executions);
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal(expectedStatus, fixture.Jobs.Job.Status);
+        Assert.Equal(outcome, execution.Outcome);
+        Assert.NotNull(execution.CompletedUtc);
+        Assert.Equal("diagnostic summary", execution.Summary);
+        Assert.Equal("ExecutionOutcomeRecorded", audit.EventType);
+        Assert.Equal(outcome.ToString(), audit.Properties["Outcome"]);
+        Assert.Equal((exitCode is not null).ToString(), audit.Properties["ExitCodePresent"]);
+        Assert.Equal("True", audit.Properties["SummaryProvided"]);
+        Assert.Equal("22", audit.Properties["SummaryLength"]);
+        Assert.Equal("1", audit.Properties["AttemptNumber"]);
+        Assert.Equal("False", audit.Properties["WorkerNodeIdPresent"]);
+        Assert.DoesNotContain("diagnostic summary", string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        Assert.Contains(source.Token, fixture.ObservedTokens);
+    }
+
+    [Fact]
+    public async Task InvalidExecutionOutcomeHandlerDoesNotPersistAuditOrCommit()
+    {
+        var fixture = HandlerFixture.WithExecutingJob();
+        var execution = Assert.Single(fixture.Jobs.Job!.Executions);
+        var updated = fixture.Jobs.Job.UpdatedUtc;
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.RecordExecutionOutcomeHandler.HandleAsync(
+                new RecordExecutionOutcomeCommand(
+                    fixture.Jobs.Job.Id,
+                    (ExecutionOutcome)999,
+                    0,
+                    null,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Executing, fixture.Jobs.Job.Status);
+        Assert.Equal(updated, fixture.Jobs.Job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task UndefinedJobStatusTransitionDoesNotPersistAuditOrCommit()
+    {
+        var fixture = HandlerFixture.WithSubmittedJob();
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.TransitionHandler.HandleAsync(
+                new TransitionJobCommand(
+                    fixture.Jobs.Job!.Id,
+                    (JobStatus)999,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Submitted, fixture.Jobs.Job!.Status);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task SubmitHandlerRejectsExecuteVersionWithoutDryRunSupport()
+    {
+        var fixture = new HandlerFixture();
+        var version = TestDomainFactory.Version(
+            publish: false,
+            phases: [ExecutionPhase.Execute]);
+        ForcePublished(version);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version, ExecutionPhase.Execute);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        fixture.Scripts.Script = script;
+        fixture.Jobs.Job = job;
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.SubmitHandler.HandleAsync(
+                new SubmitJobCommand(job.Id, TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
     [Fact]
     public async Task MissingJobThrowsExplicitApplicationError()
     {
@@ -400,6 +550,15 @@ public sealed class ApplicationHandlerTests
                     new TargetName("server-01"),
                     TestDomainFactory.User),
                 CancellationToken.None));
+    }
+
+    private static void ForcePublished(ScriptVersion version)
+    {
+        var field = typeof(ScriptVersion).GetField(
+            $"<{nameof(ScriptVersion.IsPublished)}>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        field?.SetValue(version, true);
     }
 
     private sealed class HandlerFixture
@@ -422,6 +581,7 @@ public sealed class ApplicationHandlerTests
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            RecordExecutionOutcomeHandler = new RecordExecutionOutcomeHandler(Jobs, Audits, UnitOfWork, Clock);
             GetHandler = new GetJobHandler(Jobs);
         }
 
@@ -441,6 +601,7 @@ public sealed class ApplicationHandlerTests
         public CompleteReadOnlyJobHandler CompleteReadOnlyHandler { get; }
         public CompleteValidationJobHandler CompleteValidationHandler { get; }
         public CompleteDryRunJobHandler CompleteDryRunHandler { get; }
+        public RecordExecutionOutcomeHandler RecordExecutionOutcomeHandler { get; }
         public GetJobHandler GetHandler { get; }
         public IEnumerable<CancellationToken> ObservedTokens =>
             Jobs.ObservedTokens
@@ -495,6 +656,20 @@ public sealed class ApplicationHandlerTests
             job.StartDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
             job.CompleteDryRun(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
             fixture.Jobs.Job = job;
+            return fixture;
+        }
+
+        public static HandlerFixture WithExecutingJob(bool postValidation = false)
+        {
+            var fixture = WithSubmittedJob();
+            _ = TestDomainFactory.StartExecution(fixture.Jobs.Job!);
+            if (postValidation)
+            {
+                fixture.Jobs.Job!.BeginPostValidation(
+                    TestDomainFactory.OtherUser,
+                    fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            }
+
             return fixture;
         }
     }

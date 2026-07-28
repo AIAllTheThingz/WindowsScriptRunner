@@ -5,11 +5,12 @@
 - `CreateDraftJobCommand` creates, audits, and commits a draft.
 - `AddJobTargetCommand` loads a draft and delegates target invariants to Domain.
 - `SetJobParameterCommand` locates the published definition, validates the serialized value, resolves enabled credential references for `SecureReference` parameters, stores only canonical credential-reference IDs, and writes bounded audit metadata instead of raw values.
-- `SubmitJobCommand` validates targets, enabled script definition, published version, Phase 2 requested-phase support, and required/typed parameters, then captures trusted script policy.
-- `TransitionJobCommand` is restricted to explicitly enumerated operational transitions that require no separate evidence. It rejects Submitted, Approved, Rejected, Executing, Completed, and CompletedWithWarnings.
+- `SubmitJobCommand` validates targets, enabled script definition, published version, Phase 2 requested-phase support, Execute-with-DryRun support, and required/typed parameters, then captures trusted script policy.
+- `TransitionJobCommand` is restricted to explicitly enumerated operational transitions that require no separate evidence. It rejects Submitted, Approved, Rejected, Executing, Completed, and CompletedWithWarnings. If a job is Executing, PostValidation, or has an active execution attempt, terminal statuses must be recorded through `RecordExecutionOutcomeCommand` instead of the generic transition command.
 - `ApproveJobCommand` and `RejectJobCommand` record a structurally validated fingerprint, optional comment, and actor through dedicated aggregate operations. They contain no caller-selected risk.
 - `CompleteReadOnlyJobCommand` invokes the dedicated trusted read-only completion rule and contains no caller-selected risk or Execute capability.
 - `CompleteValidationJobCommand` and `CompleteDryRunJobCommand` complete requested validation-only and dry-run-only work through explicit operations. They contain no arbitrary target status.
+- `RecordExecutionOutcomeCommand` completes the single active execution attempt and moves the job to the matching terminal state as one aggregate operation. This prevents orphaned active attempts when execution work ends as success, warning, failure, cancellation, timeout, blocked, or not-run.
 - `GetJobQuery` maps a job to `JobDetailResponse` without exposing sensitive values.
 
 Handlers load required entities, validate related references, perform the domain operation, construct safe audit events, update repositories, write success audit events, and commit only after the operation succeeds. Domain or application validation failures therefore do not produce misleading success audit records or commits.
@@ -25,3 +26,5 @@ No generic repository or SQL terminology is exposed. Phase 3 will provide Infras
 Contracts uses immutable records, GUIDs at the external boundary, string enum names, and `DateTimeOffset`. Contracts does not reference Domain or expose domain entities. `JobParameterResponse` reports whether a value is redacted; application mapping always replaces a sensitive serialized value with `[REDACTED]`.
 
 Serialized `StringArray` parameter values use a JSON array of strings, for example `["server-01","server-02"]`. This representation is validated in Domain but is not passed to PowerShell in Phase 2. `SecureReference` values must use canonical GUID `D` format and represent `CredentialReferenceId`; arbitrary strings and raw secret-shaped values are rejected before storage.
+
+Domain and application boundaries reject undefined enum values before they can be captured into policy snapshots, job requests, parameters, approvals, execution outcomes, or operational transitions. Contract DTOs continue to expose enum names as strings; parsing and validation are expected at the eventual API boundary.

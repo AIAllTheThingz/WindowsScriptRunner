@@ -4,7 +4,7 @@ Windows Script Runner is a Windows-hosted .NET application foundation for future
 
 ## Status
 
-The solution contains a validated domain model, application commands and queries, public DTOs, a Razor Pages scaffold, a configurable heartbeat worker, architectural boundaries, and meaningful tests. Phase 2 review remediation protects evidence-bearing lifecycle transitions, derives approval and read-only rules from an immutable submission-time policy snapshot, enforces the requested phase selected at submission, validates aggregate changes before mutation, requires credential-reference IDs for secure parameters, keeps audit metadata bounded, and keeps unexpected worker failures observable. No persistence or operational automation is implemented.
+The solution contains a validated domain model, application commands and queries, public DTOs, a Razor Pages scaffold, a configurable heartbeat worker, architectural boundaries, and meaningful tests. Phase 2 review remediation protects evidence-bearing lifecycle transitions, completes active execution attempts only through the execution-outcome operation, derives approval and read-only rules from an immutable submission-time policy snapshot, requires Execute-capable script versions to also support DryRun, enforces the requested phase selected at submission, rejects undefined domain enum values at aggregate and application boundaries, validates aggregate changes before mutation, requires credential-reference IDs for secure parameters, keeps audit metadata bounded, and keeps unexpected worker failures observable. No persistence or operational automation is implemented.
 
 ## Solution structure
 

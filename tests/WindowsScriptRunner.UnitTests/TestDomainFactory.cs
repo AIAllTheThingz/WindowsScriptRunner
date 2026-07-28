@@ -119,4 +119,17 @@ internal static class TestDomainFactory
         job.CompleteDryRun(OtherUser, time = time.AddMinutes(1));
         job.RequireApproval(OtherUser, time.AddMinutes(1));
     }
+
+    public static JobExecution StartExecution(Job job)
+    {
+        AdvanceToAwaitingApproval(job);
+        job.RecordApproval(
+            OtherUser,
+            Fingerprint,
+            null,
+            job.UpdatedUtc.AddMinutes(1));
+        job.QueueExecution(OtherUser, job.UpdatedUtc.AddMinutes(1));
+        job.Claim(OtherUser, job.UpdatedUtc.AddMinutes(1));
+        return job.StartExecutionAttempt(null, OtherUser, job.UpdatedUtc.AddMinutes(1));
+    }
 }

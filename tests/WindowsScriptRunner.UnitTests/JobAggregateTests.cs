@@ -504,11 +504,229 @@ public sealed class JobAggregateTests
         Assert.Equal(JobStatus.Completed, job.Status);
         Assert.Equal(ExecutionOutcome.Succeeded, execution.Outcome);
         Assert.Throws<DomainValidationException>(
-            () => execution.Complete(
+            () => job.RecordTerminalExecutionOutcome(
                 ExecutionOutcome.Succeeded,
                 0,
                 null,
+                TestDomainFactory.OtherUser,
                 job.UpdatedUtc.AddMinutes(1)));
+    }
+
+    [Theory]
+    [InlineData(ExecutionOutcome.Succeeded, JobStatus.Completed, 0)]
+    [InlineData(ExecutionOutcome.SucceededWithWarnings, JobStatus.CompletedWithWarnings, 1)]
+    [InlineData(ExecutionOutcome.Failed, JobStatus.Failed, 1)]
+    [InlineData(ExecutionOutcome.Cancelled, JobStatus.Cancelled, null)]
+    [InlineData(ExecutionOutcome.TimedOut, JobStatus.TimedOut, null)]
+    [InlineData(ExecutionOutcome.Blocked, JobStatus.Blocked, null)]
+    [InlineData(ExecutionOutcome.NotRun, JobStatus.NotRun, null)]
+    public void TerminalExecutionOutcomeCompletesJobAndAttemptTogether(
+        ExecutionOutcome outcome,
+        JobStatus expectedStatus,
+        int? exitCode)
+    {
+        var job = CreateExecutingJob();
+        var execution = Assert.Single(job.Executions);
+        var completedUtc = job.UpdatedUtc.AddMinutes(1);
+
+        var returned = job.RecordTerminalExecutionOutcome(
+            outcome,
+            exitCode,
+            "  Completed with summary.  ",
+            TestDomainFactory.OtherUser,
+            completedUtc);
+
+        Assert.Same(execution, returned);
+        Assert.Equal(expectedStatus, job.Status);
+        Assert.Equal(completedUtc, execution.CompletedUtc);
+        Assert.Equal(outcome, execution.Outcome);
+        Assert.Equal(exitCode, execution.ExitCode);
+        Assert.Equal("Completed with summary.", execution.Summary);
+        Assert.False(job.HasActiveExecutionAttempt);
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Failed)]
+    [InlineData(JobStatus.Cancelled)]
+    [InlineData(JobStatus.TimedOut)]
+    [InlineData(JobStatus.Blocked)]
+    [InlineData(JobStatus.NotRun)]
+    public void DirectTerminalOperationRejectsActiveExecutionAttempt(JobStatus terminalStatus)
+    {
+        var job = CreateExecutingJob();
+        var execution = Assert.Single(job.Executions);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => ApplyTerminalOperation(job, terminalStatus, updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+        Assert.True(job.HasActiveExecutionAttempt);
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Failed)]
+    [InlineData(JobStatus.Cancelled)]
+    [InlineData(JobStatus.TimedOut)]
+    [InlineData(JobStatus.Blocked)]
+    [InlineData(JobStatus.NotRun)]
+    public void DirectTerminalOperationRejectsPostValidationWithActiveAttempt(JobStatus terminalStatus)
+    {
+        var job = CreateExecutingJob();
+        job.BeginPostValidation(TestDomainFactory.OtherUser, job.UpdatedUtc.AddMinutes(1));
+        var execution = Assert.Single(job.Executions);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => ApplyTerminalOperation(job, terminalStatus, updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.PostValidation, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+        Assert.True(job.HasActiveExecutionAttempt);
+    }
+
+    [Fact]
+    public void SecondExecutionAttemptCannotStartWhileAttemptIsActive()
+    {
+        var job = CreateExecutingJob();
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.StartExecutionAttempt(
+                WorkerNodeId.New(),
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1)));
+
+        Assert.Single(job.Executions);
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+    }
+
+    [Fact]
+    public void JobExecutionCannotBeCompletedThroughPublicApi()
+    {
+        var publicMethods = typeof(JobExecution).GetMethods(BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.DoesNotContain(publicMethods, method => method.Name == "Start");
+        Assert.DoesNotContain(publicMethods, method => method.Name == "Complete");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedTerminalOutcomeLeavesJobAndAttemptUnchanged(int undefinedOutcome)
+    {
+        var job = CreateExecutingJob();
+        var execution = Assert.Single(job.Executions);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordTerminalExecutionOutcome(
+                (ExecutionOutcome)undefinedOutcome,
+                0,
+                null,
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+        Assert.Null(execution.ExitCode);
+        Assert.Null(execution.Summary);
+    }
+
+    [Fact]
+    public void BackwardTerminalOutcomeTimestampLeavesJobAndAttemptUnchanged()
+    {
+        var job = CreateExecutingJob();
+        var execution = Assert.Single(job.Executions);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordTerminalExecutionOutcome(
+                ExecutionOutcome.Failed,
+                1,
+                null,
+                TestDomainFactory.OtherUser,
+                updated.AddTicks(-1)));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+    }
+
+    [Fact]
+    public void OversizedTerminalOutcomeSummaryLeavesJobAndAttemptUnchanged()
+    {
+        var job = CreateExecutingJob();
+        var execution = Assert.Single(job.Executions);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordTerminalExecutionOutcome(
+                ExecutionOutcome.Failed,
+                1,
+                new string('s', 2001),
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+        Assert.Null(execution.Summary);
+    }
+
+    [Fact]
+    public void NullActorTerminalOutcomeLeavesJobAndAttemptUnchanged()
+    {
+        var job = CreateExecutingJob();
+        var execution = Assert.Single(job.Executions);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordTerminalExecutionOutcome(
+                ExecutionOutcome.Failed,
+                1,
+                null,
+                null!,
+                updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Null(execution.Outcome);
+    }
+
+    [Fact]
+    public void MissingActiveExecutionAttemptIsRejected()
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        ForceStatus(job, JobStatus.Executing);
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordTerminalExecutionOutcome(
+                ExecutionOutcome.Failed,
+                1,
+                null,
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Empty(job.Executions);
     }
 
     [Fact]
@@ -672,6 +890,63 @@ public sealed class JobAggregateTests
             () => new JobApproval(null!, ApprovalDecision.Approved, TestDomainFactory.OtherUser, TestDomainFactory.Time, null, TestDomainFactory.Fingerprint));
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedRequestedPhaseIsRejectedAtJobCreation(int phase)
+    {
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version);
+
+        Assert.Throws<DomainValidationException>(
+            () => Job.CreateDraft(
+                JobId.New(),
+                script.Id,
+                version.Id,
+                (ExecutionPhase)phase,
+                TestDomainFactory.User,
+                TestDomainFactory.Time));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public void UndefinedScriptParameterTypeIsRejectedByJobParameter(int parameterType)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new JobParameter(
+                "Mode",
+                null,
+                (ScriptParameterType)parameterType,
+                isSensitive: false));
+    }
+
+    [Fact]
+    public void ExecuteSubmissionWithoutDryRunSupportFailsWithoutMutation()
+    {
+        var version = TestDomainFactory.Version(
+            publish: false,
+            phases: [ExecutionPhase.Execute]);
+        ForcePublished(version);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version, ExecutionPhase.Execute);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        var updated = job.UpdatedUtc;
+        var actor = job.LastActingUser;
+        var targets = job.Targets.ToArray();
+
+        Assert.Throws<DomainValidationException>(
+            () => job.Submit(script, TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Equal(actor, job.LastActingUser);
+        Assert.Equal(targets, job.Targets);
+        Assert.Empty(job.Parameters);
+    }
+
     private static void ApplyTerminalOperation(
         Job job,
         JobStatus terminalStatus,
@@ -708,5 +983,32 @@ public sealed class JobAggregateTests
             TestDomainFactory.Script(version),
             version,
             requestedPhase: requestedPhase);
+    }
+
+    private static Job CreateExecutingJob()
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        _ = TestDomainFactory.StartExecution(job);
+        return job;
+    }
+
+    private static void ForceStatus(Job job, JobStatus status)
+    {
+        var field = typeof(Job).GetField(
+            $"<{nameof(Job.Status)}>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        field?.SetValue(job, status);
+    }
+
+    private static void ForcePublished(ScriptVersion version)
+    {
+        var field = typeof(ScriptVersion).GetField(
+            $"<{nameof(ScriptVersion.IsPublished)}>k__BackingField",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        field?.SetValue(version, true);
     }
 }

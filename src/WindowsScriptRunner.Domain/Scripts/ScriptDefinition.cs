@@ -21,7 +21,7 @@ public sealed class ScriptDefinition
         Name = name ?? throw new DomainValidationException("Script name is required.");
         DisplayName = ValidateDisplayName(displayName);
         Description = ValidateDescription(description);
-        RiskLevel = riskLevel;
+        RiskLevel = EnumGuard.RequireDefined(riskLevel, nameof(RiskLevel));
         CreatedBy = createdBy ?? throw new DomainValidationException("Script creator is required.");
         CreatedUtc = createdUtc;
         UpdatedUtc = createdUtc;

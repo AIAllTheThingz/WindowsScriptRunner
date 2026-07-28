@@ -17,7 +17,7 @@ public sealed class JobParameter
     {
         Name = ValidateName(name);
         SerializedValue = serializedValue;
-        ParameterType = parameterType;
+        ParameterType = EnumGuard.RequireDefined(parameterType, nameof(ParameterType));
         IsSensitive = isSensitive;
     }
 

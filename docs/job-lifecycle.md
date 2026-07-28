@@ -23,7 +23,7 @@ Dedicated rules permit `Validated -> Completed` for validation-only requests and
 
 Submitted is reachable only through `Submit`; Approved and Rejected only through evidence-recording decision operations; Executing only through creation of an execution attempt; and Completed or CompletedWithWarnings only through a terminal execution outcome, except for the read-only rule above. The retained application transition command exposes only an explicit allowlist of non-protected operational transitions.
 
-Appropriate non-terminal states may end as Failed, Cancelled, TimedOut, Blocked, or NotRun. Rejected is reachable only from AwaitingApproval. Failure is never represented as Completed.
+Appropriate non-terminal states may end as Failed, Cancelled, TimedOut, Blocked, or NotRun. If an execution attempt is active, those terminal outcomes must be recorded with the execution-outcome operation so the attempt and job reach terminal state together. Rejected is reachable only from AwaitingApproval. Failure is never represented as Completed.
 
 ## Terminal states
 
@@ -41,6 +41,6 @@ Phase 2 supports submitted requests for `Validation`, `DryRun`, and `Execute`.
 
 - `Validation` requests may move from Draft to Submitted to Validated to Completed. They cannot queue dry-run, require approval, queue execution, claim, execute, or post-validate.
 - `DryRun` requests may move from Draft to Submitted to Validated to DryRunQueued to DryRunRunning to DryRunCompleted to Completed. They cannot require approval, queue execution, claim, execute, or post-validate, even when the script version also supports Execute.
-- `Execute` requests are the only requests that may require approval, queue execution, be claimed, start execution attempts, enter post-validation, and record execution outcomes.
+- `Execute` requests are the only requests that may require approval, queue execution, be claimed, start execution attempts, enter post-validation, and record execution outcomes. Execute requests require a script version that also supports DryRun so approval and execution cannot bypass dry-run capability.
 
-Other enum values, including `Discovery`, `Report`, and `PostValidation`, are rejected during submission until a full lifecycle is modeled for them.
+Other enum values, including `Discovery`, `Report`, and `PostValidation`, are rejected during submission until a full lifecycle is modeled for them. Undefined enum values are rejected before job creation, policy capture, transition, approval, parameter, or execution-outcome mutation.

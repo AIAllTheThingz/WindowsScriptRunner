@@ -43,6 +43,8 @@ internal static class JobStatusPolicy
 
     internal static void EnsureAllowed(JobStatus current, JobStatus requested)
     {
+        current = EnumGuard.RequireDefined(current, nameof(current));
+        requested = EnumGuard.RequireDefined(requested, nameof(requested));
         if (current == requested ||
             TerminalStates.Contains(current) ||
             (!IsNormalTransition(current, requested) && !IsControlledTerminalTransition(current, requested)))

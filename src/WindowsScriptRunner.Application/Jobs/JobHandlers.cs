@@ -274,6 +274,12 @@ public sealed class TransitionJobHandler(
         TransitionJobCommand command,
         DateTimeOffset now)
     {
+        if (RequiresExecutionOutcome(job, command.NewStatus))
+        {
+            throw new ApplicationValidationException(
+                "Active execution attempts must be completed through the execution outcome operation.");
+        }
+
         switch (command.NewStatus)
         {
             case Domain.JobStatus.Validated:
@@ -319,6 +325,21 @@ public sealed class TransitionJobHandler(
                 throw new ApplicationValidationException(
                     $"Status {command.NewStatus} requires a dedicated application operation.");
         }
+    }
+
+    private static bool RequiresExecutionOutcome(Job job, Domain.JobStatus newStatus)
+    {
+        if (newStatus is not (Domain.JobStatus.Failed or
+            Domain.JobStatus.Cancelled or
+            Domain.JobStatus.TimedOut or
+            Domain.JobStatus.Blocked or
+            Domain.JobStatus.NotRun))
+        {
+            return false;
+        }
+
+        return job.Status is Domain.JobStatus.Executing or Domain.JobStatus.PostValidation ||
+            job.HasActiveExecutionAttempt;
     }
 }
 
@@ -469,6 +490,55 @@ public sealed class CompleteDryRunJobHandler(
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }
+}
+
+public sealed class RecordExecutionOutcomeHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(
+        RecordExecutionOutcomeCommand command,
+        CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        var execution = job.RecordTerminalExecutionOutcome(
+            command.Outcome,
+            command.ExitCode,
+            command.Summary,
+            command.ActingUser,
+            now);
+        var audit = CreateDraftJobHandler.Audit(
+            "ExecutionOutcomeRecorded",
+            job,
+            command.ActingUser,
+            now,
+            "The active execution attempt was completed.",
+            CreateExecutionOutcomeAuditProperties(command, execution));
+
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(audit, cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    private static IReadOnlyDictionary<string, string> CreateExecutionOutcomeAuditProperties(
+        RecordExecutionOutcomeCommand command,
+        JobExecution execution) =>
+        new Dictionary<string, string>
+        {
+            ["Outcome"] = command.Outcome.ToString(),
+            ["ExitCodePresent"] = command.ExitCode.HasValue.ToString(),
+            ["ExitCode"] = command.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(null)",
+            ["SummaryProvided"] = (!string.IsNullOrWhiteSpace(command.Summary)).ToString(),
+            ["SummaryLength"] = (command.Summary?.Length ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["AttemptNumber"] = execution.AttemptNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["WorkerNodeIdPresent"] = (execution.WorkerNodeId is not null).ToString(),
+        };
 }
 
 public sealed class GetJobHandler(IJobRepository jobRepository)

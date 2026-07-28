@@ -48,4 +48,11 @@ public sealed record CompleteValidationJobCommand(JobId JobId, UserIdentity Acti
 
 public sealed record CompleteDryRunJobCommand(JobId JobId, UserIdentity ActingUser);
 
+public sealed record RecordExecutionOutcomeCommand(
+    JobId JobId,
+    ExecutionOutcome Outcome,
+    int? ExitCode,
+    string? Summary,
+    UserIdentity ActingUser);
+
 public sealed record GetJobQuery(JobId JobId);

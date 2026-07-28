@@ -7,15 +7,17 @@
 - Script paths must be relative and reject rooted or traversal forms.
 - Script SHA-256 metadata must contain exactly 64 hexadecimal characters.
 - Published script versions reject mutation.
+- Published Execute-capable script versions must also support DryRun; Execute job submissions enforce the same invariant defensively before policy capture.
 - Web has no direct reference to Worker or PowerShell.
 - Domain references no solution, ASP.NET Core, Entity Framework Core, or SQL client assembly.
-- Submission captures trusted script risk and Execute-phase capability in an immutable job policy snapshot.
+- Submission captures trusted script risk and Execute-phase capability in an immutable job policy snapshot only after rejecting undefined risk and phase enum values.
 - New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured Phase 2 policy until future runtime governance is implemented.
 - Submitted jobs enforce the requested phase: Validation stops after validation, DryRun stops after dry-run, and only Execute requests may enter approval/execution states.
 - Requesters cannot self-approve Medium, High, or Critical work, and callers cannot lower risk at approval time. The documented Phase 2 policy permits ReadOnly and Low self-approval.
 - Windows user identities compare with ordinal case-insensitive equality so casing cannot bypass self-approval checks. Future authentication should map users to stable SIDs or equivalent principal identifiers.
 - Read-only completion requires captured ReadOnly risk and a captured absence of Execute support; callers cannot override either value.
-- Approval, rejection, execution, and completion states require dedicated evidence-bearing operations; the generic application transition handler rejects protected targets.
+- Approval, rejection, execution, and completion states require dedicated evidence-bearing operations; the generic application transition handler rejects protected targets and refuses to terminalize jobs with active execution attempts.
+- Execution outcomes complete the active `JobExecution` and terminalize the parent `Job` in one aggregate operation, preventing orphaned active attempts.
 - Aggregate actor, timestamp, lifecycle, and child-object validation occurs before mutation.
 - Source project files are parsed to enforce exact project-reference allowlists, including explicit Web-to-Worker and Web-to-PowerShell prohibitions.
 - Strong identifiers are immutable reference records with no public parameterless constructor; aggregate boundaries reject null identifiers.

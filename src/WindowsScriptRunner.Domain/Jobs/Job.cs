@@ -25,7 +25,7 @@ public sealed class Job
         Id = id ?? throw new DomainValidationException("Job identifier is required.");
         ScriptDefinitionId = scriptDefinitionId ?? throw new DomainValidationException("Script definition identifier is required.");
         ScriptVersionId = scriptVersionId ?? throw new DomainValidationException("Script version identifier is required.");
-        RequestedPhase = requestedPhase;
+        RequestedPhase = EnumGuard.RequireDefined(requestedPhase, nameof(RequestedPhase));
         RequestedBy = requestedBy ?? throw new DomainValidationException("Requester is required.");
         CreatedUtc = createdUtc;
         UpdatedUtc = createdUtc;
@@ -192,6 +192,12 @@ public sealed class Job
             throw new DomainValidationException($"Script version does not support the {RequestedPhase} phase.");
         }
 
+        if (RequestedPhase == ExecutionPhase.Execute &&
+            !version.SupportedPhases.Contains(ExecutionPhase.DryRun))
+        {
+            throw new DomainValidationException("Execute requests require a script version that also supports DryRun.");
+        }
+
         if (_targets.Count == 0)
         {
             throw new DomainValidationException("At least one target is required before job submission.");
@@ -273,20 +279,35 @@ public sealed class Job
         ApplyTransition(JobStatus.PostValidation, actingUser, updatedUtc);
     }
 
-    public void Fail(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void Fail(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureNoActiveExecutionOutcomeRequired();
         ApplyTransition(JobStatus.Failed, actingUser, updatedUtc);
+    }
 
-    public void Cancel(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void Cancel(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureNoActiveExecutionOutcomeRequired();
         ApplyTransition(JobStatus.Cancelled, actingUser, updatedUtc);
+    }
 
-    public void MarkTimedOut(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void MarkTimedOut(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureNoActiveExecutionOutcomeRequired();
         ApplyTransition(JobStatus.TimedOut, actingUser, updatedUtc);
+    }
 
-    public void Block(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void Block(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureNoActiveExecutionOutcomeRequired();
         ApplyTransition(JobStatus.Blocked, actingUser, updatedUtc);
+    }
 
-    public void MarkNotRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    public void MarkNotRun(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        EnsureNoActiveExecutionOutcomeRequired();
         ApplyTransition(JobStatus.NotRun, actingUser, updatedUtc);
+    }
 
     public void CompleteReadOnlyAfterDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
@@ -352,6 +373,11 @@ public sealed class Job
         DateTimeOffset startedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can start execution.");
+        if (HasActiveExecutionAttempt)
+        {
+            throw new DomainValidationException("A new execution attempt cannot start while another attempt is active.");
+        }
+
         ValidateTransition(JobStatus.Executing, actingUser, startedUtc);
         var execution = new JobExecution(
             JobExecutionId.New(),
@@ -364,7 +390,7 @@ public sealed class Job
         return execution;
     }
 
-    public void RecordTerminalExecutionOutcome(
+    public JobExecution RecordTerminalExecutionOutcome(
         ExecutionOutcome outcome,
         int? exitCode,
         string? summary,
@@ -372,13 +398,13 @@ public sealed class Job
         DateTimeOffset completedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can record execution outcomes.");
+        outcome = EnumGuard.RequireDefined(outcome, nameof(ExecutionOutcome));
         if (Status is not (JobStatus.Executing or JobStatus.PostValidation))
         {
             throw new DomainValidationException("A terminal outcome requires an executing or post-validation job.");
         }
 
-        var execution = _executions.LastOrDefault()
-            ?? throw new DomainValidationException("No execution attempt exists.");
+        var execution = RequireSingleActiveExecutionAttempt();
         var status = outcome switch
         {
             ExecutionOutcome.Succeeded => JobStatus.Completed,
@@ -394,6 +420,7 @@ public sealed class Job
         ValidateTransition(status, actingUser, completedUtc);
         execution.Complete(outcome, exitCode, summary, completedUtc);
         ApplyValidatedTransition(status, actingUser, completedUtc);
+        return execution;
     }
 
     private void EnsureDraft()
@@ -407,6 +434,28 @@ public sealed class Job
     private JobPolicySnapshot RequirePolicySnapshot() =>
         PolicySnapshot ?? throw new DomainValidationException(
             "A trusted script policy snapshot is required after submission.");
+
+    public bool HasActiveExecutionAttempt => _executions.Any(execution => execution.IsActive);
+
+    private JobExecution RequireSingleActiveExecutionAttempt()
+    {
+        var activeExecutions = _executions.Where(execution => execution.IsActive).ToArray();
+        return activeExecutions.Length switch
+        {
+            1 => activeExecutions[0],
+            0 => throw new DomainValidationException("No active execution attempt exists."),
+            _ => throw new DomainValidationException("Only one active execution attempt is allowed."),
+        };
+    }
+
+    private void EnsureNoActiveExecutionOutcomeRequired()
+    {
+        if (Status is JobStatus.Executing or JobStatus.PostValidation || HasActiveExecutionAttempt)
+        {
+            throw new DomainValidationException(
+                "An active execution attempt must be completed through the execution-outcome operation.");
+        }
+    }
 
     private void ApplyTransition(
         JobStatus newStatus,

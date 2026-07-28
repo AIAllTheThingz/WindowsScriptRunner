@@ -84,6 +84,12 @@ public sealed class ScriptVersion
             throw new InvalidScriptVersionException($"Version {Version} is already published.");
         }
 
+        if (_supportedPhases.Contains(ExecutionPhase.Execute) &&
+            !_supportedPhases.Contains(ExecutionPhase.DryRun))
+        {
+            throw new InvalidScriptVersionException("Published Execute-capable versions must also support DryRun.");
+        }
+
         IsPublished = true;
     }
 
@@ -143,7 +149,9 @@ public sealed class ScriptVersion
         bool requireValue)
         where T : struct, Enum
     {
-        var normalized = values.ToArray();
+        var normalized = values
+            .Select(value => EnumGuard.RequireDefined(value, fieldName))
+            .ToArray();
         if (requireValue && normalized.Length == 0)
         {
             throw new InvalidScriptVersionException($"At least one {fieldName} value is required.");

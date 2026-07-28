@@ -21,6 +21,12 @@ public sealed record CompleteValidationJobRequest(Guid JobId);
 
 public sealed record CompleteDryRunJobRequest(Guid JobId);
 
+public sealed record RecordExecutionOutcomeRequest(
+    Guid JobId,
+    string Outcome,
+    int? ExitCode,
+    string? Summary);
+
 public sealed record ApproveJobRequest(
     Guid JobId,
     string ApprovalFingerprint,
