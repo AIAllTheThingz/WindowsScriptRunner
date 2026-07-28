@@ -1,3 +1,3 @@
 # Domain
 
-Reserved for future core entities, value objects, enums, and rules. It is intentionally independent and contains no domain model in Phase 1.
+Contains the independent Phase 2 domain model: strongly typed IDs, value objects, script and job aggregates, lifecycle policy, worker metadata, audit events, and credential references. It has no infrastructure dependency.

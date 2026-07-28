@@ -1,17 +1,17 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application foundation for future controlled automation. The repository is currently in **Phase 1: Repository and solution scaffolding**.
+Windows Script Runner is a Windows-hosted .NET application foundation for future controlled automation. The repository has completed **Phase 2: Domain and Application Contracts**.
 
 ## Status
 
-The solution contains a Razor Pages web scaffold, a configurable heartbeat worker, architectural class-library boundaries, and meaningful scaffold tests. No operational automation features are implemented.
+The solution contains a validated domain model, application commands and queries, public DTOs, a Razor Pages scaffold, a configurable heartbeat worker, architectural boundaries, and meaningful tests. No persistence or operational automation is implemented.
 
 ## Solution structure
 
 - `src/WindowsScriptRunner.Web` — Razor Pages UI and health endpoint
 - `src/WindowsScriptRunner.Worker` — cancellation-aware worker heartbeat
-- `src/WindowsScriptRunner.Application` — future use cases and orchestration
-- `src/WindowsScriptRunner.Domain` — future independent domain model
+- `src/WindowsScriptRunner.Application` — use-case handlers and persistence/audit abstractions
+- `src/WindowsScriptRunner.Domain` — independent aggregates, lifecycle rules, and value objects
 - `src/WindowsScriptRunner.Infrastructure` — future external concerns
 - `src/WindowsScriptRunner.Contracts` — future shared contracts
 - `src/WindowsScriptRunner.PowerShell` — future isolated execution boundary
@@ -45,4 +45,4 @@ dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker
 - Deployment documentation is planning-only.
 - The project is not production-ready.
 
-The next implementation phase is **Phase 2: Domain and Application Contracts**.
+The next implementation phase is **Phase 3: SQL Server Persistence**.

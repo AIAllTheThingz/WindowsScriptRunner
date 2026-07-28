@@ -1,8 +1,8 @@
 # Implementation roadmap
 
-1. **Repository and solution scaffolding — current phase**
-2. Domain and application contracts
-3. SQL Server persistence
+1. **Repository and solution scaffolding — Complete**
+2. **Domain and application contracts — Complete**
+3. **SQL Server persistence — Next**
 4. Worker foundation and queue processing
 5. PowerShell execution boundary
 6. First automation package
@@ -10,4 +10,4 @@
 8. Approval workflow
 9. Production hardening
 
-Only item 1 is implemented. Later items describe intended order, not working features.
+Phase 2 establishes tested contracts and invariants only. Later items describe intended order, not working operational features.
