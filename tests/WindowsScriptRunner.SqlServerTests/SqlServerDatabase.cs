@@ -9,10 +9,16 @@ namespace WindowsScriptRunner.SqlServerTests;
 
 internal sealed class SqlServerDatabase : IAsyncDisposable
 {
-    private SqlServerDatabase(string connectionString, string runtimeName)
+    private readonly bool deleteOnDispose;
+
+    private SqlServerDatabase(
+        string connectionString,
+        string runtimeName,
+        bool deleteOnDispose)
     {
         ConnectionString = connectionString;
         RuntimeName = runtimeName;
+        this.deleteOnDispose = deleteOnDispose;
     }
 
     internal string ConnectionString { get; }
@@ -21,14 +27,22 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
     public static async Task<SqlServerDatabase> CreateAsync(
         bool applyMigrations = true,
         CancellationToken cancellationToken = default,
-        int? connectionTimeoutSeconds = null)
+        int? connectionTimeoutSeconds = null,
+        string? baseConnectionString = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var supplied = Environment.GetEnvironmentVariable(
-            "WINDOWSSCRIPTRUNNER_TEST_SQLSERVER");
-        var runtimeName = string.IsNullOrWhiteSpace(supplied)
-            ? "SQL Server LocalDB MSSQLLocalDB"
-            : "WINDOWSSCRIPTRUNNER_TEST_SQLSERVER";
+        var supplied = baseConnectionString ??
+            Environment.GetEnvironmentVariable("WINDOWSSCRIPTRUNNER_TEST_SQLSERVER");
+        var runtimeName = "SQL Server LocalDB MSSQLLocalDB";
+        if (baseConnectionString is not null)
+        {
+            runtimeName = "explicit test SQL Server endpoint";
+        }
+        else if (!string.IsNullOrWhiteSpace(supplied))
+        {
+            runtimeName = "WINDOWSSCRIPTRUNNER_TEST_SQLSERVER";
+        }
+
         var baseConnection = string.IsNullOrWhiteSpace(supplied)
             ? "Server=(localdb)\\MSSQLLocalDB;Integrated Security=true;Encrypt=false"
             : supplied;
@@ -41,7 +55,10 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
             builder.ConnectTimeout = connectionTimeoutSeconds.Value;
         }
 
-        var database = new SqlServerDatabase(builder.ConnectionString, runtimeName);
+        var database = new SqlServerDatabase(
+            builder.ConnectionString,
+            runtimeName,
+            applyMigrations);
         try
         {
             if (applyMigrations)
@@ -104,6 +121,11 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (!deleteOnDispose)
+        {
+            return;
+        }
+
         await using var context = CreateContext();
         await context.Database.EnsureDeletedAsync();
     }

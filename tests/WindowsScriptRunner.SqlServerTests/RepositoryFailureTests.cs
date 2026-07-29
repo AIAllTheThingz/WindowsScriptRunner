@@ -11,7 +11,9 @@ public sealed class RepositoryFailureTests
     {
         await using var database = await SqlServerDatabase.CreateAsync(
             applyMigrations: false,
-            connectionTimeoutSeconds: 1);
+            connectionTimeoutSeconds: 1,
+            baseConnectionString:
+                "Server=tcp:192.0.2.1,1433;Integrated Security=true;Encrypt=false");
 
         await using (var scope = new PersistenceTestScope(database))
         {
