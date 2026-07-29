@@ -1,0 +1,216 @@
+using Microsoft.EntityFrameworkCore;
+using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Domain.Auditing;
+using WindowsScriptRunner.Domain.Identifiers;
+using WindowsScriptRunner.Domain.Jobs;
+
+namespace WindowsScriptRunner.SqlServerTests;
+
+public sealed class TransactionAndConcurrencyTests
+{
+    [Fact]
+    public async Task JobAndAuditCommitAtomically()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DraftJob(script, version);
+        await SeedJobAsync(database, script, job);
+
+        var audit = Audit("JobDescriptionUpdated", job.Id);
+        await using (var scope = new PersistenceTestScope(database))
+        {
+            var loaded = Assert.IsType<Job>(
+                await scope.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
+            loaded.UpdateDescription(
+                "Atomic update",
+                SqlServerTestData.Requester,
+                loaded.UpdatedUtc.AddMinutes(1));
+            await scope.Jobs.UpdateAsync(loaded, CancellationToken.None);
+            await scope.Audits.WriteAsync(audit, CancellationToken.None);
+            await scope.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            "Atomic update",
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None)).Description);
+        Assert.True(await verification.Context.AuditEvents.AnyAsync(
+            item => item.Id == audit.Id.Value));
+    }
+
+    [Fact]
+    public async Task ConstraintFailureRollsBackAggregateAndAuditChanges()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DraftJob(script, version);
+        var existingAudit = Audit("JobCreated", job.Id);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(job, CancellationToken.None);
+            await seed.Audits.WriteAsync(existingAudit, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using (var scope = new PersistenceTestScope(database))
+        {
+            var loaded = Assert.IsType<Job>(
+                await scope.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
+            loaded.UpdateDescription(
+                "Must roll back",
+                SqlServerTestData.Requester,
+                loaded.UpdatedUtc.AddMinutes(1));
+            await scope.Jobs.UpdateAsync(loaded, CancellationToken.None);
+            var duplicateAudit = new AuditEvent(
+                existingAudit.Id,
+                "Duplicate",
+                "Job",
+                job.Id.ToString(),
+                SqlServerTestData.Requester,
+                SqlServerTestData.Time.AddMinutes(2),
+                "Forced duplicate primary key");
+            await scope.Audits.WriteAsync(duplicateAudit, CancellationToken.None);
+
+            await Assert.ThrowsAsync<ApplicationConflictException>(
+                () => scope.UnitOfWork.CommitAsync(CancellationToken.None));
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            job.Description,
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None)).Description);
+        Assert.Equal(1, await verification.Context.AuditEvents.CountAsync());
+    }
+
+    [Fact]
+    public async Task StaleJobCommitConflictsAndDoesNotCommitItsAudit()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DraftJob(script, version);
+        await SeedJobAsync(database, script, job);
+        await using var first = new PersistenceTestScope(database);
+        await using var second = new PersistenceTestScope(database);
+        var stale = Assert.IsType<Job>(
+            await first.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
+        var winner = Assert.IsType<Job>(
+            await second.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
+        winner.UpdateDescription(
+            "Winner",
+            SqlServerTestData.Approver,
+            winner.UpdatedUtc.AddMinutes(1));
+        await second.Jobs.UpdateAsync(winner, CancellationToken.None);
+        await second.UnitOfWork.CommitAsync(CancellationToken.None);
+
+        stale.UpdateDescription(
+            "Stale",
+            SqlServerTestData.Requester,
+            stale.UpdatedUtc.AddMinutes(2));
+        await first.Jobs.UpdateAsync(stale, CancellationToken.None);
+        var staleAudit = Audit("StaleUpdate", job.Id);
+        await first.Audits.WriteAsync(staleAudit, CancellationToken.None);
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => first.UnitOfWork.CommitAsync(CancellationToken.None));
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            "Winner",
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None)).Description);
+        Assert.False(await verification.Context.AuditEvents.AnyAsync(
+            item => item.Id == staleAudit.Id.Value));
+    }
+
+    [Fact]
+    public async Task StaleScriptDefinitionCommitConflicts()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var first = new PersistenceTestScope(database);
+        await using var second = new PersistenceTestScope(database);
+        var stale = Assert.IsType<WindowsScriptRunner.Domain.Scripts.ScriptDefinition>(
+            await first.Scripts.GetByIdAsync(script.Id, CancellationToken.None));
+        var winner = Assert.IsType<WindowsScriptRunner.Domain.Scripts.ScriptDefinition>(
+            await second.Scripts.GetByIdAsync(script.Id, CancellationToken.None));
+        winner.UpdateDetails("Winner", winner.Description, winner.UpdatedUtc.AddMinutes(1));
+        await second.Scripts.UpdateAsync(winner, CancellationToken.None);
+        await second.UnitOfWork.CommitAsync(CancellationToken.None);
+        stale.UpdateDetails("Stale", stale.Description, stale.UpdatedUtc.AddMinutes(2));
+        await first.Scripts.UpdateAsync(stale, CancellationToken.None);
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => first.UnitOfWork.CommitAsync(CancellationToken.None));
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            "Winner",
+            Assert.IsType<WindowsScriptRunner.Domain.Scripts.ScriptDefinition>(
+                await verification.Scripts.GetByIdAsync(script.Id, CancellationToken.None))
+                .DisplayName);
+    }
+
+    [Fact]
+    public async Task StaleWorkerCommitConflicts()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var worker = SqlServerTestData.Worker();
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Workers.AddAsync(worker, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var first = new PersistenceTestScope(database);
+        await using var second = new PersistenceTestScope(database);
+        var stale = Assert.IsType<WindowsScriptRunner.Domain.Workers.WorkerNode>(
+            await first.Workers.GetByIdAsync(worker.Id, CancellationToken.None));
+        var winner = Assert.IsType<WindowsScriptRunner.Domain.Workers.WorkerNode>(
+            await second.Workers.GetByIdAsync(worker.Id, CancellationToken.None));
+        winner.Disable();
+        await second.Workers.UpdateAsync(winner, CancellationToken.None);
+        await second.UnitOfWork.CommitAsync(CancellationToken.None);
+        stale.RecordHeartbeat(stale.LastHeartbeatUtc!.Value.AddMinutes(1));
+        await first.Workers.UpdateAsync(stale, CancellationToken.None);
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => first.UnitOfWork.CommitAsync(CancellationToken.None));
+        await using var verification = new PersistenceTestScope(database);
+        Assert.False(
+            Assert.IsType<WindowsScriptRunner.Domain.Workers.WorkerNode>(
+                await verification.Workers.GetByIdAsync(worker.Id, CancellationToken.None))
+                .IsEnabled);
+    }
+
+    private static async Task SeedJobAsync(
+        SqlServerDatabase database,
+        WindowsScriptRunner.Domain.Scripts.ScriptDefinition script,
+        Job job)
+    {
+        await using var seed = new PersistenceTestScope(database);
+        await seed.Scripts.AddAsync(script, CancellationToken.None);
+        await seed.Jobs.AddAsync(job, CancellationToken.None);
+        await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+    }
+
+    private static AuditEvent Audit(string eventType, JobId jobId) =>
+        new(
+            AuditEventId.New(),
+            eventType,
+            "Job",
+            jobId.ToString(),
+            SqlServerTestData.Requester,
+            SqlServerTestData.Time.AddMinutes(10),
+            eventType);
+}

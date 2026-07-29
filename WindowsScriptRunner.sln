@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowsScriptRunner.UnitTes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowsScriptRunner.WorkerTests", "tests\WindowsScriptRunner.WorkerTests\WindowsScriptRunner.WorkerTests.csproj", "{0B94FAD0-0A2C-439B-910F-4A70807A59B2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowsScriptRunner.SqlServerTests", "tests\WindowsScriptRunner.SqlServerTests\WindowsScriptRunner.SqlServerTests.csproj", "{D012A298-34A3-4A2C-92B8-D3890D3D7A69}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -199,6 +201,18 @@ Global
 		{0B94FAD0-0A2C-439B-910F-4A70807A59B2}.Release|x64.Build.0 = Release|Any CPU
 		{0B94FAD0-0A2C-439B-910F-4A70807A59B2}.Release|x86.ActiveCfg = Release|Any CPU
 		{0B94FAD0-0A2C-439B-910F-4A70807A59B2}.Release|x86.Build.0 = Release|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Debug|x64.Build.0 = Debug|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Debug|x86.Build.0 = Debug|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Release|x64.ActiveCfg = Release|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Release|x64.Build.0 = Release|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Release|x86.ActiveCfg = Release|Any CPU
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -217,5 +231,6 @@ Global
 		{C68FAC10-320A-43B7-AEFC-CCCA934DCFC9} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{39AC08BE-CC01-4304-927E-FF4F48B78C06} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{0B94FAD0-0A2C-439B-910F-4A70807A59B2} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{D012A298-34A3-4A2C-92B8-D3890D3D7A69} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
