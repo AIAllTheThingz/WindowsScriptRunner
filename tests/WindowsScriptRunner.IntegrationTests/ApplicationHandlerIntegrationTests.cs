@@ -2,12 +2,10 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
-using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
-using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.IntegrationTests;
 
@@ -20,14 +18,42 @@ public sealed class ApplicationHandlerIntegrationTests
         var auditWriter = new RecordingAuditWriter();
         var unitOfWork = new RecordingUnitOfWork();
         var clock = new FixedClock(new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero));
-        var handler = new CreateDraftJobHandler(repository, auditWriter, unitOfWork, clock);
+        var actor = new UserIdentity("DOMAIN\\integration-user");
+        var version = new ScriptVersion(
+            ScriptVersionId.New(),
+            ScriptVersionNumber.Parse("1.0.0"),
+            "scripts/Test.ps1",
+            new string('a', 64),
+            null,
+            "7.4",
+            30,
+            [ExecutionPhase.Validation],
+            [],
+            clock.UtcNow,
+            actor);
+        var script = ScriptDefinition.Create(
+            ScriptDefinitionId.New(),
+            new ScriptName("integration.script"),
+            "Integration Script",
+            string.Empty,
+            RiskLevel.Low,
+            actor,
+            clock.UtcNow);
+        script.AddVersion(version, clock.UtcNow);
+        var scriptRepository = new InMemoryScriptRepository(script);
+        var handler = new CreateDraftJobHandler(
+            scriptRepository,
+            repository,
+            auditWriter,
+            unitOfWork,
+            clock);
 
         var id = await handler.HandleAsync(
             new CreateDraftJobCommand(
-                ScriptDefinitionId.New(),
-                ScriptVersionId.New(),
+                script.Id,
+                version.Id,
                 ExecutionPhase.Validation,
-                new UserIdentity("DOMAIN\\integration-user")),
+                actor),
             CancellationToken.None);
 
         Assert.Equal(id, repository.Job?.Id);
@@ -84,38 +110,18 @@ public sealed class ApplicationHandlerIntegrationTests
         }
     }
 
-    private sealed class InterfaceCoverageRepository :
-        IScriptDefinitionRepository,
-        IWorkerNodeRepository,
-        ICredentialReferenceRepository
+    private sealed class InMemoryScriptRepository(ScriptDefinition script) :
+        IScriptDefinitionRepository
     {
         public Task<ScriptDefinition?> GetByIdAsync(
             ScriptDefinitionId id,
             CancellationToken cancellationToken) =>
-            Task.FromResult<ScriptDefinition?>(null);
-        public Task<WorkerNode?> GetByIdAsync(
-            WorkerNodeId id,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<WorkerNode?>(null);
-        public Task<CredentialReference?> GetByIdAsync(
-            CredentialReferenceId id,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<CredentialReference?>(null);
+            Task.FromResult(script.Id == id ? script : null);
+
         public Task AddAsync(ScriptDefinition definition, CancellationToken cancellationToken) =>
             Task.CompletedTask;
-        public Task AddAsync(WorkerNode workerNode, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task AddAsync(
-            CredentialReference credentialReference,
-            CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+
         public Task UpdateAsync(ScriptDefinition definition, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task UpdateAsync(WorkerNode workerNode, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task UpdateAsync(
-            CredentialReference credentialReference,
-            CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
 }

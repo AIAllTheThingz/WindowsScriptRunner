@@ -19,10 +19,13 @@ public sealed class ApplicationHandlerTests
     public async Task CreateDraftPersistsAuditsCommitsAndPropagatesCancellation()
     {
         var fixture = new HandlerFixture();
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version);
+        fixture.Scripts.Script = script;
         using var source = new CancellationTokenSource();
         var command = new CreateDraftJobCommand(
-            ScriptDefinitionId.New(),
-            ScriptVersionId.New(),
+            script.Id,
+            version.Id,
             ExecutionPhase.DryRun,
             TestDomainFactory.User);
 
@@ -32,6 +35,46 @@ public sealed class ApplicationHandlerTests
         Assert.Equal("JobDraftCreated", Assert.Single(fixture.Audits.Events).EventType);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
+    }
+
+    [Fact]
+    public async Task CreateDraftRejectsMissingScriptWithoutSideEffects()
+    {
+        var fixture = new HandlerFixture();
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => fixture.CreateHandler.HandleAsync(
+                new CreateDraftJobCommand(
+                    ScriptDefinitionId.New(),
+                    ScriptVersionId.New(),
+                    ExecutionPhase.DryRun,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task CreateDraftRejectsVersionFromAnotherScriptWithoutSideEffects()
+    {
+        var fixture = new HandlerFixture();
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        fixture.Scripts.Script = script;
+
+        await Assert.ThrowsAsync<Domain.Exceptions.InvalidScriptVersionException>(
+            () => fixture.CreateHandler.HandleAsync(
+                new CreateDraftJobCommand(
+                    script.Id,
+                    ScriptVersionId.New(),
+                    ExecutionPhase.DryRun,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]
@@ -1183,7 +1226,7 @@ public sealed class ApplicationHandlerTests
     {
         public HandlerFixture()
         {
-            CreateHandler = new CreateDraftJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            CreateHandler = new CreateDraftJobHandler(Scripts, Jobs, Audits, UnitOfWork, Clock);
             AddTargetHandler = new AddJobTargetHandler(Jobs, Audits, UnitOfWork, Clock);
             SetParameterHandler = new SetJobParameterHandler(
                 Jobs,

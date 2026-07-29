@@ -11,6 +11,7 @@ using WindowsScriptRunner.Domain.Workers;
 namespace WindowsScriptRunner.Application.Jobs;
 
 public sealed class CreateDraftJobHandler(
+    IScriptDefinitionRepository scriptRepository,
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
@@ -21,6 +22,14 @@ public sealed class CreateDraftJobHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        var script = await scriptRepository.GetByIdAsync(
+            command.ScriptDefinitionId,
+            cancellationToken)
+            ?? throw new EntityNotFoundException(
+                nameof(ScriptDefinition),
+                command.ScriptDefinitionId.ToString());
+        _ = script.GetVersion(command.ScriptVersionId);
+
         var now = clock.UtcNow;
         var job = Job.CreateDraft(
             JobId.New(),
