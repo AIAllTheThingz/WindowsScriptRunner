@@ -119,6 +119,7 @@ public sealed class ScriptVersion
         if (Path.IsPathRooted(path) ||
             path.StartsWith('\\') ||
             path.StartsWith('/') ||
+            path.Contains(':') ||
             path.Contains("..", StringComparison.Ordinal) ||
             segments.Any(segment => segment is "." or ".."))
         {

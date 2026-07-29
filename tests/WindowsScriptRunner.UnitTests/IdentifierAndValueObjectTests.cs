@@ -144,6 +144,18 @@ public sealed class IdentifierAndValueObjectTests
         Assert.Throws<InvalidScriptVersionException>(() => CreateVersion("good.ps1", "not-a-hash"));
     }
 
+    [Theory]
+    [InlineData(@"C:\scripts\Run.ps1")]
+    [InlineData("C:/scripts/Run.ps1")]
+    [InlineData(@"C:scripts\Run.ps1")]
+    [InlineData("file:///scripts/Run.ps1")]
+    [InlineData(@"\\server\share\Run.ps1")]
+    public void ScriptVersionRejectsWindowsRootedAndUriPathsOnEveryHost(string path)
+    {
+        Assert.Throws<InvalidScriptVersionException>(
+            () => CreateVersion(path, new string('a', 64)));
+    }
+
     private static ScriptVersion CreateVersion(string path, string hash) =>
         new(
             ScriptVersionId.New(),
