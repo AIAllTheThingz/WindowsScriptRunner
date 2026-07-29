@@ -28,13 +28,14 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
         bool applyMigrations = true,
         CancellationToken cancellationToken = default,
         int? connectionTimeoutSeconds = null,
-        string? baseConnectionString = null)
+        string? baseConnectionString = null,
+        bool ownsDatabase = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var supplied = baseConnectionString ??
             Environment.GetEnvironmentVariable("WINDOWSSCRIPTRUNNER_TEST_SQLSERVER");
         var runtimeName = "SQL Server LocalDB MSSQLLocalDB";
-        if (baseConnectionString is not null)
+        if (!string.IsNullOrWhiteSpace(baseConnectionString))
         {
             runtimeName = "explicit test SQL Server endpoint";
         }
@@ -58,7 +59,7 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
         var database = new SqlServerDatabase(
             builder.ConnectionString,
             runtimeName,
-            applyMigrations);
+            ownsDatabase);
         try
         {
             if (applyMigrations)

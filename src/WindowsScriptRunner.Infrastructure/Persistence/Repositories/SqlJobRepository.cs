@@ -24,7 +24,7 @@ public sealed class SqlJobRepository(
                 .Include(item => item.Parameters)
                 .Include(item => item.Executions)
                 .Include(item => item.Approvals)
-                .AsSplitQuery()
+                .AsSingleQuery()
                 .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
             logger);
         logger.LogDebug(

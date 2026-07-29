@@ -10,7 +10,7 @@ namespace WindowsScriptRunner.SqlServerTests;
 public sealed class QueryBehaviorTests
 {
     [Fact]
-    public async Task ScriptAggregateLoadUsesBoundedParameterizedSplitQueries()
+    public async Task AggregateLoadsUseBoundedParameterizedQueries()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
         var firstParameter = SqlServerTestData.Parameter(
@@ -24,9 +24,11 @@ public sealed class QueryBehaviorTests
             version: "2.0.0");
         var script = SqlServerTestData.Script(firstVersion);
         script.AddVersion(secondVersion, script.UpdatedUtc.AddMinutes(1));
+        var job = SqlServerTestData.CompleteExecuteJob(script, firstVersion);
         await using (var seed = new PersistenceTestScope(database))
         {
             await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(job, CancellationToken.None);
             await seed.UnitOfWork.CommitAsync(CancellationToken.None);
         }
 
@@ -47,6 +49,22 @@ public sealed class QueryBehaviorTests
                 script.Id.ToString(),
                 command,
                 StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(capture.ParameterCounts, count => count > 0);
+
+        capture.Commands.Clear();
+        capture.ParameterCounts.Clear();
+        var jobRepository = new SqlJobRepository(
+            context,
+            NullLogger<SqlJobRepository>.Instance);
+
+        var loadedJob = await jobRepository.GetByIdAsync(job.Id, CancellationToken.None);
+
+        Assert.NotNull(loadedJob);
+        var jobCommand = Assert.Single(capture.Commands);
+        Assert.DoesNotContain(
+            job.Id.ToString(),
+            jobCommand,
+            StringComparison.OrdinalIgnoreCase);
         Assert.Contains(capture.ParameterCounts, count => count > 0);
     }
 

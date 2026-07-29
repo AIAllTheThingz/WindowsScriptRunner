@@ -13,7 +13,8 @@ public sealed class RepositoryFailureTests
             applyMigrations: false,
             connectionTimeoutSeconds: 1,
             baseConnectionString:
-                "Server=tcp:192.0.2.1,1433;Integrated Security=true;Encrypt=false");
+                "Server=tcp:192.0.2.1,1433;Integrated Security=true;Encrypt=false",
+            ownsDatabase: false);
 
         await using (var scope = new PersistenceTestScope(database))
         {
