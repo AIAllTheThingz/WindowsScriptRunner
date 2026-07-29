@@ -38,7 +38,7 @@ internal static class SqlExceptionTranslator
                 exception);
         }
 
-        if (exception.InnerException is not SqlException sqlException)
+        if (!TryGetSqlException(exception, out var sqlException))
         {
             logger.LogError(
                 "Persistence operation failed with provider exception type {ExceptionType}",
@@ -49,6 +49,25 @@ internal static class SqlExceptionTranslator
         }
 
         return TranslateSqlException(exception, sqlException, logger);
+    }
+
+    public static Exception TranslateRetryLimitExceeded(
+        RetryLimitExceededException exception,
+        ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        ArgumentNullException.ThrowIfNull(logger);
+        if (TryGetSqlException(exception, out var sqlException))
+        {
+            return TranslateSqlException(exception, sqlException, logger);
+        }
+
+        logger.LogError(
+            "Persistence retry limit was exceeded with provider exception type {ExceptionType}",
+            exception.InnerException?.GetType().Name ?? exception.GetType().Name);
+        return new PersistenceOperationException(
+            "The persistence operation failed after exhausting retries.",
+            exception);
     }
 
     public static Exception Translate(SqlException exception, ILogger logger)
@@ -84,12 +103,11 @@ internal static class SqlExceptionTranslator
             throw;
         }
         catch (RetryLimitExceededException exception)
-            when (exception.InnerException is SqlException sqlException)
         {
-            throw Translate(exception, sqlException, logger);
+            throw TranslateRetryLimitExceeded(exception, logger);
         }
         catch (InvalidOperationException exception)
-            when (exception.InnerException is SqlException sqlException)
+            when (TryGetSqlException(exception, out var sqlException))
         {
             throw Translate(exception, sqlException, logger);
         }
@@ -97,6 +115,24 @@ internal static class SqlExceptionTranslator
         {
             throw Translate(exception, logger);
         }
+    }
+
+    internal static bool TryGetSqlException(
+        Exception exception,
+        out SqlException sqlException)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        for (Exception? candidate = exception; candidate is not null; candidate = candidate.InnerException)
+        {
+            if (candidate is SqlException match)
+            {
+                sqlException = match;
+                return true;
+            }
+        }
+
+        sqlException = null!;
+        return false;
     }
 
     private static Exception TranslateSqlException(

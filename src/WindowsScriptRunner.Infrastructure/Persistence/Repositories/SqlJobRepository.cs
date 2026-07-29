@@ -1,3 +1,4 @@
+using System.Data;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -18,15 +19,38 @@ public sealed class SqlJobRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var entity = await SqlExceptionTranslator.ExecuteAsync(
-            () => dbContext.Jobs
-                .Include(item => item.Targets)
-                .Include(item => item.Parameters)
-                .Include(item => item.Executions)
-                .Include(item => item.Approvals)
-                .AsSingleQuery()
-                .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
-            logger);
+        var entity = FindTracked(id.Value);
+        if (entity is null)
+        {
+            var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+            entity = await SqlExceptionTranslator.ExecuteAsync(
+                () => executionStrategy.ExecuteAsync(
+                    async strategyCancellationToken =>
+                    {
+                        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                            IsolationLevel.Serializable,
+                            strategyCancellationToken);
+                        var result = await dbContext.Jobs
+                            .Include(item => item.Targets)
+                            .Include(item => item.Parameters)
+                            .Include(item => item.Executions)
+                            .Include(item => item.Approvals)
+                            .AsNoTrackingWithIdentityResolution()
+                            .AsSplitQuery()
+                            .SingleOrDefaultAsync(
+                                item => item.Id == id.Value,
+                                strategyCancellationToken);
+                        await transaction.CommitAsync(strategyCancellationToken);
+                        return result;
+                    },
+                    cancellationToken),
+                logger);
+            if (entity is not null)
+            {
+                dbContext.Attach(entity);
+            }
+        }
+
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(GetByIdAsync),

@@ -192,7 +192,7 @@ public sealed class ApplicationHandlerTests
             string.Join(' ', audit.Properties.Values),
             StringComparison.Ordinal);
         Assert.Equal(credential.Id.ToString(), Assert.Single(fixture.Jobs.Job.Parameters).SerializedValue);
-        Assert.Equal(1, fixture.Credentials.UpdateCount);
+        Assert.Equal(0, fixture.Credentials.UpdateCount);
     }
 
     [Theory]
@@ -704,7 +704,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(JobStatus.Validated, fixture.Jobs.Job.Status);
         Assert.NotNull(fixture.Jobs.Job.PolicySnapshot);
         Assert.Equal(fixture.Scripts.Script!.RiskLevel, fixture.Jobs.Job.PolicySnapshot.RiskLevel);
-        Assert.Equal(1, fixture.Scripts.UpdateCount);
+        Assert.Equal(0, fixture.Scripts.UpdateCount);
         Assert.Equal(2, fixture.UnitOfWork.CommitCount);
         Assert.Equal(["JobSubmitted", "JobStatusChanged"], fixture.Audits.Events.Select(item => item.EventType));
     }
@@ -1080,7 +1080,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal("1", audit.Properties["AttemptNumber"]);
         Assert.Equal("True", audit.Properties["WorkerNodeIdPresent"]);
         Assert.Equal(1, fixture.Jobs.UpdateCount);
-        Assert.Equal(1, fixture.Workers.UpdateCount);
+        Assert.Equal(0, fixture.Workers.UpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
     }

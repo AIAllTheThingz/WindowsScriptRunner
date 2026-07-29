@@ -40,9 +40,9 @@ $env:ConnectionStrings__WindowsScriptRunner = '<connection string supplied exter
 
 ## Runtime behavior
 
-One scoped `WindowsScriptRunnerDbContext` is shared by the repositories, `SqlAuditWriter`, and `SqlUnitOfWork`. Repositories load tracked aggregates with cancellation support and stage graph changes without saving. The unit of work commits aggregate and audit changes together with one `SaveChangesAsync` call.
+One scoped `WindowsScriptRunnerDbContext` is shared by the repositories, `SqlAuditWriter`, and `SqlUnitOfWork`. Repositories load tracked aggregates with cancellation support and stage graph changes without saving. When an operation uses unchanged aggregate roots as validation dependencies, the unit of work rowversion-revalidates them and commits aggregate and audit changes together with one `SaveChangesAsync` call inside a serializable transaction. Other commits retain the normal `SaveChangesAsync` transaction. Validation dependencies are protected without unchanged writes or rowversion churn.
 
-Mutable root rows have SQL Server rowversion tokens. Stale updates become bounded concurrency exceptions. Transient provider failures use SQL Server retry configuration and are translated without exposing connection strings, SQL text, parameter values, or raw provider messages.
+Mutable root rows have SQL Server rowversion tokens. Stale updates and changed validation dependencies become bounded concurrency exceptions. The serializable commit transaction runs inside the configured SQL Server execution strategy. Transient provider failures, including nested retry-exhaustion shapes, are translated without exposing connection strings, SQL text, parameter values, or raw provider messages.
 
 Large aggregate loads use split queries to avoid cartesian result growth. EF parameterizes values rather than concatenating caller input.
 

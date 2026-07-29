@@ -172,7 +172,6 @@ public sealed class SetJobParameterHandler(
         definition.ValidateSerializedValue(suppliedValue);
         var now = clock.UtcNow;
 
-        CredentialReference? credentialReference = null;
         AuditEvent audit;
         if (isAbsent)
         {
@@ -193,7 +192,7 @@ public sealed class SetJobParameterHandler(
             var serializedValue = suppliedValue;
             if (definition.ParameterType == Domain.ScriptParameterType.SecureReference)
             {
-                credentialReference = await ResolveCredentialReferenceAsync(
+                var credentialReference = await ResolveCredentialReferenceAsync(
                     credentialRepository,
                     suppliedValue,
                     cancellationToken);
@@ -212,11 +211,6 @@ public sealed class SetJobParameterHandler(
         }
 
         await jobRepository.UpdateAsync(job, cancellationToken);
-        if (credentialReference is not null)
-        {
-            await credentialRepository.UpdateAsync(credentialReference, cancellationToken);
-        }
-
         await auditWriter.WriteAsync(audit, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }
@@ -311,7 +305,6 @@ public sealed class SubmitJobHandler(
         job.Submit(script, command.ActingUser, now);
 
         await jobRepository.UpdateAsync(job, cancellationToken);
-        await scriptRepository.UpdateAsync(script, cancellationToken);
         await auditWriter.WriteAsync(
             CreateDraftJobHandler.Audit(
                 "JobSubmitted",
@@ -640,11 +633,6 @@ public sealed class StartExecutionAttemptHandler(
             });
 
         await jobRepository.UpdateAsync(job, cancellationToken);
-        if (workerNode is not null)
-        {
-            await workerNodeRepository.UpdateAsync(workerNode, cancellationToken);
-        }
-
         await auditWriter.WriteAsync(audit, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }

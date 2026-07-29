@@ -1146,7 +1146,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - `dotnet format --verify-no-changes`: `2026-07-29T13:38:47.9571098-05:00` to `2026-07-29T13:39:13.2315808-05:00`, exit 0.
 - `dotnet build --configuration Release --no-restore`: `2026-07-29T13:39:21.1724388-05:00` to `2026-07-29T13:39:25.0247762-05:00`, exit 0, 0 warnings and 0 errors.
 - `dotnet test --configuration Release --no-build`: `2026-07-29T13:39:30.4900528-05:00` to `2026-07-29T13:39:41.5073024-05:00`, exit 0, the same 349 passed with 0 failed and 0 skipped.
-- Review-remediation revalidation on `2026-07-29T15:45:31-05:00`: Release build passed with 0 warnings and 0 errors; the full suite passed 358 tests (Unit 286, Security 35, SQL Server 25, Integration 3, Worker 7, PowerShell boundary 2); formatting verification passed; and EF reported no pending model changes.
+- Review-remediation revalidation on `2026-07-29T16:36:17-05:00`: Release build passed with 0 warnings and 0 errors; the full suite passed 362 tests (Unit 286, Security 35, SQL Server 29, Integration 3, Worker 7, PowerShell boundary 2); formatting verification passed; and EF reported no pending model changes.
 
 ## Web, Worker, and health validation
 

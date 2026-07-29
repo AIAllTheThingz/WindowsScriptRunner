@@ -64,6 +64,7 @@ public sealed class QueryBehaviorTests
 
         capture.Commands.Clear();
         capture.ParameterCounts.Clear();
+        capture.IsolationLevels.Clear();
         var jobRepository = new SqlJobRepository(
             context,
             NullLogger<SqlJobRepository>.Instance);
@@ -71,11 +72,16 @@ public sealed class QueryBehaviorTests
         var loadedJob = await jobRepository.GetByIdAsync(job.Id, CancellationToken.None);
 
         Assert.NotNull(loadedJob);
-        var jobCommand = Assert.Single(capture.Commands);
-        Assert.DoesNotContain(
-            job.Id.ToString(),
-            jobCommand,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(5, capture.Commands.Count);
+        Assert.All(
+            capture.IsolationLevels,
+            isolationLevel => Assert.Equal(IsolationLevel.Serializable, isolationLevel));
+        Assert.All(
+            capture.Commands,
+            command => Assert.DoesNotContain(
+                job.Id.ToString(),
+                command,
+                StringComparison.OrdinalIgnoreCase));
         Assert.Contains(capture.ParameterCounts, count => count > 0);
     }
 

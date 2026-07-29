@@ -337,6 +337,206 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
+    public async Task ConcurrentSubmissionsCanShareEnabledScript()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var firstJob = CreateDraftJobWithTarget(script, version);
+        var secondJob = CreateDraftJobWithTarget(script, version);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(firstJob, CancellationToken.None);
+            await seed.Jobs.AddAsync(secondJob, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var first = new PersistenceTestScope(database);
+        await using var second = new PersistenceTestScope(database);
+        var commitBarrier = new CommitBarrier(2);
+        var firstHandler = new SubmitJobHandler(
+            first.Jobs,
+            first.Scripts,
+            first.Audits,
+            new CoordinatedUnitOfWork(first.UnitOfWork, commitBarrier),
+            new FixedClock(firstJob.UpdatedUtc.AddMinutes(1)));
+        var secondHandler = new SubmitJobHandler(
+            second.Jobs,
+            second.Scripts,
+            second.Audits,
+            new CoordinatedUnitOfWork(second.UnitOfWork, commitBarrier),
+            new FixedClock(secondJob.UpdatedUtc.AddMinutes(1)));
+
+        await Task.WhenAll(
+            firstHandler.HandleAsync(
+                new SubmitJobCommand(firstJob.Id, SqlServerTestData.Requester),
+                CancellationToken.None),
+            secondHandler.HandleAsync(
+                new SubmitJobCommand(secondJob.Id, SqlServerTestData.Requester),
+                CancellationToken.None));
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            JobStatus.Submitted,
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(
+                    firstJob.Id,
+                    CancellationToken.None))
+                .Status);
+        Assert.Equal(
+            JobStatus.Submitted,
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(
+                    secondJob.Id,
+                    CancellationToken.None))
+                .Status);
+    }
+
+    [Fact]
+    public async Task ConcurrentExecutionStartsCanShareEnabledWorker()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var firstJob = CreateClaimedJob(script, version);
+        var secondJob = CreateClaimedJob(script, version);
+        var worker = SqlServerTestData.Worker();
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(firstJob, CancellationToken.None);
+            await seed.Jobs.AddAsync(secondJob, CancellationToken.None);
+            await seed.Workers.AddAsync(worker, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var first = new PersistenceTestScope(database);
+        await using var second = new PersistenceTestScope(database);
+        var commitBarrier = new CommitBarrier(2);
+        var firstHandler = new StartExecutionAttemptHandler(
+            first.Jobs,
+            first.Workers,
+            first.Audits,
+            new CoordinatedUnitOfWork(first.UnitOfWork, commitBarrier),
+            new FixedClock(firstJob.UpdatedUtc.AddMinutes(1)));
+        var secondHandler = new StartExecutionAttemptHandler(
+            second.Jobs,
+            second.Workers,
+            second.Audits,
+            new CoordinatedUnitOfWork(second.UnitOfWork, commitBarrier),
+            new FixedClock(secondJob.UpdatedUtc.AddMinutes(1)));
+
+        await Task.WhenAll(
+            firstHandler.HandleAsync(
+                new StartExecutionAttemptCommand(
+                    firstJob.Id,
+                    worker.Id,
+                    SqlServerTestData.Approver),
+                CancellationToken.None),
+            secondHandler.HandleAsync(
+                new StartExecutionAttemptCommand(
+                    secondJob.Id,
+                    worker.Id,
+                    SqlServerTestData.Approver),
+                CancellationToken.None));
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            JobStatus.Executing,
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(
+                    firstJob.Id,
+                    CancellationToken.None))
+                .Status);
+        Assert.Equal(
+            JobStatus.Executing,
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(
+                    secondJob.Id,
+                    CancellationToken.None))
+                .Status);
+    }
+
+    [Fact]
+    public async Task ConcurrentSecureBindingsCanShareEnabledCredential()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var parameter = SqlServerTestData.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var version = SqlServerTestData.Version([parameter]);
+        var script = SqlServerTestData.Script(version);
+        var firstJob = SqlServerTestData.DraftJob(script, version);
+        var secondJob = SqlServerTestData.DraftJob(script, version);
+        var credential = SqlServerTestData.Credential();
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(firstJob, CancellationToken.None);
+            await seed.Jobs.AddAsync(secondJob, CancellationToken.None);
+            await seed.Credentials.AddAsync(credential, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var first = new PersistenceTestScope(database);
+        await using var second = new PersistenceTestScope(database);
+        var commitBarrier = new CommitBarrier(2);
+        var firstHandler = new SetJobParameterHandler(
+            first.Jobs,
+            first.Scripts,
+            first.Credentials,
+            first.Audits,
+            new CoordinatedUnitOfWork(first.UnitOfWork, commitBarrier),
+            new FixedClock(firstJob.UpdatedUtc.AddMinutes(1)));
+        var secondHandler = new SetJobParameterHandler(
+            second.Jobs,
+            second.Scripts,
+            second.Credentials,
+            second.Audits,
+            new CoordinatedUnitOfWork(second.UnitOfWork, commitBarrier),
+            new FixedClock(secondJob.UpdatedUtc.AddMinutes(1)));
+
+        await Task.WhenAll(
+            firstHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    firstJob.Id,
+                    parameter.Name,
+                    credential.Id.ToString(),
+                    SqlServerTestData.Requester),
+                CancellationToken.None),
+            secondHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    secondJob.Id,
+                    parameter.Name,
+                    credential.Id.ToString(),
+                    SqlServerTestData.Requester),
+                CancellationToken.None));
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            credential.Id.ToString(),
+            Assert.Single(
+                Assert.IsType<Job>(
+                    await verification.Jobs.GetByIdAsync(
+                        firstJob.Id,
+                        CancellationToken.None))
+                    .Parameters)
+                .SerializedValue);
+        Assert.Equal(
+            credential.Id.ToString(),
+            Assert.Single(
+                Assert.IsType<Job>(
+                    await verification.Jobs.GetByIdAsync(
+                        secondJob.Id,
+                        CancellationToken.None))
+                    .Parameters)
+                .SerializedValue);
+    }
+
+    [Fact]
     public async Task StaleWorkerChildOnlyCommitConflicts()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
@@ -400,6 +600,18 @@ public sealed class TransactionAndConcurrencyTests
             job.UpdatedUtc.AddMinutes(1));
         job.QueueExecution(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
         job.Claim(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        return job;
+    }
+
+    private static Job CreateDraftJobWithTarget(
+        ScriptDefinition script,
+        ScriptVersion version)
+    {
+        var job = SqlServerTestData.DraftJob(script, version);
+        job.AddTarget(
+            new TargetName("server-01"),
+            SqlServerTestData.Requester,
+            job.UpdatedUtc.AddMinutes(1));
         return job;
     }
 
@@ -481,6 +693,34 @@ public sealed class TransactionAndConcurrencyTests
             }
 
             await inner.CommitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class CoordinatedUnitOfWork(
+        IUnitOfWork inner,
+        CommitBarrier commitBarrier) : IUnitOfWork
+    {
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            await commitBarrier.SignalAndWaitAsync(cancellationToken);
+            await inner.CommitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class CommitBarrier(int participantCount)
+    {
+        private readonly TaskCompletionSource<bool> allParticipantsReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int arrivals;
+
+        public async Task SignalAndWaitAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref arrivals) == participantCount)
+            {
+                allParticipantsReady.TrySetResult(true);
+            }
+
+            await allParticipantsReady.Task.WaitAsync(cancellationToken);
         }
     }
 }
