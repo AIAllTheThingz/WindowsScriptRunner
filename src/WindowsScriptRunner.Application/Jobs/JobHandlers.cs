@@ -125,25 +125,47 @@ public sealed class SetJobParameterHandler(
             cancellationToken);
         var definition = script.GetVersion(job.ScriptVersionId)
             .GetParameterDefinition(command.ParameterName);
-        var serializedValue = command.SerializedValue;
-        if (definition.ParameterType == Domain.ScriptParameterType.SecureReference)
-        {
-            serializedValue = await ResolveCredentialReferenceAsync(
-                credentialRepository,
-                command.SerializedValue,
-                cancellationToken);
-        }
-
-        definition.ValidateSerializedValue(serializedValue);
+        var suppliedValue = command.SerializedValue;
+        var isAbsent = string.IsNullOrWhiteSpace(suppliedValue);
+        definition.ValidateSerializedValue(suppliedValue);
         var now = clock.UtcNow;
-        job.SetParameterValue(definition.Name, serializedValue, command.ActingUser, now);
-        var audit = CreateDraftJobHandler.Audit(
-            "JobParameterSet",
-            job,
-            command.ActingUser,
-            now,
-            "A draft job parameter was set.",
-            CreateParameterAuditProperties(definition, serializedValue));
+
+        AuditEvent audit;
+        if (isAbsent)
+        {
+            var bindingExisted = job.ClearParameterValue(
+                definition.Name,
+                command.ActingUser,
+                now);
+            audit = CreateDraftJobHandler.Audit(
+                "JobParameterCleared",
+                job,
+                command.ActingUser,
+                now,
+                "An explicit draft job parameter binding was cleared.",
+                CreateParameterClearedAuditProperties(definition, bindingExisted));
+        }
+        else
+        {
+            var serializedValue = suppliedValue;
+            if (definition.ParameterType == Domain.ScriptParameterType.SecureReference)
+            {
+                serializedValue = await ResolveCredentialReferenceAsync(
+                    credentialRepository,
+                    suppliedValue,
+                    cancellationToken);
+            }
+
+            definition.ValidateSerializedValue(serializedValue);
+            job.SetParameterValue(definition.Name, serializedValue, command.ActingUser, now);
+            audit = CreateDraftJobHandler.Audit(
+                "JobParameterSet",
+                job,
+                command.ActingUser,
+                now,
+                "A draft job parameter was set.",
+                CreateParameterAuditProperties(definition, serializedValue));
+        }
 
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(audit, cancellationToken);
@@ -199,6 +221,19 @@ public sealed class SetJobParameterHandler(
             ["Value"] = definition.ParameterType == Domain.ScriptParameterType.SecureReference
                 ? "[REDACTED]"
                 : "[OMITTED]",
+        };
+
+    private static IReadOnlyDictionary<string, string> CreateParameterClearedAuditProperties(
+        ScriptParameterDefinition definition,
+        bool bindingExisted) =>
+        new Dictionary<string, string>
+        {
+            ["Parameter"] = definition.Name,
+            ["ParameterType"] = definition.ParameterType.ToString(),
+            ["IsSensitive"] = definition.IsSensitive.ToString(),
+            ["BindingExisted"] = bindingExisted.ToString(),
+            ["ValueProvided"] = false.ToString(),
+            ["ReferenceSupplied"] = false.ToString(),
         };
 }
 

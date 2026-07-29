@@ -52,8 +52,11 @@ public sealed class ScriptDefinition
     public void UpdateDetails(string displayName, string description, DateTimeOffset updatedUtc)
     {
         EnsureTimestamp(updatedUtc);
-        DisplayName = ValidateDisplayName(displayName);
-        Description = ValidateDescription(description);
+        var validatedDisplayName = ValidateDisplayName(displayName);
+        var validatedDescription = ValidateDescription(description);
+
+        DisplayName = validatedDisplayName;
+        Description = validatedDescription;
         UpdatedUtc = updatedUtc;
     }
 

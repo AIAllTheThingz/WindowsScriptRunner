@@ -4,7 +4,7 @@
 
 - `CreateDraftJobCommand` creates, audits, and commits a draft.
 - `AddJobTargetCommand` loads a draft and delegates target invariants to Domain.
-- `SetJobParameterCommand` locates the pinned script version, resolves the exact `ScriptParameterDefinition` by name, validates the serialized value against that definition, resolves enabled credential references for `SecureReference` parameters, stores only the canonical name/value binding, and writes bounded audit metadata instead of raw values. Parameter type and sensitivity in audit metadata come only from the pinned definition.
+- `SetJobParameterCommand` locates the pinned script version and exact `ScriptParameterDefinition` before interpreting input. Null, empty, and whitespace input is canonical absence: the pinned definition first accepts or rejects that absence, an accepted clear removes the explicit binding, and no type parsing or credential lookup occurs. Present values are validated against the pinned definition; present `SecureReference` values must be canonical non-empty IDs that resolve to enabled credential references. Stored data remains only the canonical name/value binding.
 - `SubmitJobCommand` validates targets, enabled script definition, published version, Phase 2 requested-phase support, Execute-with-DryRun support, and required/typed parameters, then captures trusted script policy.
 - `TransitionJobCommand` is restricted to explicitly enumerated operational transitions that require no separate evidence. It rejects Submitted, Approved, Rejected, Executing, Completed, and CompletedWithWarnings. If a job is Executing, PostValidation, or has an active execution attempt, terminal statuses must be recorded through `RecordExecutionOutcomeCommand` instead of the generic transition command.
 - `ApproveJobCommand` and `RejectJobCommand` record a structurally validated fingerprint, optional comment, and actor through dedicated aggregate operations. They contain no caller-selected risk.
@@ -14,6 +14,8 @@
 - `GetJobQuery` maps a job to `JobDetailResponse` by loading the pinned script definition/version and deriving parameter type, sensitivity, and redaction from the pinned definitions. Inconsistent or corrupted parameter bindings fail closed without returning raw values.
 
 Handlers load required entities, validate related references, perform the domain operation, construct safe audit events, update repositories, write success audit events, and commit only after the operation succeeds. Domain or application validation failures therefore do not produce misleading success audit records or commits.
+
+Accepted clears write `JobParameterCleared` rather than misleading set semantics. The bounded properties are parameter name, pinned type, pinned sensitivity, whether an explicit binding existed, and false value/reference-present flags. The prior serialized value, credential-reference ID, caller whitespace, external identifier, and vault path are never included. A clear command is an intentional draft mutation and updates actor/timestamp even when no binding existed. Required absence without a default fails before repository update, audit, commit, or credential lookup. Clearing a required parameter with a definition-owned default removes only the explicit override; Application does not copy the default into `JobParameter`.
 
 ## Boundaries
 
@@ -27,6 +29,6 @@ Contracts uses immutable records, GUIDs at the external boundary, string enum na
 
 Serialized `StringArray` parameter values use a JSON array of strings, for example `["server-01","server-02"]`. This representation is validated in Domain but is not passed to PowerShell in Phase 2. `SecureReference` values must use canonical GUID `D` format and represent `CredentialReferenceId`; arbitrary strings and raw secret-shaped values are rejected before storage.
 
-`JobParameter` stores only binding data: parameter name and serialized value. Future persistence must reconstruct only this binding data and validate it against the pinned immutable `ScriptVersion` before any value is exposed.
+`JobParameter` stores only explicit binding data: parameter name and a present serialized value. Future persistence must reconstruct only this binding data and validate it against the pinned immutable `ScriptVersion` before any value is exposed. Absent values are represented by no binding, never by a null, empty, or whitespace `JobParameter`.
 
 Domain and application boundaries reject undefined enum values before they can be captured into policy snapshots, job requests, parameters, approvals, execution outcomes, or operational transitions. Contract DTOs continue to expose enum names as strings; parsing and validation are expected at the eventual API boundary.

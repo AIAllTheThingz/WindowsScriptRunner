@@ -10,4 +10,6 @@ At submission, `Job` captures the trusted script-definition ID, version ID, risk
 
 The same pinned version is the sole authority for parameter type, sensitivity, allowed values, required status, and SecureReference classification. `JobParameter` stores only a parameter-name/serialized-value binding, and application response mapping must load the pinned version before exposing or redacting values. Persistence must not introduce duplicated authoritative parameter metadata.
 
+Canonical absence is null, empty, or whitespace. The pinned definition decides whether absence is valid before any type parsing or credential-reference lookup. Valid absence removes the explicit draft binding so a version-owned default can apply naturally; defaults are never copied into `JobParameter`. Only present SecureReference values are parsed and resolved, and clear audit events omit prior identifiers and values.
+
 Submission also requires the script definition to be enabled at that moment. Disabling a script definition later prevents new submissions but does not retroactively cancel already-submitted jobs in Phase 2; runtime governance for approved or queued jobs after disable is deferred.

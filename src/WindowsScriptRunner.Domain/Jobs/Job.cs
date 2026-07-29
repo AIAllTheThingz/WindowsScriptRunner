@@ -106,6 +106,12 @@ public sealed class Job
         UserIdentity actingUser,
         DateTimeOffset updatedUtc)
     {
+        if (string.IsNullOrWhiteSpace(serializedValue))
+        {
+            _ = ClearParameterValue(parameterName, actingUser, updatedUtc);
+            return;
+        }
+
         EnsureDraft();
         var replacement = new JobParameter(parameterName, serializedValue);
         ValidateMutation(actingUser, updatedUtc);
@@ -119,6 +125,27 @@ public sealed class Job
 
         _parameters.Add(replacement);
         ApplyTouch(actingUser, updatedUtc);
+    }
+
+    public bool ClearParameterValue(
+        string parameterName,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        EnsureDraft();
+        var validatedName = JobParameter.ValidateName(parameterName);
+        ValidateMutation(actingUser, updatedUtc);
+        var existing = _parameters.SingleOrDefault(parameter =>
+            string.Equals(parameter.Name, validatedName, StringComparison.OrdinalIgnoreCase));
+        var bindingExisted = existing is not null;
+
+        if (existing is not null)
+        {
+            _parameters.Remove(existing);
+        }
+
+        ApplyTouch(actingUser, updatedUtc);
+        return bindingExisted;
     }
 
     public void RemoveParameter(string name, UserIdentity actingUser, DateTimeOffset updatedUtc)

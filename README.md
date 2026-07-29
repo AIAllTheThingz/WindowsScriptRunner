@@ -46,6 +46,8 @@ dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker
 - Windows identities compare case-insensitively in Phase 2; future authentication should map users to stable SIDs or equivalent principal identifiers.
 - Secure parameters store only credential-reference IDs. External credential lookup and secret retrieval remain future Infrastructure work.
 - Job parameter type and sensitivity are never trusted from stored job-parameter metadata; responses and audit classification derive from the pinned immutable `ScriptParameterDefinition`.
+- Null, empty, and whitespace parameter input is one canonical absent value. If the pinned definition permits absence, the draft removes the explicit binding, leaves any definition-owned default in place, skips credential lookup, and writes a bounded `JobParameterCleared` audit event without the prior value.
+- Domain aggregate operations validate every proposed value before changing scalar, collection, timestamp, or child state. In particular, `ScriptDefinition.UpdateDetails` applies display name, description, and timestamp atomically.
 - Deployment documentation is planning-only.
 - The project is not production-ready.
 

@@ -412,6 +412,140 @@ No database access, PowerShell child process, job claim, or script execution occ
 - SQL Server, Entity Framework Core, migrations, repository implementations, PowerShell execution, authentication, authorization, APIs, UI additions, deployment, and all Phase 3 work: **NotRun** because they are outside this focused Phase 2 remediation.
 - GitHub Actions: **NotRun** because PR #1 reports no checks; no CI success is claimed.
 
+# Phase 2 Fifth Review Remediation
+
+All commands in this section ran from `C:\Users\mez\Documents\WindowsScriptRunner` on branch `agent/phase-2-domain-application-contracts`. This remediation fixes optional parameter clearing and atomic script-definition detail updates without adding persistence, PowerShell execution, authentication, API, UI, deployment, or Phase 3 behavior.
+
+## Baseline before editing
+
+- Command: `dotnet restore`
+- Start time: `2026-07-28T22:22:56.0081628-05:00`
+- End time: `2026-07-28T22:22:58.6427169-05:00`
+- Outcome: All projects were already restored.
+- Status: **Passed**
+
+- Command: `dotnet build --configuration Release`
+- Start time: `2026-07-28T22:22:58.6595759-05:00`
+- End time: `2026-07-28T22:23:09.5218543-05:00`
+- Outcome: Build succeeded with 0 warnings and 0 errors.
+- Status: **Passed**
+
+- Command: `dotnet test --configuration Release`
+- Start time: `2026-07-28T22:23:09.5232281-05:00`
+- End time: `2026-07-28T22:23:18.0498613-05:00`
+- Outcome: 222 tests passed: Unit 188, Security 22, Integration 3, Worker 7, PowerShell 2; 0 failed and 0 skipped.
+- Status: **Passed**
+
+- Command: `dotnet format --verify-no-changes`
+- Start time: `2026-07-28T22:23:18.0508756-05:00`
+- End time: `2026-07-28T22:23:38.8227851-05:00`
+- Outcome: No formatting changes were required.
+- Status: **Passed**
+
+## Findings and adjacent mutation audit
+
+- Optional-parameter clearing: null, empty, and whitespace are canonical absence. The pinned `ScriptParameterDefinition` accepts or rejects absence before any type parsing or credential lookup. Accepted absence removes the explicit binding through draft-only `Job.ClearParameterValue`; a clear is intentionally timestamped/audited even when already absent. Required absence without a default fails before mutation, repository update, success audit, commit, or credential lookup. A definition-owned default is never copied into `JobParameter`.
+- SecureReference ordering: only a present, pinned-definition-valid canonical non-empty `CredentialReferenceId` reaches repository lookup. Missing and disabled references remain rejected. Clear audit data contains only parameter name, pinned type/sensitivity, binding-existed, and false value/reference-present flags.
+- Atomic details: `ScriptDefinition.UpdateDetails` validates timestamp, display name, and description into locals before assigning any property. Description remains optional; null normalizes to empty under the existing contract.
+- Additional confirmed same-family defect fixed: direct `Job.SetParameterValue` calls could retain canonical absence as an explicit binding, and `JobParameter` could represent an absent explicit value. `SetParameterValue` now routes absence through aggregate clearing, while `JobParameter` rejects absent explicit bindings.
+- Methods reviewed and changed: `ScriptDefinition.UpdateDetails`, `Job.SetParameterValue`; `Job.ClearParameterValue` was added.
+- Methods reviewed with no change required: `ScriptDefinition.Enable`, `Disable`, and `AddVersion`; `ScriptVersion.AddParameterDefinition` and `Publish`; `Job.AddTarget`, `RemoveTarget`, `RemoveParameter`, `UpdateDescription`, `SetChangeReference`, `Submit`, every explicit lifecycle operation, `RecordApproval`, `RecordRejection`, `StartExecutionAttempt`, and `RecordTerminalExecutionOutcome`; `JobExecution.Start` and `Complete`; `WorkerNode.RegisterCapability`, `Enable`, `Disable`, and `RecordHeartbeat`; `CredentialReference.Enable` and `Disable`. These methods already validate all potentially throwing inputs before scalar, collection, status, timestamp, or child-state mutation.
+- Parameter trust boundary reconfirmed: `JobParameter` contains only `Name` and `SerializedValue`; no public constructor accepts `ScriptParameterType` or sensitivity; set/query handlers use the pinned version; sensitive draft/submitted/terminal values remain redacted; inconsistent bindings fail closed; `ToString` omits values.
+- Status: **Passed**
+
+## Focused remediation coverage
+
+- Command: `dotnet test .\tests\WindowsScriptRunner.UnitTests\WindowsScriptRunner.UnitTests.csproj --configuration Release --filter "FullyQualifiedName~Parameter|FullyQualifiedName~SecureReference|FullyQualifiedName~Clear"`
+- Initial start/end: `2026-07-28T22:28:49.7418553-05:00` to `2026-07-28T22:29:00.1774481-05:00`
+- Initial outcome: 65 tests passed before the explicit definition-default restoration test was added.
+- Final start/end: `2026-07-28T22:30:41.8820752-05:00` to `2026-07-28T22:30:50.4489949-05:00`
+- Final outcome: 66 tests passed, 0 failed, 0 skipped.
+- Important coverage: null/empty/whitespace optional SecureReference clearing; no credential lookup; response/audit omission of prior IDs; all optional parameter types; idempotent clearing; definition-owned defaults; required SecureReference no-mutation rejection; draft-only clearing; canonical present IDs; existing missing/disabled/enabled reference behavior; cancellation propagation; bounded audits.
+- Status: **Passed**
+
+- Command: `dotnet test .\tests\WindowsScriptRunner.UnitTests\WindowsScriptRunner.UnitTests.csproj --configuration Release --filter "FullyQualifiedName~ScriptDefinition|FullyQualifiedName~UpdateDetails|FullyQualifiedName~Atomic"`
+- Initial start/end: `2026-07-28T22:29:05.8883814-05:00` to `2026-07-28T22:29:13.4694656-05:00`
+- Final start/end: `2026-07-28T22:30:50.4652415-05:00` to `2026-07-28T22:30:58.0881853-05:00`
+- Outcome: 13 tests passed on both runs, 0 failed, 0 skipped.
+- Important coverage: valid atomic updates; null/empty/whitespace and oversized display names; valid display plus oversized description; optional null description; backward timestamps; preservation of enabled state, versions, risk, creator/creation time, and prior details; valid update after a failed attempt.
+- Status: **Passed**
+
+- Security tests: `2026-07-28T22:30:58.0895872-05:00` to `2026-07-28T22:31:06.5486720-05:00`; 22 passed, 0 failed, 0 skipped. **Passed**
+- Integration tests: `2026-07-28T22:31:06.5496654-05:00` to `2026-07-28T22:31:13.1210089-05:00`; 3 passed, 0 failed, 0 skipped. **Passed**
+- Worker tests: `2026-07-28T22:31:13.1219963-05:00` to `2026-07-28T22:31:20.5484588-05:00`; 7 passed, 0 failed, 0 skipped. **Passed**
+- PowerShell boundary tests: `2026-07-28T22:31:20.5493612-05:00` to `2026-07-28T22:31:27.1586246-05:00`; 2 passed, 0 failed, 0 skipped. **Passed**
+
+## Final restore, build, test, and formatting
+
+- Command: `dotnet restore`
+- Start/end: `2026-07-28T22:31:38.1434752-05:00` to `2026-07-28T22:31:39.9370352-05:00`
+- Outcome: All projects were already restored.
+- Status: **Passed**
+
+- Command: `dotnet build --configuration Release`
+- Start/end: `2026-07-28T22:31:39.9506730-05:00` to `2026-07-28T22:31:43.9438473-05:00`
+- Outcome: Build succeeded with 0 warnings and 0 errors.
+- Status: **Passed**
+
+- Command: `dotnet test --configuration Release`
+- Start/end: `2026-07-28T22:31:43.9452724-05:00` to `2026-07-28T22:31:51.9733500-05:00`
+- Outcome: 267 tests passed: Unit 233, Security 22, Integration 3, Worker 7, PowerShell 2; 0 failed and 0 skipped.
+- Status: **Passed**
+
+- Command: `dotnet format`
+- Start/end: `2026-07-28T22:31:51.9743815-05:00` to `2026-07-28T22:32:13.0275684-05:00`
+- Outcome: Formatting completed successfully.
+- Status: **Passed**
+
+- Command: `dotnet format --verify-no-changes`
+- Start/end: `2026-07-28T22:32:13.0286189-05:00` to `2026-07-28T22:32:34.0153143-05:00`
+- Outcome: No formatting changes remained.
+- Status: **Passed**
+
+- Command: `dotnet build --configuration Release --no-restore`
+- Start/end: `2026-07-28T22:32:34.0162519-05:00` to `2026-07-28T22:32:37.8855862-05:00`
+- Outcome: Build succeeded with 0 warnings and 0 errors.
+- Status: **Passed**
+
+- Command: `dotnet test --configuration Release --no-build`
+- Start/end: `2026-07-28T22:32:37.8865343-05:00` to `2026-07-28T22:32:41.9010234-05:00`
+- Outcome: The same 267 tests passed with 0 failed and 0 skipped.
+- Status: **Passed**
+
+## Web startup and endpoints
+
+- Command: `dotnet run --project .\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj`
+- Recorded start/end: `2026-07-28T22:36:06.8227011-05:00` to `2026-07-28T22:36:29.8166207-05:00`
+- Outcome: `/`, `/Scripts`, `/Jobs`, `/Workers`, `/Audit`, `/Administration`, and `/health` each returned HTTP 200. Startup output contained only normal hosting messages plus the expected HTTPS-port warning; it contained no parameter value, credential value, database access, or PowerShell launch. The verified Web PID was stopped and no port 5093 listener remained.
+- Limitations: TTY creation was blocked with Windows `Access is denied`, and this backend cannot deliver Ctrl+C to the non-interactive process. Graceful cancellation was therefore **Blocked**; exact-process cleanup passed. The `dotnet run` wrapper exited nonzero after its verified child was stopped.
+- Status: **Passed**
+
+## Worker startup and shutdown
+
+- Command: `dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker.csproj`, with validation-only `Worker__HeartbeatIntervalSeconds=1`
+- Recorded start/end: `2026-07-28T22:36:36.9249245-05:00` to `2026-07-28T22:37:04.5623596-05:00`
+- Outcome: Worker logged `Windows Script Runner worker started.`, the phase-neutral `Job execution is not implemented in the current scaffold.`, and repeated heartbeat messages. It did not access a database, launch PowerShell, claim work, or execute a job. The verified Worker PID was stopped and no matching Worker process remained.
+- Limitations: The backend cannot deliver Ctrl+C to the non-interactive process. Graceful cancellation was **Blocked**; existing cancellation and unexpected-failure Worker tests passed, and exact-process cleanup passed. The `dotnet run` wrapper exited nonzero after its verified child was stopped.
+- Status: **Passed**
+
+## Architecture and source/process validation
+
+- Command: production/source trust-boundary scan, runtime process scan, and `git diff --check`
+- Start/end: `2026-07-28T22:37:23.8077230-05:00` to `2026-07-28T22:37:25.1815499-05:00`
+- Outcome: No production source match was found for SQL/EF/database implementations, `System.Management.Automation`, or process-launch APIs. No stale `JobParameter.IsSensitive`, `JobParameter.ParameterType`, `GetSafeDisplayValue`, definition-accepting set method, or three-argument `JobParameter` construction was found. The expected pinned lookup/set/clear APIs were present. Port 5093 listeners, Web processes, and Worker processes were all zero. `git diff --check` passed with only normal LF-to-CRLF working-copy warnings.
+- Status: **Passed**
+
+## Corrected intermediate failures and blocked items
+
+- The first bundled GitHub thread fetch used the Windows cp1252 default and failed to decode `gh` output. Forcing `PYTHONUTF8=1` corrected the harness issue; the authoritative fetch then confirmed exactly two unresolved current review threads. Initial fetch: **Failed**; corrected fetch: **Passed**.
+- The first TTY Web launch was rejected before process creation with `Access is denied`. The non-interactive launch and all routes passed. TTY launch: **Blocked**.
+- An auxiliary Web process-inspection expression repeated a no-listener CIM error after the already-verified Web PID had been stopped. It eventually exited, and the dedicated source/process scan confirmed zero listeners/processes. Auxiliary inspection: **Failed**; final cleanup verification: **Passed**.
+- A hidden `Start-Process` validation wrapper was rejected by execution policy before launch; no log file or process was created. The timestamped non-interactive validation replaced it. Wrapper: **Blocked**.
+- Graceful Ctrl+C delivery for Web and Worker: **Blocked** by the command backend. Exact verified-process cleanup: **Passed**.
+- Product code/tests: no failed items remain.
+- GitHub Actions: **NotRun** because PR #1 has no attached checks; no CI success is claimed.
+- SQL Server, Entity Framework Core, migrations, repository implementations, job polling/claiming, PowerShell execution, authentication, authorization, external vault retrieval, APIs, UI features, deployment automation, and all Phase 3 work: **NotRun** because they are outside this remediation scope.
+
 # Phase 2 Second Review Remediation
 
 Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from `C:\Users\mez\Documents\WindowsScriptRunner` unless otherwise noted.

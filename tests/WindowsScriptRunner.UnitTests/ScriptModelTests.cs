@@ -25,6 +25,125 @@ public sealed class ScriptModelTests
     }
 
     [Fact]
+    public void ScriptDefinitionUpdateDetailsAppliesAllValuesAtomically()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        var updatedUtc = TestDomainFactory.Time.AddMinutes(1);
+
+        script.UpdateDetails(" Updated Script ", " Updated description ", updatedUtc);
+
+        Assert.Equal("Updated Script", script.DisplayName);
+        Assert.Equal("Updated description", script.Description);
+        Assert.Equal(updatedUtc, script.UpdatedUtc);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public void InvalidDisplayNameLeavesEntireScriptDefinitionUnchanged(string? displayName)
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        script.Disable(TestDomainFactory.Time.AddMinutes(1));
+        var before = Capture(script);
+
+        Assert.Throws<DomainValidationException>(
+            () => script.UpdateDetails(
+                displayName!,
+                "Otherwise valid",
+                before.UpdatedUtc.AddMinutes(1)));
+
+        AssertUnchanged(script, before);
+    }
+
+    [Fact]
+    public void OversizedDisplayNameLeavesEntireScriptDefinitionUnchanged()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version(), RiskLevel.High);
+        var before = Capture(script);
+
+        Assert.Throws<DomainValidationException>(
+            () => script.UpdateDetails(
+                new string('d', 201),
+                "Otherwise valid",
+                before.UpdatedUtc.AddMinutes(1)));
+
+        AssertUnchanged(script, before);
+    }
+
+    [Fact]
+    public void InvalidDescriptionAfterValidDisplayNameLeavesEntireScriptDefinitionUnchanged()
+    {
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version, RiskLevel.Critical);
+        script.Disable(TestDomainFactory.Time.AddMinutes(1));
+        var before = Capture(script);
+
+        Assert.Throws<DomainValidationException>(
+            () => script.UpdateDetails(
+                "This valid name must not be assigned",
+                new string('d', 2001),
+                before.UpdatedUtc.AddMinutes(1)));
+
+        AssertUnchanged(script, before);
+    }
+
+    [Fact]
+    public void NullDescriptionAtRuntimeRemainsAValidOptionalValue()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        var updatedUtc = TestDomainFactory.Time.AddMinutes(1);
+
+        script.UpdateDetails("Updated Script", null!, updatedUtc);
+
+        Assert.Equal("Updated Script", script.DisplayName);
+        Assert.Equal(string.Empty, script.Description);
+        Assert.Equal(updatedUtc, script.UpdatedUtc);
+    }
+
+    [Fact]
+    public void BackwardUpdateDetailsTimestampLeavesEntireScriptDefinitionUnchanged()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        script.Disable(TestDomainFactory.Time.AddMinutes(1));
+        var before = Capture(script);
+
+        Assert.Throws<DomainValidationException>(
+            () => script.UpdateDetails(
+                "Updated Script",
+                "Updated description",
+                before.UpdatedUtc.AddTicks(-1)));
+
+        AssertUnchanged(script, before);
+    }
+
+    [Fact]
+    public void ValidScriptDefinitionUpdateSucceedsAfterFailedAttempt()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        var before = Capture(script);
+
+        Assert.Throws<DomainValidationException>(
+            () => script.UpdateDetails(
+                "Not applied",
+                new string('d', 2001),
+                before.UpdatedUtc.AddMinutes(1)));
+        AssertUnchanged(script, before);
+
+        var updatedUtc = before.UpdatedUtc.AddMinutes(2);
+        script.UpdateDetails("Applied", "Valid description", updatedUtc);
+
+        Assert.Equal("Applied", script.DisplayName);
+        Assert.Equal("Valid description", script.Description);
+        Assert.Equal(updatedUtc, script.UpdatedUtc);
+        Assert.Equal(before.IsEnabled, script.IsEnabled);
+        Assert.Equal(before.Versions, script.Versions);
+        Assert.Equal(before.RiskLevel, script.RiskLevel);
+        Assert.Equal(before.CreatedUtc, script.CreatedUtc);
+        Assert.Equal(before.CreatedBy, script.CreatedBy);
+    }
+
+    [Fact]
     public void DuplicateVersionNumberIsRejected()
     {
         var script = TestDomainFactory.Script(TestDomainFactory.Version());
@@ -273,4 +392,45 @@ public sealed class ScriptModelTests
                 null,
                 TestDomainFactory.Fingerprint));
     }
+
+    private static ScriptDefinitionState Capture(ScriptDefinition script) =>
+        new(
+            script.Id,
+            script.Name,
+            script.DisplayName,
+            script.Description,
+            script.RiskLevel,
+            script.IsEnabled,
+            script.CreatedBy,
+            script.CreatedUtc,
+            script.UpdatedUtc,
+            script.Versions.ToArray());
+
+    private static void AssertUnchanged(
+        ScriptDefinition script,
+        ScriptDefinitionState before)
+    {
+        Assert.Equal(before.Id, script.Id);
+        Assert.Equal(before.Name, script.Name);
+        Assert.Equal(before.DisplayName, script.DisplayName);
+        Assert.Equal(before.Description, script.Description);
+        Assert.Equal(before.RiskLevel, script.RiskLevel);
+        Assert.Equal(before.IsEnabled, script.IsEnabled);
+        Assert.Equal(before.CreatedBy, script.CreatedBy);
+        Assert.Equal(before.CreatedUtc, script.CreatedUtc);
+        Assert.Equal(before.UpdatedUtc, script.UpdatedUtc);
+        Assert.Equal(before.Versions, script.Versions);
+    }
+
+    private sealed record ScriptDefinitionState(
+        ScriptDefinitionId Id,
+        ScriptName Name,
+        string DisplayName,
+        string Description,
+        RiskLevel RiskLevel,
+        bool IsEnabled,
+        UserIdentity CreatedBy,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset UpdatedUtc,
+        ScriptVersion[] Versions);
 }

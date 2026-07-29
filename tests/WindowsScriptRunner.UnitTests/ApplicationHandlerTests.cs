@@ -99,7 +99,7 @@ public sealed class ApplicationHandlerTests
             sensitive: true);
         var fixture = HandlerFixture.WithDraftJob(definition);
 
-        await Assert.ThrowsAsync<ApplicationValidationException>(
+        await Assert.ThrowsAsync<Domain.Exceptions.InvalidJobParameterException>(
             () => fixture.SetParameterHandler.HandleAsync(
                 new SetJobParameterCommand(
                     fixture.Jobs.Job!.Id,
@@ -183,6 +183,279 @@ public sealed class ApplicationHandlerTests
             source.Token);
 
         Assert.Contains(source.Token, fixture.Credentials.ObservedTokens);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public async Task OptionalSecureReferenceCanBeClearedWithoutCredentialLookup(string? absentValue)
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var previousId = CredentialReferenceId.New().ToString();
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            previousId,
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        using var source = new CancellationTokenSource();
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job.Id,
+                definition.Name,
+                absentValue,
+                TestDomainFactory.OtherUser),
+            source.Token);
+        var response = await fixture.GetHandler.HandleAsync(
+            new GetJobQuery(fixture.Jobs.Job.Id),
+            source.Token);
+
+        Assert.Empty(fixture.Jobs.Job.Parameters);
+        Assert.Empty(response.Parameters);
+        Assert.DoesNotContain(previousId, response.ToString(), StringComparison.Ordinal);
+        Assert.Empty(fixture.Credentials.ObservedTokens);
+        Assert.Equal(fixture.Clock.UtcNow, fixture.Jobs.Job.UpdatedUtc);
+        Assert.Equal(TestDomainFactory.OtherUser, fixture.Jobs.Job.LastActingUser);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        Assert.Contains(source.Token, fixture.Jobs.ObservedTokens);
+        Assert.Contains(source.Token, fixture.Scripts.ObservedTokens);
+
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal("JobParameterCleared", audit.EventType);
+        Assert.Equal("Credential", audit.Properties["Parameter"]);
+        Assert.Equal("SecureReference", audit.Properties["ParameterType"]);
+        Assert.Equal("True", audit.Properties["IsSensitive"]);
+        Assert.Equal("True", audit.Properties["BindingExisted"]);
+        Assert.Equal("False", audit.Properties["ValueProvided"]);
+        Assert.Equal("False", audit.Properties["ReferenceSupplied"]);
+        Assert.DoesNotContain(previousId, string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ScriptParameterType.String, "stale-string", null)]
+    [InlineData(ScriptParameterType.String, "stale-string", "")]
+    [InlineData(ScriptParameterType.String, "stale-string", " \t ")]
+    [InlineData(ScriptParameterType.StringArray, "[\"stale\"]", null)]
+    [InlineData(ScriptParameterType.StringArray, "[\"stale\"]", "")]
+    [InlineData(ScriptParameterType.StringArray, "[\"stale\"]", " \t ")]
+    [InlineData(ScriptParameterType.Integer, "42", null)]
+    [InlineData(ScriptParameterType.Integer, "42", "")]
+    [InlineData(ScriptParameterType.Integer, "42", " \t ")]
+    [InlineData(ScriptParameterType.Boolean, "true", null)]
+    [InlineData(ScriptParameterType.Boolean, "true", "")]
+    [InlineData(ScriptParameterType.Boolean, "true", " \t ")]
+    [InlineData(ScriptParameterType.DateTime, "2026-07-28T12:00:00+00:00", null)]
+    [InlineData(ScriptParameterType.DateTime, "2026-07-28T12:00:00+00:00", "")]
+    [InlineData(ScriptParameterType.DateTime, "2026-07-28T12:00:00+00:00", " \t ")]
+    [InlineData(ScriptParameterType.Enum, "Safe", null)]
+    [InlineData(ScriptParameterType.Enum, "Safe", "")]
+    [InlineData(ScriptParameterType.Enum, "Safe", " \t ")]
+    public async Task OptionalParameterAbsentValueClearsExplicitBinding(
+        ScriptParameterType parameterType,
+        string previousValue,
+        string? absentValue)
+    {
+        var allowedValues = parameterType == ScriptParameterType.Enum
+            ? new[] { "Safe", "Fast" }
+            : null;
+        var definition = TestDomainFactory.Parameter(
+            "OptionalValue",
+            parameterType,
+            allowedValues: allowedValues);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            previousValue,
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job.Id,
+                definition.Name,
+                absentValue,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Empty(fixture.Jobs.Job.Parameters);
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal("JobParameterCleared", audit.EventType);
+        Assert.Equal(parameterType.ToString(), audit.Properties["ParameterType"]);
+        Assert.Equal("True", audit.Properties["BindingExisted"]);
+        Assert.DoesNotContain(previousValue, string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ClearingAlreadyAbsentOptionalParameterIsSafeAndAudited()
+    {
+        var definition = TestDomainFactory.Parameter("OptionalValue");
+        var fixture = HandlerFixture.WithDraftJob(definition);
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job!.Id,
+                definition.Name,
+                null,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Empty(fixture.Jobs.Job.Parameters);
+        Assert.Equal(fixture.Clock.UtcNow, fixture.Jobs.Job.UpdatedUtc);
+        Assert.Equal(TestDomainFactory.OtherUser, fixture.Jobs.Job.LastActingUser);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal("JobParameterCleared", audit.EventType);
+        Assert.Equal("False", audit.Properties["BindingExisted"]);
+    }
+
+    [Fact]
+    public async Task ClearingRequiredParameterWithDefaultRestoresDefinitionOwnedDefault()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "RetryCount",
+            ScriptParameterType.Integer,
+            required: true,
+            defaultValue: "3");
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            "7",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job.Id,
+                definition.Name,
+                null,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Empty(fixture.Jobs.Job.Parameters);
+        Assert.Equal("3", definition.DefaultValue);
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal("JobParameterCleared", audit.EventType);
+        Assert.Equal("True", audit.Properties["BindingExisted"]);
+        Assert.DoesNotContain("3", audit.Properties.Values);
+        Assert.DoesNotContain("7", audit.Properties.Values);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public async Task RequiredSecureReferenceAbsenceIsRejectedBeforeLookupWithoutMutation(
+        string? absentValue)
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var previousId = CredentialReferenceId.New().ToString();
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            previousId,
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        var updatedUtc = fixture.Jobs.Job.UpdatedUtc;
+        var lastActingUser = fixture.Jobs.Job.LastActingUser;
+
+        await Assert.ThrowsAsync<Domain.Exceptions.InvalidJobParameterException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job.Id,
+                    definition.Name,
+                    absentValue,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        var parameter = Assert.Single(fixture.Jobs.Job.Parameters);
+        Assert.Equal(previousId, parameter.SerializedValue);
+        Assert.Equal(updatedUtc, fixture.Jobs.Job.UpdatedUtc);
+        Assert.Equal(lastActingUser, fixture.Jobs.Job.LastActingUser);
+        Assert.Empty(fixture.Credentials.ObservedTokens);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task OptionalParameterClearRemainsDraftOnly()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            sensitive: true);
+        var version = TestDomainFactory.Version([definition]);
+        var script = TestDomainFactory.Script(version);
+        var previousId = CredentialReferenceId.New().ToString();
+        var fixture = new HandlerFixture
+        {
+            Scripts = { Script = script },
+            Jobs =
+            {
+                Job = TestDomainFactory.SubmittedJob(
+                    script,
+                    version,
+                    [(definition, previousId)]),
+            },
+        };
+        var updatedUtc = fixture.Jobs.Job!.UpdatedUtc;
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job.Id,
+                    definition.Name,
+                    null,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(previousId, Assert.Single(fixture.Jobs.Job.Parameters).SerializedValue);
+        Assert.Equal(updatedUtc, fixture.Jobs.Job.UpdatedUtc);
+        Assert.Empty(fixture.Credentials.ObservedTokens);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task PresentSecureReferenceMustBeCanonicalBeforeCredentialLookup()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var nonCanonical = new CredentialReferenceId(
+            Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+            .ToString()
+            .ToUpperInvariant();
+
+        await Assert.ThrowsAsync<Domain.Exceptions.InvalidJobParameterException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job!.Id,
+                    definition.Name,
+                    nonCanonical,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Empty(fixture.Credentials.ObservedTokens);
+        Assert.Empty(fixture.Jobs.Job!.Parameters);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]

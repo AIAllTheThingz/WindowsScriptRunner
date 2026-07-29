@@ -12,7 +12,11 @@ public sealed class JobParameter
     public JobParameter(string name, string? serializedValue)
     {
         Name = ValidateName(name);
-        SerializedValue = serializedValue;
+        SerializedValue = string.IsNullOrWhiteSpace(serializedValue)
+            ? throw new InvalidJobParameterException(
+                Name,
+                "an explicit parameter binding requires a value.")
+            : serializedValue;
     }
 
     public string Name { get; }
@@ -20,7 +24,7 @@ public sealed class JobParameter
 
     public override string ToString() => $"{Name}=[VALUE OMITTED]";
 
-    private static string ValidateName(string value)
+    internal static string ValidateName(string value)
     {
         var name = value?.Trim();
         if (string.IsNullOrWhiteSpace(name) || !NamePattern.IsMatch(name))

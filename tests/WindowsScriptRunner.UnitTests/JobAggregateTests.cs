@@ -90,6 +90,104 @@ public sealed class JobAggregateTests
         Assert.DoesNotContain(replacementId, parameter.ToString(), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public void SetParameterValueTreatsAbsentInputAsAnIdempotentClear(string? absentValue)
+    {
+        var version = TestDomainFactory.Version([TestDomainFactory.Parameter("Mode")]);
+        var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
+        job.SetParameterValue(
+            "Mode",
+            "Safe",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        var clearedUtc = TestDomainFactory.Time.AddMinutes(2);
+
+        job.SetParameterValue(
+            "mode",
+            absentValue,
+            TestDomainFactory.OtherUser,
+            clearedUtc);
+
+        Assert.Empty(job.Parameters);
+        Assert.Equal(clearedUtc, job.UpdatedUtc);
+        Assert.Equal(TestDomainFactory.OtherUser, job.LastActingUser);
+    }
+
+    [Fact]
+    public void ClearParameterValueIsCaseInsensitiveAndIntentionallyTouchesIdempotentCommands()
+    {
+        var version = TestDomainFactory.Version([TestDomainFactory.Parameter("Mode")]);
+        var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
+        job.SetParameterValue(
+            "Mode",
+            "Safe",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        var bindingExisted = job.ClearParameterValue(
+            "mode",
+            TestDomainFactory.OtherUser,
+            TestDomainFactory.Time.AddMinutes(2));
+        var absentBindingExisted = job.ClearParameterValue(
+            "MODE",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(3));
+
+        Assert.True(bindingExisted);
+        Assert.False(absentBindingExisted);
+        Assert.Empty(job.Parameters);
+        Assert.Equal(TestDomainFactory.Time.AddMinutes(3), job.UpdatedUtc);
+        Assert.Equal(TestDomainFactory.User, job.LastActingUser);
+    }
+
+    [Fact]
+    public void FailedClearParameterValueLeavesBindingActorAndTimestampUnchanged()
+    {
+        var version = TestDomainFactory.Version([TestDomainFactory.Parameter("Mode")]);
+        var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
+        job.SetParameterValue(
+            "Mode",
+            "Safe",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        var updatedUtc = job.UpdatedUtc;
+        var lastActingUser = job.LastActingUser;
+        var binding = Assert.Single(job.Parameters);
+
+        Assert.Throws<InvalidJobParameterException>(
+            () => job.ClearParameterValue(
+                "invalid-name",
+                TestDomainFactory.OtherUser,
+                updatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.ClearParameterValue(
+                "Mode",
+                null!,
+                updatedUtc.AddMinutes(1)));
+        Assert.Throws<DomainValidationException>(
+            () => job.ClearParameterValue(
+                "Mode",
+                TestDomainFactory.OtherUser,
+                updatedUtc.AddTicks(-1)));
+
+        Assert.Same(binding, Assert.Single(job.Parameters));
+        Assert.Equal(updatedUtc, job.UpdatedUtc);
+        Assert.Equal(lastActingUser, job.LastActingUser);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public void JobParameterRejectsAbsentExplicitBindings(string? absentValue)
+    {
+        Assert.Throws<InvalidJobParameterException>(
+            () => new JobParameter("Mode", absentValue));
+    }
+
     [Fact]
     public void SubmissionRequiresTargetWithoutMutatingPolicyOrStatus()
     {
