@@ -278,6 +278,19 @@ public sealed class ScriptModelTests
             () => TestDomainFactory.Parameter("When", ScriptParameterType.DateTime, defaultValue: "tomorrow"));
     }
 
+    [Theory]
+    [InlineData("[null]")]
+    [InlineData("[\"server-01\",null]")]
+    public void StringArraysRejectNullElements(string serializedValue)
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Targets",
+            ScriptParameterType.StringArray);
+
+        Assert.Throws<InvalidJobParameterException>(
+            () => definition.ValidateSerializedValue(serializedValue));
+    }
+
     [Fact]
     public void EnumAndSecureReferenceRulesAreEnforced()
     {

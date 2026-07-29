@@ -48,6 +48,11 @@ public sealed record CompleteValidationJobCommand(JobId JobId, UserIdentity Acti
 
 public sealed record CompleteDryRunJobCommand(JobId JobId, UserIdentity ActingUser);
 
+public sealed record StartExecutionAttemptCommand(
+    JobId JobId,
+    WorkerNodeId? WorkerNodeId,
+    UserIdentity ActingUser);
+
 public sealed record RecordExecutionOutcomeCommand(
     JobId JobId,
     ExecutionOutcome Outcome,

@@ -528,6 +528,44 @@ public sealed class CompleteDryRunJobHandler(
     }
 }
 
+public sealed class StartExecutionAttemptHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IClock clock)
+{
+    public async Task HandleAsync(
+        StartExecutionAttemptCommand command,
+        CancellationToken cancellationToken)
+    {
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = clock.UtcNow;
+        var execution = job.StartExecutionAttempt(
+            command.WorkerNodeId,
+            command.ActingUser,
+            now);
+        var audit = CreateDraftJobHandler.Audit(
+            "ExecutionAttemptStarted",
+            job,
+            command.ActingUser,
+            now,
+            "A job execution attempt was started.",
+            new Dictionary<string, string>
+            {
+                ["AttemptNumber"] = execution.AttemptNumber.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                ["WorkerNodeIdPresent"] = (execution.WorkerNodeId is not null).ToString(),
+            });
+
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(audit, cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+    }
+}
+
 public sealed class RecordExecutionOutcomeHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,

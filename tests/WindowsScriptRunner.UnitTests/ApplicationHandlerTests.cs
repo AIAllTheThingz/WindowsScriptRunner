@@ -939,6 +939,55 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
+    [Fact]
+    public async Task StartExecutionAttemptHandlerCreatesAuditsPersistsAndCommitsAttempt()
+    {
+        var fixture = HandlerFixture.WithClaimedJob();
+        var workerNodeId = WorkerNodeId.New();
+        using var source = new CancellationTokenSource();
+
+        await fixture.StartExecutionAttemptHandler.HandleAsync(
+            new StartExecutionAttemptCommand(
+                fixture.Jobs.Job!.Id,
+                workerNodeId,
+                TestDomainFactory.OtherUser),
+            source.Token);
+
+        var execution = Assert.Single(fixture.Jobs.Job.Executions);
+        var audit = Assert.Single(fixture.Audits.Events);
+        Assert.Equal(JobStatus.Executing, fixture.Jobs.Job.Status);
+        Assert.Equal(1, execution.AttemptNumber);
+        Assert.Equal(workerNodeId, execution.WorkerNodeId);
+        Assert.Equal(fixture.Clock.UtcNow, execution.StartedUtc);
+        Assert.Null(execution.CompletedUtc);
+        Assert.Equal("ExecutionAttemptStarted", audit.EventType);
+        Assert.Equal("1", audit.Properties["AttemptNumber"]);
+        Assert.Equal("True", audit.Properties["WorkerNodeIdPresent"]);
+        Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
+    }
+
+    [Fact]
+    public async Task StartExecutionAttemptHandlerDoesNotPersistWhenJobIsNotClaimed()
+    {
+        var fixture = HandlerFixture.WithSubmittedJob();
+
+        await Assert.ThrowsAsync<Domain.Exceptions.InvalidJobStateTransitionException>(
+            () => fixture.StartExecutionAttemptHandler.HandleAsync(
+                new StartExecutionAttemptCommand(
+                    fixture.Jobs.Job!.Id,
+                    null,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Submitted, fixture.Jobs.Job!.Status);
+        Assert.Empty(fixture.Jobs.Job.Executions);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
     [Theory]
     [InlineData(ExecutionOutcome.Failed, JobStatus.Failed, 1)]
     [InlineData(ExecutionOutcome.Cancelled, JobStatus.Cancelled, null)]
@@ -1096,6 +1145,7 @@ public sealed class ApplicationHandlerTests
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            StartExecutionAttemptHandler = new StartExecutionAttemptHandler(Jobs, Audits, UnitOfWork, Clock);
             RecordExecutionOutcomeHandler = new RecordExecutionOutcomeHandler(Jobs, Audits, UnitOfWork, Clock);
             GetHandler = new GetJobHandler(Jobs, Scripts);
         }
@@ -1116,6 +1166,7 @@ public sealed class ApplicationHandlerTests
         public CompleteReadOnlyJobHandler CompleteReadOnlyHandler { get; }
         public CompleteValidationJobHandler CompleteValidationHandler { get; }
         public CompleteDryRunJobHandler CompleteDryRunHandler { get; }
+        public StartExecutionAttemptHandler StartExecutionAttemptHandler { get; }
         public RecordExecutionOutcomeHandler RecordExecutionOutcomeHandler { get; }
         public GetJobHandler GetHandler { get; }
         public IEnumerable<CancellationToken> ObservedTokens =>
@@ -1155,6 +1206,23 @@ public sealed class ApplicationHandlerTests
         {
             var fixture = WithSubmittedJob(riskLevel);
             TestDomainFactory.AdvanceToAwaitingApproval(fixture.Jobs.Job!);
+            return fixture;
+        }
+
+        public static HandlerFixture WithClaimedJob()
+        {
+            var fixture = WithAwaitingApprovalJob();
+            fixture.Jobs.Job!.RecordApproval(
+                TestDomainFactory.OtherUser,
+                TestDomainFactory.Fingerprint,
+                null,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job.QueueExecution(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job.Claim(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
             return fixture;
         }
 

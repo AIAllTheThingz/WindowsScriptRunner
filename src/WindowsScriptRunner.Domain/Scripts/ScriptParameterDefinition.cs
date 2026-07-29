@@ -152,7 +152,8 @@ public sealed class ScriptParameterDefinition
     {
         try
         {
-            return JsonSerializer.Deserialize<string[]>(serializedValue) is not null;
+            var values = JsonSerializer.Deserialize<string?[]>(serializedValue);
+            return values is not null && values.All(value => value is not null);
         }
         catch (JsonException)
         {
