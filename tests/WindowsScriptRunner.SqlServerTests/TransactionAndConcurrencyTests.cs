@@ -225,6 +225,57 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
+    public async Task ExecutionStartRevalidatesWorkerAfterConcurrentDisable()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var job = CreateClaimedJob(script, version);
+        var worker = SqlServerTestData.Worker();
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(job, CancellationToken.None);
+            await seed.Workers.AddAsync(worker, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using (var execution = new PersistenceTestScope(database))
+        {
+            var handler = new StartExecutionAttemptHandler(
+                execution.Jobs,
+                execution.Workers,
+                execution.Audits,
+                new ConcurrentWorkerDisableUnitOfWork(
+                    database,
+                    execution.UnitOfWork,
+                    worker.Id),
+                new FixedClock(job.UpdatedUtc.AddMinutes(1)));
+
+            await Assert.ThrowsAsync<ApplicationConflictException>(
+                () => handler.HandleAsync(
+                    new StartExecutionAttemptCommand(
+                        job.Id,
+                        worker.Id,
+                        SqlServerTestData.Approver),
+                    CancellationToken.None));
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        var persistedJob = Assert.IsType<Job>(
+            await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
+        Assert.Equal(JobStatus.Claimed, persistedJob.Status);
+        Assert.Empty(persistedJob.Executions);
+        Assert.False(
+            Assert.IsType<WorkerNode>(
+                await verification.Workers.GetByIdAsync(worker.Id, CancellationToken.None))
+                .IsEnabled);
+        Assert.False(await verification.Context.AuditEvents.AnyAsync(
+            item => item.EventType == "ExecutionAttemptStarted" &&
+                item.EntityId == job.Id.ToString()));
+    }
+
+    [Fact]
     public async Task StaleWorkerChildOnlyCommitConflicts()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
@@ -271,6 +322,26 @@ public sealed class TransactionAndConcurrencyTests
         await seed.UnitOfWork.CommitAsync(CancellationToken.None);
     }
 
+    private static Job CreateClaimedJob(
+        ScriptDefinition script,
+        ScriptVersion version)
+    {
+        var job = SqlServerTestData.SubmittedJob(script, version);
+        job.MarkValidated(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.QueueDryRun(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.StartDryRun(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.CompleteDryRun(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.RequireApproval(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.RecordApproval(
+            SqlServerTestData.Approver,
+            SqlServerTestData.Fingerprint,
+            null,
+            job.UpdatedUtc.AddMinutes(1));
+        job.QueueExecution(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.Claim(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        return job;
+    }
+
     private static AuditEvent Audit(string eventType, JobId jobId) =>
         new(
             AuditEventId.New(),
@@ -301,6 +372,28 @@ public sealed class TransactionAndConcurrencyTests
                         cancellationToken));
                 script.Disable(script.UpdatedUtc.AddMinutes(1));
                 await competing.Scripts.UpdateAsync(script, cancellationToken);
+                await competing.UnitOfWork.CommitAsync(cancellationToken);
+            }
+
+            await inner.CommitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class ConcurrentWorkerDisableUnitOfWork(
+        SqlServerDatabase database,
+        IUnitOfWork inner,
+        WorkerNodeId workerNodeId) : IUnitOfWork
+    {
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            await using (var competing = new PersistenceTestScope(database))
+            {
+                var worker = Assert.IsType<WorkerNode>(
+                    await competing.Workers.GetByIdAsync(
+                        workerNodeId,
+                        cancellationToken));
+                worker.Disable();
+                await competing.Workers.UpdateAsync(worker, cancellationToken);
                 await competing.UnitOfWork.CommitAsync(cancellationToken);
             }
 

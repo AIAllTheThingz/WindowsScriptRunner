@@ -596,9 +596,10 @@ public sealed class StartExecutionAttemptHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
+        WorkerNode? workerNode = null;
         if (command.WorkerNodeId is not null)
         {
-            var workerNode = await workerNodeRepository.GetByIdAsync(
+            workerNode = await workerNodeRepository.GetByIdAsync(
                 command.WorkerNodeId,
                 cancellationToken);
             if (workerNode is null)
@@ -631,6 +632,11 @@ public sealed class StartExecutionAttemptHandler(
             });
 
         await jobRepository.UpdateAsync(job, cancellationToken);
+        if (workerNode is not null)
+        {
+            await workerNodeRepository.UpdateAsync(workerNode, cancellationToken);
+        }
+
         await auditWriter.WriteAsync(audit, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }

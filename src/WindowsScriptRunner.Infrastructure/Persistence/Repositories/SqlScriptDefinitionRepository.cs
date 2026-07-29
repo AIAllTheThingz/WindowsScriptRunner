@@ -21,26 +21,41 @@ public sealed class SqlScriptDefinitionRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var entity = await SqlExceptionTranslator.ExecuteAsync(
-            async () =>
+        var entity = FindTracked(id.Value);
+        if (entity is null)
+        {
+            var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+            entity = await SqlExceptionTranslator.ExecuteAsync(
+                () => executionStrategy.ExecuteAsync(
+                    async strategyCancellationToken =>
+                    {
+                        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                            IsolationLevel.Serializable,
+                            strategyCancellationToken);
+                        var result = await dbContext.ScriptDefinitions
+                            .Include(item => item.Versions)
+                                .ThenInclude(item => item.SupportedPhases)
+                            .Include(item => item.Versions)
+                                .ThenInclude(item => item.SupportedReportFormats)
+                            .Include(item => item.Versions)
+                                .ThenInclude(item => item.ParameterDefinitions)
+                                    .ThenInclude(item => item.AllowedValues)
+                            .AsNoTrackingWithIdentityResolution()
+                            .AsSplitQuery()
+                            .SingleOrDefaultAsync(
+                                item => item.Id == id.Value,
+                                strategyCancellationToken);
+                        await transaction.CommitAsync(strategyCancellationToken);
+                        return result;
+                    },
+                    cancellationToken),
+                logger);
+            if (entity is not null)
             {
-                await using var transaction = await dbContext.Database.BeginTransactionAsync(
-                    IsolationLevel.Serializable,
-                    cancellationToken);
-                var result = await dbContext.ScriptDefinitions
-                    .Include(item => item.Versions)
-                        .ThenInclude(item => item.SupportedPhases)
-                    .Include(item => item.Versions)
-                        .ThenInclude(item => item.SupportedReportFormats)
-                    .Include(item => item.Versions)
-                        .ThenInclude(item => item.ParameterDefinitions)
-                            .ThenInclude(item => item.AllowedValues)
-                    .AsSplitQuery()
-                    .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-                return result;
-            },
-            logger);
+                dbContext.Attach(entity);
+            }
+        }
+
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(GetByIdAsync),

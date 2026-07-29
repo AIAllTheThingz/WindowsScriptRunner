@@ -2,8 +2,12 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Domain;
+using WindowsScriptRunner.Infrastructure;
 using WindowsScriptRunner.Infrastructure.Persistence.Repositories;
 
 namespace WindowsScriptRunner.SqlServerTests;
@@ -70,6 +74,40 @@ public sealed class QueryBehaviorTests
             jobCommand,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(capture.ParameterCounts, count => count > 0);
+    }
+
+    [Fact]
+    public async Task ScriptAggregateLoadSupportsConfiguredRetryStrategy()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:WindowsScriptRunner"] = database.ConnectionString,
+                })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInfrastructure(configuration);
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var repository = scope.ServiceProvider
+            .GetRequiredService<IScriptDefinitionRepository>();
+
+        var loaded = await repository.GetByIdAsync(script.Id, CancellationToken.None);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(script.Id, loaded.Id);
+        Assert.Single(loaded.Versions);
     }
 
     private sealed class CommandCaptureInterceptor : DbCommandInterceptor

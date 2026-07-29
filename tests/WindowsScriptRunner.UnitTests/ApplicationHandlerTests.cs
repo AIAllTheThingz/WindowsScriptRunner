@@ -1079,6 +1079,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal("1", audit.Properties["AttemptNumber"]);
         Assert.Equal("True", audit.Properties["WorkerNodeIdPresent"]);
         Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.Workers.UpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
     }
@@ -1554,6 +1555,7 @@ public sealed class ApplicationHandlerTests
     private sealed class FakeWorkerRepository : IWorkerNodeRepository
     {
         public WorkerNode? WorkerNode { get; set; }
+        public int UpdateCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<WorkerNode?> GetByIdAsync(
@@ -1575,6 +1577,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             WorkerNode = workerNode;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }
