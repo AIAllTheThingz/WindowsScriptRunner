@@ -89,6 +89,7 @@ public sealed class AddJobTargetHandler(
 {
     public async Task HandleAsync(AddJobTargetCommand command, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await GetJobAsync(jobRepository, command.JobId, cancellationToken);
         var now = clock.UtcNow;
         job.AddTarget(command.TargetName, command.ActingUser, now);
@@ -125,6 +126,7 @@ public sealed class SetJobParameterHandler(
         SetJobParameterCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -259,6 +261,7 @@ public sealed class SubmitJobHandler(
 {
     public async Task HandleAsync(SubmitJobCommand command, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -293,6 +296,7 @@ public sealed class TransitionJobHandler(
         TransitionJobCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -400,6 +404,7 @@ public sealed class ApproveJobHandler(
 {
     public async Task HandleAsync(ApproveJobCommand command, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -431,6 +436,7 @@ public sealed class RejectJobHandler(
 {
     public async Task HandleAsync(RejectJobCommand command, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -464,6 +470,7 @@ public sealed class CompleteReadOnlyJobHandler(
         CompleteReadOnlyJobCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -493,6 +500,7 @@ public sealed class CompleteValidationJobHandler(
         CompleteValidationJobCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -522,6 +530,7 @@ public sealed class CompleteDryRunJobHandler(
         CompleteDryRunJobCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -552,6 +561,7 @@ public sealed class StartExecutionAttemptHandler(
         StartExecutionAttemptCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -606,6 +616,7 @@ public sealed class RecordExecutionOutcomeHandler(
         RecordExecutionOutcomeCommand command,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(command);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
@@ -653,6 +664,7 @@ public sealed class GetJobHandler(
         GetJobQuery query,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(query);
         var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             query.JobId,

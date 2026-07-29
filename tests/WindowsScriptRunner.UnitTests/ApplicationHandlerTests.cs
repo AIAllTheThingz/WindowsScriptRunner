@@ -1212,6 +1212,35 @@ public sealed class ApplicationHandlerTests
                 CancellationToken.None));
     }
 
+    [Fact]
+    public async Task HandlerEntryPointsRejectNullRequestsBeforeRepositoryAccess()
+    {
+        var fixture = new HandlerFixture();
+        Func<Task>[] calls =
+        [
+            () => fixture.CreateHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.AddTargetHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.SetParameterHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.SubmitHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.TransitionHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.ApproveHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.RejectHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.CompleteReadOnlyHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.CompleteValidationHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.CompleteDryRunHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.StartExecutionAttemptHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.RecordExecutionOutcomeHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.GetHandler.HandleAsync(null!, CancellationToken.None),
+        ];
+
+        foreach (var call in calls)
+        {
+            await Assert.ThrowsAsync<ArgumentNullException>(call);
+        }
+
+        Assert.Empty(fixture.ObservedTokens);
+    }
+
     private static void ForcePublished(ScriptVersion version)
     {
         var field = typeof(ScriptVersion).GetField(
