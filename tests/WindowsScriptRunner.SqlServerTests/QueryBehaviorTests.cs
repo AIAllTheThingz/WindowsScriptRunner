@@ -1,13 +1,16 @@
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Infrastructure;
+using WindowsScriptRunner.Infrastructure.Persistence;
 using WindowsScriptRunner.Infrastructure.Persistence.Repositories;
 
 namespace WindowsScriptRunner.SqlServerTests;
@@ -93,6 +96,8 @@ public sealed class QueryBehaviorTests
                 new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:WindowsScriptRunner"] = database.ConnectionString,
+                    ["Persistence:RetryCount"] = "2",
+                    ["Persistence:RetryDelaySeconds"] = "1",
                 })
             .Build();
         var services = new ServiceCollection();
@@ -102,9 +107,17 @@ public sealed class QueryBehaviorTests
         await using var scope = provider.CreateAsyncScope();
         var repository = scope.ServiceProvider
             .GetRequiredService<IScriptDefinitionRepository>();
+        var context = scope.ServiceProvider
+            .GetRequiredService<WindowsScriptRunnerDbContext>();
+        var persistenceOptions = scope.ServiceProvider
+            .GetRequiredService<IOptions<SqlServerPersistenceOptions>>()
+            .Value;
 
         var loaded = await repository.GetByIdAsync(script.Id, CancellationToken.None);
 
+        Assert.Equal(2, persistenceOptions.RetryCount);
+        Assert.Equal(1, persistenceOptions.RetryDelaySeconds);
+        Assert.True(context.Database.CreateExecutionStrategy().RetriesOnFailure);
         Assert.NotNull(loaded);
         Assert.Equal(script.Id, loaded.Id);
         Assert.Single(loaded.Versions);
