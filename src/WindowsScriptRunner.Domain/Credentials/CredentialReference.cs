@@ -32,6 +32,23 @@ public sealed class CredentialReference
     public DateTimeOffset CreatedUtc { get; }
     public UserIdentity CreatedBy { get; }
 
+    internal static CredentialReference Rehydrate(
+        CredentialReferenceId id,
+        string providerType,
+        string externalIdentifier,
+        string displayName,
+        DateTimeOffset createdUtc,
+        UserIdentity createdBy,
+        bool isEnabled) =>
+        new(
+            id,
+            providerType,
+            externalIdentifier,
+            displayName,
+            createdUtc,
+            createdBy,
+            isEnabled);
+
     public void Enable() => IsEnabled = true;
     public void Disable() => IsEnabled = false;
 

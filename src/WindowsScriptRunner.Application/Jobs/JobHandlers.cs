@@ -2,6 +2,7 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain.Auditing;
+using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
@@ -191,10 +192,11 @@ public sealed class SetJobParameterHandler(
             var serializedValue = suppliedValue;
             if (definition.ParameterType == Domain.ScriptParameterType.SecureReference)
             {
-                serializedValue = await ResolveCredentialReferenceAsync(
+                var credentialReference = await ResolveCredentialReferenceAsync(
                     credentialRepository,
                     suppliedValue,
                     cancellationToken);
+                serializedValue = credentialReference.Id.ToString();
             }
 
             definition.ValidateSerializedValue(serializedValue);
@@ -220,7 +222,7 @@ public sealed class SetJobParameterHandler(
         await repository.GetByIdAsync(id, cancellationToken)
         ?? throw new EntityNotFoundException(nameof(ScriptDefinition), id.ToString());
 
-    private static async Task<string> ResolveCredentialReferenceAsync(
+    private static async Task<CredentialReference> ResolveCredentialReferenceAsync(
         ICredentialReferenceRepository credentialRepository,
         string? serializedValue,
         CancellationToken cancellationToken)
@@ -243,7 +245,7 @@ public sealed class SetJobParameterHandler(
             throw new ApplicationValidationException("Credential reference is disabled.");
         }
 
-        return credentialReference.Id.ToString();
+        return credentialReference;
     }
 
     private static IReadOnlyDictionary<string, string> CreateParameterAuditProperties(
@@ -595,9 +597,10 @@ public sealed class StartExecutionAttemptHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
+        WorkerNode? workerNode = null;
         if (command.WorkerNodeId is not null)
         {
-            var workerNode = await workerNodeRepository.GetByIdAsync(
+            workerNode = await workerNodeRepository.GetByIdAsync(
                 command.WorkerNodeId,
                 cancellationToken);
             if (workerNode is null)

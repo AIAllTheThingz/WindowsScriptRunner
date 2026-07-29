@@ -1,6 +1,10 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using WindowsScriptRunner.Infrastructure;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
@@ -15,6 +19,23 @@ app.UseRouting();
 app.UseAuthorization();
 app.MapStaticAssets();
 app.MapRazorPages().WithStaticAssets();
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
+app.MapHealthChecks(
+    "/health",
+    new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("live"),
+    });
+app.MapHealthChecks(
+    "/health/live",
+    new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("live"),
+    });
+app.MapHealthChecks(
+    "/health/ready",
+    new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("ready"),
+    });
 
 app.Run();

@@ -30,6 +30,68 @@ public sealed class JobExecution
     public string? Summary { get; private set; }
     public bool IsActive => StartedUtc is not null && CompletedUtc is null;
 
+    internal static JobExecution Rehydrate(
+        JobExecutionId id,
+        int attemptNumber,
+        WorkerNodeId? workerNodeId,
+        DateTimeOffset createdUtc,
+        DateTimeOffset? startedUtc,
+        DateTimeOffset? completedUtc,
+        ExecutionOutcome? outcome,
+        int? exitCode,
+        string? summary)
+    {
+        var execution = new JobExecution(id, attemptNumber, workerNodeId, createdUtc);
+        if (startedUtc is not null && startedUtc < createdUtc)
+        {
+            throw new DomainValidationException("Execution start cannot precede creation.");
+        }
+
+        if (completedUtc is not null && (startedUtc is null || completedUtc < startedUtc))
+        {
+            throw new DomainValidationException(
+                "Execution completion requires a valid start timestamp.");
+        }
+
+        if ((completedUtc is null) != (outcome is null))
+        {
+            throw new DomainValidationException(
+                "Execution completion timestamp and outcome must be present together.");
+        }
+
+        if (outcome is null && (exitCode is not null || summary is not null))
+        {
+            throw new DomainValidationException(
+                "Incomplete executions cannot contain an exit code or summary.");
+        }
+
+        if (outcome is not null)
+        {
+            _ = EnumGuard.RequireDefined(outcome.Value, nameof(ExecutionOutcome));
+            if (exitCode is null &&
+                outcome is not (ExecutionOutcome.Blocked or
+                    ExecutionOutcome.Cancelled or
+                    ExecutionOutcome.TimedOut or
+                    ExecutionOutcome.NotRun))
+            {
+                throw new DomainValidationException($"Outcome {outcome} requires an exit code.");
+            }
+        }
+
+        var normalizedSummary = summary?.Trim();
+        if (normalizedSummary?.Length > 2000)
+        {
+            throw new DomainValidationException("Execution summary cannot exceed 2,000 characters.");
+        }
+
+        execution.StartedUtc = startedUtc;
+        execution.CompletedUtc = completedUtc;
+        execution.Outcome = outcome;
+        execution.ExitCode = exitCode;
+        execution.Summary = normalizedSummary;
+        return execution;
+    }
+
     internal void Start(DateTimeOffset startedUtc)
     {
         if (StartedUtc is not null)

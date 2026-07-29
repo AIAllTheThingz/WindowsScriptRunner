@@ -1074,3 +1074,116 @@ No database access, PowerShell child process, job claim, or script execution occ
 - Blocked harness capabilities are recorded above and were worked around without weakening product code.
 - SQL Server, Entity Framework Core, migrations, repository implementations, PowerShell execution, authentication, authorization, APIs, Razor Page feature work, deployment, and all Phase 3 work: **NotRun** because they are outside this remediation scope.
 - GitHub Actions: **NotRun** because PR #1 reports no checks; no CI success is claimed.
+
+# Phase 3 SQL Server Persistence
+
+Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran from the repository root unless noted.
+
+## Starting gate and baseline
+
+- Phase 2 merge commit `bc7489517097f038fd7b048cfd3df11fdc230c36` was an ancestor of updated `main`; the ancestry command exited 0.
+- PR #1 was merged, no Phase 2 PR remained open, `main` matched `origin/main`, and the starting worktree was clean.
+- Phase 3 branch: `agent/phase-3-sql-server-persistence`, created from merge commit `bc74895`.
+- Baseline `dotnet restore`: `2026-07-29T12:38:58-05:00` to `2026-07-29T12:39:01-05:00`, exit 0, Passed.
+- Baseline `dotnet build --configuration Release`: `2026-07-29T12:39:01-05:00` to `2026-07-29T12:39:12-05:00`, exit 0, 0 warnings and 0 errors, Passed.
+- Baseline `dotnet test --configuration Release`: `2026-07-29T12:39:12-05:00` to `2026-07-29T12:39:21-05:00`, exit 0, 310 passed, 0 failed, 0 skipped. Counts: Unit 276, Security 22, Integration 3, Worker 7, PowerShell boundary 2.
+- Baseline `dotnet format --verify-no-changes`: `2026-07-29T12:39:21-05:00` to `2026-07-29T12:39:43-05:00`, exit 0, Passed.
+
+## Packages and tooling
+
+- EF Core, EF Core Design, EF Core SQL Server, EF health checks, and repository-local `dotnet-ef`: 10.0.10.
+- `Microsoft.Data.SqlClient`: 6.1.1, directly referenced only where SQL error classification or real SQL test setup uses its APIs.
+- Microsoft configuration, dependency injection, hosting, logging, and options packages added at 10.0.10 through central package management.
+- `.config/dotnet-tools.json` is the repository-local tool manifest. No global tool was installed.
+- Source boundary tests prove EF/SQL provider packages remain in Infrastructure, Domain and Contracts have no EF attributes, Application/Web/Worker have no `DbContext`, Web/Worker have no direct SqlClient package, and Worker/Infrastructure/PowerShell references remain isolated.
+
+## Schema and persistence design
+
+- `WindowsScriptRunnerDbContext` uses SQL Server, default schema `wsr`, and migration history `wsr.__EFMigrationsHistory`.
+- Separate internal persistence entities and explicit Fluent API mappings cover 16 tables: `ScriptDefinitions`, `ScriptVersions`, `ScriptVersionPhases`, `ScriptVersionReportFormats`, `ScriptParameterDefinitions`, `ScriptParameterAllowedValues`, `Jobs`, `JobTargets`, `JobParameters`, `JobExecutions`, `JobApprovals`, `WorkerNodes`, `WorkerCapabilities`, `CredentialReferences`, `AuditEvents`, and `AuditEventProperties`.
+- All strong IDs use `uniqueidentifier`; timestamps use `datetimeoffset(7)` and are normalized to UTC on write; SHA-256 metadata uses fixed-length storage; enums use checked stable strings.
+- Mutable roots `ScriptDefinitions`, `Jobs`, `WorkerNodes`, and `CredentialReferences` use SQL Server `rowversion`.
+- Aggregate-owned children cascade. A composite Job-to-version relationship guarantees the pinned version belongs to the pinned script; Job-to-script, Job-to-version, and execution-to-worker relationships use `NO ACTION`.
+- Unique, check, and filtered indexes cover normalized identities, semantic versions, parameter/target/capability/property names, credential provider/hash pairs, job access patterns, audit access patterns, and one active execution per job.
+- SQL triggers enforce published Execute-with-DryRun and allowed-values-only-for-Enum rules that cross table boundaries.
+- No production seed data, raw credential column, Phase 4 queue table, polling index, lease, claim, or scheduling construct was added.
+
+## Migration generation and inspection
+
+- Migration: `20260729175606_InitialSqlServerPersistence` / `InitialSqlServerPersistence`.
+- The generated migration, designer, and model snapshot were inspected for schema, keys, delete behavior, indexes, filter, rowversion, constraints, enum storage, lengths, nullability, triggers, and migration history.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-29T13:40:09.7330855-05:00` to `2026-07-29T13:40:14.6204033-05:00`, exit 0, `No changes have been made to the model since the last migration.`
+- Repository policy ignores generated `artifacts/`, so the idempotent deployment SQL is intentionally not committed. The SQL tests generate the idempotent script from the migration assembly, verify it contains no server or credentials, and apply it twice.
+
+## Real SQL Server runtime and test databases
+
+- Runtime: installed SQL Server LocalDB instance `(localdb)\MSSQLLocalDB`, accessed with Windows integrated authentication.
+- `sqlcmd` and `sqllocaldb` were available. Docker client was present, but the Docker daemon was unavailable; Testcontainers was not needed because real LocalDB was available.
+- Each SQL test creates a GUID-named disposable database, applies the real migration, uses isolated contexts/scopes, and deletes the database afterward.
+- SQLite and EF InMemory were not used as SQL Server evidence.
+
+## SQL Server integration results
+
+- Explicit command: `dotnet test .\tests\WindowsScriptRunner.SqlServerTests\WindowsScriptRunner.SqlServerTests.csproj --configuration Release --no-build`
+- Start: `2026-07-29T13:39:50.0962250-05:00`
+- End: `2026-07-29T13:40:00.3671648-05:00`
+- Exit: 0
+- Result: 19 passed, 0 failed, 0 skipped.
+- Migration tests: 2 passed. Empty-database apply, second apply no-op, `wsr` history, table/index/filter/rowversion/FK/trigger metadata, rollback to zero, generated idempotent SQL applied twice, and migration restore all passed.
+- Repository and mapping tests: 7 SQL tests plus 7 focused unit mapping tests passed. They cover complete script graphs, exact strong IDs and fields, graph updates without duplicate rows, complete terminal jobs, secure-reference redaction, draft/submitted/approved/executing/terminal states, Validation-only/DryRun-only/ReadOnly completion, optional parameter row removal, Worker, CredentialReference duplicate/collision handling, and append-only audit staging.
+- Transaction tests: aggregate plus audit atomic commit and forced audit-constraint rollback both passed. The rollback left neither the aggregate update nor failed audit data.
+- Concurrency tests: stale Job, ScriptDefinition, and WorkerNode writes produced bounded `ApplicationConflictException`; winning state remained, and a stale Job audit did not commit.
+- Constraint test: one real-SQL test executed 17 rejection scenarios covering case-only duplicate names, semantic versions, parameter/target/binding/execution/capability/property duplicates, one active execution, incomplete execution output, normalized Worker name, invalid enum, timestamp order, partial policy, Enum-only allowed values, and Execute-with-DryRun publication.
+- Cancellation, query behavior, composition, and health tests passed. Representative aggregate SQL was bounded, parameterized, and split; readiness was healthy when migrated, unhealthy when migrations were pending, and unhealthy when the database was unavailable.
+
+## Final build, test, and formatting
+
+- `dotnet tool restore`: `2026-07-29T13:37:31.3882708-05:00` to `2026-07-29T13:37:31.9148944-05:00`, exit 0, dotnet-ef 10.0.10 restored.
+- `dotnet restore`: `2026-07-29T13:37:37.9751320-05:00` to `2026-07-29T13:37:39.8481196-05:00`, exit 0, all projects up to date.
+- `dotnet build --configuration Release`: `2026-07-29T13:37:44.4571597-05:00` to `2026-07-29T13:37:49.2328916-05:00`, exit 0, 0 warnings and 0 errors.
+- `dotnet test --configuration Release`: `2026-07-29T13:37:55.7914356-05:00` to `2026-07-29T13:38:10.6788120-05:00`, exit 0, 349 passed, 0 failed, 0 skipped. Counts: Unit 283, Security 35, SQL Server 19, Integration 3, Worker 7, PowerShell boundary 2.
+- `dotnet format`: `2026-07-29T13:38:16.6917400-05:00` to `2026-07-29T13:38:41.9290103-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-29T13:38:47.9571098-05:00` to `2026-07-29T13:39:13.2315808-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-29T13:39:21.1724388-05:00` to `2026-07-29T13:39:25.0247762-05:00`, exit 0, 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-29T13:39:30.4900528-05:00` to `2026-07-29T13:39:41.5073024-05:00`, exit 0, the same 349 passed with 0 failed and 0 skipped.
+- Review-remediation revalidation on `2026-07-29T16:36:17-05:00`: Release build passed with 0 warnings and 0 errors; the full suite passed 362 tests (Unit 286, Security 35, SQL Server 29, Integration 3, Worker 7, PowerShell boundary 2); formatting verification passed; and EF reported no pending model changes.
+
+## Web, Worker, and health validation
+
+- A migrated disposable LocalDB database was configured with `ApplyMigrationsOnStartup=false`.
+- Web ran from its project content root in Production on validation-only HTTP port 5096. `/`, `/Scripts`, `/Jobs`, `/Workers`, `/Audit`, `/Administration`, `/health`, `/health/live`, and `/health/ready` each returned HTTP 200.
+- Migration history remained exactly one after Web startup, proving startup did not reapply a migration.
+- After the exact disposable database was dropped, `/health/ready` returned 503 while `/health/live` remained 200.
+- Web had zero child processes and zero PowerShell children. Logs contained generic SQL command/health output without connection strings, parameter values, credentials, or the database name.
+- Worker ran from its project content root in Production with a one-second validation heartbeat. It resolved Infrastructure, logged the existing no-execution limitation, and emitted heartbeats.
+- Worker migration history remained exactly one. It had zero child processes and zero PowerShell children; no polling, claiming, script execution, or database command appeared.
+- Existing seven Worker cancellation, pacing, clean-stop, option-validation, and unexpected-failure tests passed in the final suite.
+- The exact Web and Worker executable PIDs were resolved and stopped. Port 5096 had no listener, no Worker process remained, and both named disposable databases were dropped.
+
+## Source and security inspection
+
+- Production `SaveChangesAsync` exists only in `SqlUnitOfWork`; repositories and `SqlAuditWriter` never save.
+- Sensitive-data logging is explicitly false. `UseSqlServer`, SqlClient APIs, and `DbContext` occur only in Infrastructure production source.
+- Production source contains no `EnsureCreated`, `EnsureDeleted`, `HasData`, embedded SQL credentials, direct Web/Worker SQL package, or Phase 4 process-launch implementation.
+- The only credential-marker scan matches are intentional domain/security denylist strings and test assertions. The vendor `wwwroot` match is unrelated minified JavaScript.
+- No connection string, password, generated database log, environment-specific server, or SQL artifact is staged for commit.
+
+## Corrected intermediate failures and blocked harness attempts
+
+- The first migration command using Web as startup project failed because Web correctly does not reference EF Design. The Infrastructure design-time factory was used instead; migration generation and all migration tests passed.
+- Generated migration formatting initially failed the repository file-scoped namespace rule. `dotnet format` corrected it before final validation.
+- Initial migration tests exposed a metadata collation conflict and trigger DDL placement inside the idempotent wrapper. The metadata query and trigger creation form were corrected, then migration tests passed.
+- A query-shape test initially asserted a provider-generated parameter name. It was corrected to assert parameter presence and absence of literal IDs; it passed.
+- A strengthened idempotent-script assertion caught one stale locally generated artifact after a `--no-build` command. The artifact was regenerated for inspection, and the committed test was improved to generate and validate idempotent SQL directly from the migration assembly. Final migration tests passed from repository sources alone.
+- One new credential-collision test first failed compilation on xUnit analyzer rule xUnit2029. The assertion form was corrected; the focused and full suites passed.
+- One new source-security test initially matched intentional credential-marker rejection strings in Domain. Its scope was corrected to production persistence/composition source while retaining repository-wide creation-shortcut checks; all 35 security tests passed.
+- The command host rejected one combined Web launch/cleanup script before it executed. The validation was split into exact create, launch, probe, stop, and drop commands and passed.
+- Direct Ctrl+C delivery was unavailable for the non-interactive live processes. Exact executable paths/PIDs were verified and stopped; wrapper exit code 1 after forced stop is a harness artifact, and final cleanup checks passed.
+
+## Failed, blocked, and NotRun summary
+
+- Failed required final items: none.
+- Blocked required items: none.
+- Blocked optional environment: Docker daemon/Testcontainers. Real SQL Server validation was not blocked because LocalDB was available and all 19 SQL tests executed.
+- NotRun by Phase 3 scope: Phase 4 polling/claiming/leasing/scheduling, PowerShell execution, script discovery/manifest loading, reporting, REST APIs, new Razor features, authentication, authorization, external secret retrieval, notifications, deployment automation, containers, Kubernetes, and production installation.
+- NotRun environment claims: production SQL Server deployment, external SQL authentication, and production rollback. LocalDB migration rollback and idempotent application were validated.

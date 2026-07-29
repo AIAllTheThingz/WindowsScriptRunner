@@ -27,6 +27,11 @@ public sealed class ApplicationValidationException : ApplicationExceptionBase
         : base(message)
     {
     }
+
+    public ApplicationValidationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 public sealed class ApplicationConflictException : ApplicationExceptionBase

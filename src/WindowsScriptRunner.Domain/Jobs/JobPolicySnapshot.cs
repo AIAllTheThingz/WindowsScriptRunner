@@ -26,6 +26,19 @@ public sealed record JobPolicySnapshot
     public bool SupportsExecutePhase { get; }
     public bool SupportsPostValidationPhase { get; }
 
+    internal static JobPolicySnapshot Rehydrate(
+        ScriptDefinitionId scriptDefinitionId,
+        ScriptVersionId scriptVersionId,
+        RiskLevel riskLevel,
+        bool supportsExecutePhase,
+        bool supportsPostValidationPhase) =>
+        new(
+            scriptDefinitionId,
+            scriptVersionId,
+            EnumGuard.RequireDefined(riskLevel, nameof(RiskLevel)),
+            supportsExecutePhase,
+            supportsPostValidationPhase);
+
     internal static JobPolicySnapshot Capture(
         ScriptDefinition definition,
         ScriptVersionId expectedVersionId)

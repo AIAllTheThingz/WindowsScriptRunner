@@ -72,6 +72,268 @@ public sealed class Job
             description,
             changeReference);
 
+    internal static Job Rehydrate(
+        JobId id,
+        ScriptDefinitionId scriptDefinitionId,
+        ScriptVersionId scriptVersionId,
+        ExecutionPhase requestedPhase,
+        JobStatus status,
+        UserIdentity requestedBy,
+        UserIdentity lastActingUser,
+        DateTimeOffset createdUtc,
+        DateTimeOffset updatedUtc,
+        DateTimeOffset? submittedUtc,
+        string? description,
+        ChangeReference? changeReference,
+        JobPolicySnapshot? policySnapshot,
+        IEnumerable<JobTarget> targets,
+        IEnumerable<JobParameter> parameters,
+        IEnumerable<JobExecution> executions,
+        IEnumerable<JobApproval> approvals)
+    {
+        status = EnumGuard.RequireDefined(status, nameof(JobStatus));
+        if (updatedUtc < createdUtc)
+        {
+            throw new DomainValidationException("Job update timestamp cannot precede creation.");
+        }
+
+        if (submittedUtc is not null &&
+            (submittedUtc < createdUtc || submittedUtc > updatedUtc))
+        {
+            throw new DomainValidationException(
+                "Job submission timestamp must fall within the job lifetime.");
+        }
+
+        if (status == JobStatus.Draft)
+        {
+            if (submittedUtc is not null || policySnapshot is not null)
+            {
+                throw new DomainValidationException(
+                    "Draft jobs cannot contain submission or policy snapshot state.");
+            }
+        }
+        else if (submittedUtc is null || policySnapshot is null)
+        {
+            throw new DomainValidationException(
+                "Submitted job state requires submission time and a policy snapshot.");
+        }
+
+        if (policySnapshot is not null &&
+            (policySnapshot.ScriptDefinitionId != scriptDefinitionId ||
+                policySnapshot.ScriptVersionId != scriptVersionId))
+        {
+            throw new DomainValidationException(
+                "Persisted policy snapshot identifiers must match the pinned script identifiers.");
+        }
+
+        ValidateRehydratedPhaseState(requestedPhase, status, policySnapshot);
+
+        var job = new Job(
+            id,
+            scriptDefinitionId,
+            scriptVersionId,
+            requestedPhase,
+            requestedBy,
+            createdUtc,
+            description,
+            changeReference)
+        {
+            Status = status,
+            LastActingUser = lastActingUser ??
+                throw new DomainValidationException("Last acting user is required."),
+            UpdatedUtc = updatedUtc,
+            SubmittedUtc = submittedUtc,
+            PolicySnapshot = policySnapshot,
+        };
+
+        job.RestoreTargets(targets);
+        job.RestoreParameters(parameters);
+        job.RestoreExecutions(executions);
+        job.RestoreApprovals(approvals);
+        job.ValidateRehydratedExecutionState();
+        if (status != JobStatus.Draft && job._targets.Count == 0)
+        {
+            throw new DomainValidationException(
+                "Submitted job state requires at least one target.");
+        }
+
+        return job;
+    }
+
+    private void RestoreTargets(IEnumerable<JobTarget> targets)
+    {
+        foreach (var target in targets ?? throw new DomainValidationException("Job targets are required."))
+        {
+            ArgumentNullException.ThrowIfNull(target);
+            if (target.AddedUtc < CreatedUtc || target.AddedUtc > UpdatedUtc)
+            {
+                throw new DomainValidationException(
+                    "Persisted job target timestamp must fall within the job lifetime.");
+            }
+
+            if (_targets.Any(existing => existing.Name.Equals(target.Name)))
+            {
+                throw new DuplicateJobTargetException(target.Name.Value);
+            }
+
+            _targets.Add(target);
+        }
+    }
+
+    private void RestoreParameters(IEnumerable<JobParameter> parameters)
+    {
+        foreach (var parameter in parameters ??
+            throw new DomainValidationException("Job parameters are required."))
+        {
+            ArgumentNullException.ThrowIfNull(parameter);
+            if (_parameters.Any(existing => string.Equals(
+                existing.Name,
+                parameter.Name,
+                StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidJobParameterException(
+                    parameter.Name,
+                    "duplicate parameter bindings are not allowed.");
+            }
+
+            _parameters.Add(parameter);
+        }
+    }
+
+    private void RestoreExecutions(IEnumerable<JobExecution> executions)
+    {
+        foreach (var execution in executions ??
+            throw new DomainValidationException("Job executions are required."))
+        {
+            ArgumentNullException.ThrowIfNull(execution);
+            if (_executions.Any(existing => existing.Id == execution.Id))
+            {
+                throw new DomainValidationException(
+                    $"Execution identifier '{execution.Id}' is duplicated in persisted state.");
+            }
+
+            if (_executions.Any(existing => existing.AttemptNumber == execution.AttemptNumber))
+            {
+                throw new DomainValidationException(
+                    $"Execution attempt {execution.AttemptNumber} is duplicated in persisted state.");
+            }
+
+            if (execution.CreatedUtc < CreatedUtc ||
+                execution.CreatedUtc > UpdatedUtc ||
+                execution.StartedUtc > UpdatedUtc ||
+                execution.CompletedUtc > UpdatedUtc)
+            {
+                throw new DomainValidationException(
+                    "Persisted execution timestamps must fall within the job lifetime.");
+            }
+
+            _executions.Add(execution);
+        }
+
+        var orderedAttempts = _executions
+            .OrderBy(execution => execution.AttemptNumber)
+            .Select(execution => execution.AttemptNumber)
+            .ToArray();
+        if (!orderedAttempts.SequenceEqual(Enumerable.Range(1, orderedAttempts.Length)))
+        {
+            throw new DomainValidationException(
+                "Persisted execution attempt numbers must form a contiguous sequence.");
+        }
+    }
+
+    private void RestoreApprovals(IEnumerable<JobApproval> approvals)
+    {
+        foreach (var approval in approvals ??
+            throw new DomainValidationException("Job approvals are required."))
+        {
+            ArgumentNullException.ThrowIfNull(approval);
+            if (_approvals.Any(existing => existing.Id == approval.Id))
+            {
+                throw new DomainValidationException(
+                    $"Approval identifier '{approval.Id}' is duplicated in persisted state.");
+            }
+
+            if (approval.DecisionUtc < CreatedUtc || approval.DecisionUtc > UpdatedUtc)
+            {
+                throw new DomainValidationException(
+                    "Persisted approval timestamp must fall within the job lifetime.");
+            }
+
+            _approvals.Add(approval);
+        }
+    }
+
+    private void ValidateRehydratedExecutionState()
+    {
+        var activeCount = _executions.Count(execution => execution.IsActive);
+        if (activeCount > 1)
+        {
+            throw new DomainValidationException(
+                "Only one persisted active execution attempt is allowed.");
+        }
+
+        var requiresActiveAttempt = Status is JobStatus.Executing or JobStatus.PostValidation;
+        if ((requiresActiveAttempt && activeCount != 1) ||
+            (!requiresActiveAttempt && activeCount != 0))
+        {
+            throw new DomainValidationException(
+                "Persisted execution state is inconsistent with the job status.");
+        }
+    }
+
+    private static void ValidateRehydratedPhaseState(
+        ExecutionPhase requestedPhase,
+        JobStatus status,
+        JobPolicySnapshot? policySnapshot)
+    {
+        if (status != JobStatus.Draft &&
+            requestedPhase is not (ExecutionPhase.Validation or
+                ExecutionPhase.DryRun or
+                ExecutionPhase.Execute))
+        {
+            throw new DomainValidationException(
+                "Submitted job state contains an unsupported requested phase.");
+        }
+
+        if ((status is JobStatus.DryRunQueued or
+            JobStatus.DryRunRunning or
+            JobStatus.DryRunCompleted) &&
+            requestedPhase is not (ExecutionPhase.DryRun or ExecutionPhase.Execute))
+        {
+            throw new DomainValidationException(
+                "Persisted dry-run state requires a DryRun or Execute request.");
+        }
+
+        if ((status is JobStatus.AwaitingApproval or
+            JobStatus.Approved or
+            JobStatus.ExecutionQueued or
+            JobStatus.Claimed or
+            JobStatus.Executing or
+            JobStatus.PostValidation or
+            JobStatus.CompletedWithWarnings or
+            JobStatus.Rejected) &&
+            requestedPhase != ExecutionPhase.Execute)
+        {
+            throw new DomainValidationException(
+                "Persisted approval or execution state requires an Execute request.");
+        }
+
+        if (requestedPhase == ExecutionPhase.Execute &&
+            status != JobStatus.Draft &&
+            policySnapshot?.SupportsExecutePhase != true)
+        {
+            throw new DomainValidationException(
+                "A submitted Execute request requires captured Execute support.");
+        }
+
+        if (status == JobStatus.PostValidation &&
+            policySnapshot?.SupportsPostValidationPhase != true)
+        {
+            throw new DomainValidationException(
+                "Persisted post-validation state requires captured PostValidation support.");
+        }
+    }
+
     public void AddTarget(TargetName targetName, UserIdentity actingUser, DateTimeOffset addedUtc)
     {
         EnsureDraft();

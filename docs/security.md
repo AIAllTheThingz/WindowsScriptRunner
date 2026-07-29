@@ -1,4 +1,4 @@
-# Phase 2 security properties
+# Security properties
 
 - No raw credential property exists in the domain model; `CredentialReference` stores only an external identifier.
 - `SecureReference` job parameters must contain a canonical non-empty `CredentialReferenceId` GUID. Application handlers resolve the ID, reject missing or disabled references, store only the canonical ID, and never audit external vault identifiers.
@@ -29,5 +29,12 @@
 - Strong identifiers are immutable reference records with no public parameterless constructor; aggregate boundaries reject null identifiers.
 - Script definitions reject duplicate semantic versions and duplicate `ScriptVersionId` values before mutation.
 - Audit properties reject control characters and obvious sensitive key names.
+- SQL persistence uses parameterized EF Core queries; no raw SQL is assembled from caller input.
+- EF sensitive-data logging is not enabled. Repository and health logs use bounded identifiers and categories without parameter values, external credential identifiers, connection strings, or provider exception text.
+- Credential-reference rows contain only provider metadata, a validated external identifier, and its SHA-256 lookup hash. They never contain raw credential material.
+- Mutable aggregate roots use SQL Server rowversion concurrency tokens. Persistence exceptions are translated to bounded application exceptions without leaking SQL text or connection details.
+- Audit events are append-only through the application abstraction and are committed in the same transaction as aggregate changes.
+- Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
+- Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
-Authentication, authorization, executable signing, trusted hash calculation, SQL security, external credential retrieval, process isolation, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.
+Authentication, authorization, executable signing, trusted hash calculation, external credential retrieval, process isolation, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.

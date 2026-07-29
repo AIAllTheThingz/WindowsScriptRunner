@@ -8,7 +8,6 @@
     <ProjectReference Include="..\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj" />
-    <ProjectReference Include="..\WindowsScriptRunner.PowerShell\WindowsScriptRunner.PowerShell.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Reporting\WindowsScriptRunner.Reporting.csproj" />
   </ItemGroup>
 </Project>

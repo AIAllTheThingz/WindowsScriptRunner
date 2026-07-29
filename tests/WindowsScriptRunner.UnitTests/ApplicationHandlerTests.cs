@@ -192,6 +192,7 @@ public sealed class ApplicationHandlerTests
             string.Join(' ', audit.Properties.Values),
             StringComparison.Ordinal);
         Assert.Equal(credential.Id.ToString(), Assert.Single(fixture.Jobs.Job.Parameters).SerializedValue);
+        Assert.Equal(0, fixture.Credentials.UpdateCount);
     }
 
     [Theory]
@@ -703,6 +704,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(JobStatus.Validated, fixture.Jobs.Job.Status);
         Assert.NotNull(fixture.Jobs.Job.PolicySnapshot);
         Assert.Equal(fixture.Scripts.Script!.RiskLevel, fixture.Jobs.Job.PolicySnapshot.RiskLevel);
+        Assert.Equal(0, fixture.Scripts.UpdateCount);
         Assert.Equal(2, fixture.UnitOfWork.CommitCount);
         Assert.Equal(["JobSubmitted", "JobStatusChanged"], fixture.Audits.Events.Select(item => item.EventType));
     }
@@ -1078,6 +1080,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal("1", audit.Properties["AttemptNumber"]);
         Assert.Equal("True", audit.Properties["WorkerNodeIdPresent"]);
         Assert.Equal(1, fixture.Jobs.UpdateCount);
+        Assert.Equal(0, fixture.Workers.UpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
     }
@@ -1497,6 +1500,7 @@ public sealed class ApplicationHandlerTests
     private sealed class FakeScriptRepository : IScriptDefinitionRepository
     {
         public ScriptDefinition? Script { get; set; }
+        public int UpdateCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<ScriptDefinition?> GetByIdAsync(
@@ -1518,6 +1522,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             Script = definition;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }
@@ -1551,6 +1556,7 @@ public sealed class ApplicationHandlerTests
     private sealed class FakeWorkerRepository : IWorkerNodeRepository
     {
         public WorkerNode? WorkerNode { get; set; }
+        public int UpdateCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<WorkerNode?> GetByIdAsync(
@@ -1572,6 +1578,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             WorkerNode = workerNode;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }
@@ -1580,6 +1587,7 @@ public sealed class ApplicationHandlerTests
     {
         public CredentialReference? CredentialReference { get; set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
+        public int UpdateCount { get; private set; }
 
         public Task<CredentialReference?> GetByIdAsync(
             CredentialReferenceId id,
@@ -1604,6 +1612,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             CredentialReference = credentialReference;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }
