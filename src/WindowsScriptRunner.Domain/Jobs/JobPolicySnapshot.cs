@@ -10,18 +10,21 @@ public sealed record JobPolicySnapshot
         ScriptDefinitionId scriptDefinitionId,
         ScriptVersionId scriptVersionId,
         RiskLevel riskLevel,
-        bool supportsExecutePhase)
+        bool supportsExecutePhase,
+        bool supportsPostValidationPhase)
     {
         ScriptDefinitionId = scriptDefinitionId ?? throw new DomainValidationException("Script definition identifier is required.");
         ScriptVersionId = scriptVersionId ?? throw new DomainValidationException("Script version identifier is required.");
         RiskLevel = riskLevel;
         SupportsExecutePhase = supportsExecutePhase;
+        SupportsPostValidationPhase = supportsPostValidationPhase;
     }
 
     public ScriptDefinitionId ScriptDefinitionId { get; }
     public ScriptVersionId ScriptVersionId { get; }
     public RiskLevel RiskLevel { get; }
     public bool SupportsExecutePhase { get; }
+    public bool SupportsPostValidationPhase { get; }
 
     internal static JobPolicySnapshot Capture(
         ScriptDefinition definition,
@@ -38,6 +41,7 @@ public sealed record JobPolicySnapshot
             definition.Id,
             version.Id,
             definition.RiskLevel,
-            version.SupportedPhases.Contains(ExecutionPhase.Execute));
+            version.SupportedPhases.Contains(ExecutionPhase.Execute),
+            version.SupportedPhases.Contains(ExecutionPhase.PostValidation));
     }
 }

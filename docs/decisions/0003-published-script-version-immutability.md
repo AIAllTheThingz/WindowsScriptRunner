@@ -6,7 +6,7 @@ A published `ScriptVersion` cannot accept parameter-definition changes. Script i
 
 Corrections require a new semantic version. This preserves the meaning of submitted jobs and future approval fingerprints.
 
-At submission, `Job` captures the trusted script-definition ID, version ID, risk, and Execute support in an immutable policy snapshot after validating that the risk and requested phase are defined enum values. Later approval and read-only completion decisions use this snapshot rather than caller-supplied policy values. Persistence reconstruction of this snapshot remains Phase 3 work.
+At submission, `Job` captures the trusted script-definition ID, version ID, risk, Execute support, and PostValidation support in an immutable policy snapshot after validating that the risk and requested phase are defined enum values. Later approval, read-only completion, and post-validation entry decisions use this snapshot rather than caller-supplied policy values. Persistence reconstruction of this snapshot remains Phase 3 work.
 
 The same pinned version is the sole authority for parameter type, sensitivity, allowed values, required status, and SecureReference classification. `JobParameter` stores only a parameter-name/serialized-value binding, and application response mapping must load the pinned version before exposing or redacting values. Persistence must not introduce duplicated authoritative parameter metadata.
 

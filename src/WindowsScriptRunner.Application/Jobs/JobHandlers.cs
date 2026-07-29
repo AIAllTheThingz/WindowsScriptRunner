@@ -28,7 +28,8 @@ public sealed class CreateDraftJobHandler(
             ?? throw new EntityNotFoundException(
                 nameof(ScriptDefinition),
                 command.ScriptDefinitionId.ToString());
-        _ = script.GetVersion(command.ScriptVersionId);
+        var version = script.GetVersion(command.ScriptVersionId);
+        ValidateRequestedPhase(version, command.RequestedPhase);
 
         var now = clock.UtcNow;
         var job = Job.CreateDraft(
@@ -52,6 +53,34 @@ public sealed class CreateDraftJobHandler(
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
         return job.Id;
+    }
+
+    private static void ValidateRequestedPhase(
+        ScriptVersion version,
+        Domain.ExecutionPhase requestedPhase)
+    {
+        if (!Enum.IsDefined(requestedPhase) ||
+            requestedPhase is not (
+                Domain.ExecutionPhase.Validation or
+                Domain.ExecutionPhase.DryRun or
+                Domain.ExecutionPhase.Execute))
+        {
+            throw new ApplicationValidationException(
+                $"Requested phase {requestedPhase} is not supported by the Phase 2 lifecycle.");
+        }
+
+        if (!version.SupportedPhases.Contains(requestedPhase))
+        {
+            throw new ApplicationValidationException(
+                $"Script version does not support the {requestedPhase} phase.");
+        }
+
+        if (requestedPhase == Domain.ExecutionPhase.Execute &&
+            !version.SupportedPhases.Contains(Domain.ExecutionPhase.DryRun))
+        {
+            throw new ApplicationValidationException(
+                "Execute requests require a script version that also supports DryRun.");
+        }
     }
 
     private static AuditEvent CreateAudit(

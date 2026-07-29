@@ -91,6 +91,56 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
+    [Theory]
+    [InlineData(ExecutionPhase.Discovery, ExecutionPhase.Discovery)]
+    [InlineData(ExecutionPhase.DryRun, ExecutionPhase.Validation)]
+    public async Task CreateDraftRejectsUnsupportedOrUnavailablePhaseWithoutSideEffects(
+        ExecutionPhase requestedPhase,
+        ExecutionPhase supportedPhase)
+    {
+        var fixture = new HandlerFixture();
+        var version = TestDomainFactory.Version(phases: [supportedPhase]);
+        var script = TestDomainFactory.Script(version);
+        fixture.Scripts.Script = script;
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.CreateHandler.HandleAsync(
+                new CreateDraftJobCommand(
+                    script.Id,
+                    version.Id,
+                    requestedPhase,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task CreateDraftRejectsExecuteVersionWithoutDryRunWithoutSideEffects()
+    {
+        var fixture = new HandlerFixture();
+        var version = TestDomainFactory.Version(
+            publish: false,
+            phases: [ExecutionPhase.Execute]);
+        var script = TestDomainFactory.Script(version);
+        fixture.Scripts.Script = script;
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.CreateHandler.HandleAsync(
+                new CreateDraftJobCommand(
+                    script.Id,
+                    version.Id,
+                    ExecutionPhase.Execute,
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
     [Fact]
     public async Task AddTargetHandlerUsesDomainBehavior()
     {
@@ -1597,6 +1647,28 @@ public sealed class ApplicationHandlerTests
                 CancellationToken.None));
 
         Assert.Equal(JobStatus.DryRunCompleted, fixture.Jobs.Job.Status);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task TransitionHandlerRejectsUnsupportedPostValidationWithoutPersistence()
+    {
+        var fixture = HandlerFixture.WithSubmittedJob(
+            supportedPhases: [ExecutionPhase.DryRun, ExecutionPhase.Execute]);
+        var job = fixture.Jobs.Job!;
+        _ = TestDomainFactory.StartExecution(job);
+
+        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+            () => fixture.TransitionHandler.HandleAsync(
+                new TransitionJobCommand(
+                    job.Id,
+                    JobStatus.PostValidation,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Executing, job.Status);
         Assert.Equal(0, fixture.Jobs.UpdateCount);
         Assert.Empty(fixture.Audits.Events);
         Assert.Equal(0, fixture.UnitOfWork.CommitCount);

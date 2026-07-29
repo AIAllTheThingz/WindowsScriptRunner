@@ -262,6 +262,39 @@ public sealed class ScriptModelTests
     }
 
     [Fact]
+    public void DuplicateParameterDefinitionIdentifierIsRejectedWithoutMutation()
+    {
+        var version = TestDomainFactory.Version(publish: false);
+        var identifier = ScriptParameterDefinitionId.New();
+        var first = new ScriptParameterDefinition(
+            identifier,
+            "Mode",
+            "Mode",
+            null,
+            ScriptParameterType.String,
+            false,
+            null,
+            [],
+            false);
+        var duplicate = new ScriptParameterDefinition(
+            identifier,
+            "Region",
+            "Region",
+            null,
+            ScriptParameterType.String,
+            false,
+            null,
+            [],
+            false);
+        version.AddParameterDefinition(first);
+
+        Assert.Throws<InvalidParameterDefinitionException>(
+            () => version.AddParameterDefinition(duplicate));
+
+        Assert.Same(first, Assert.Single(version.ParameterDefinitions));
+    }
+
+    [Fact]
     public void TypedDefaultsAreValidated()
     {
         var text = TestDomainFactory.Parameter(

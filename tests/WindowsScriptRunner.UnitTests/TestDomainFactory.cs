@@ -44,7 +44,7 @@ internal static class TestDomainFactory
             "abcdef1",
             "7.4",
             30,
-            phases ?? [ExecutionPhase.DryRun, ExecutionPhase.Execute],
+            phases ?? [ExecutionPhase.DryRun, ExecutionPhase.Execute, ExecutionPhase.PostValidation],
             [ReportFormat.Json],
             Time,
             User);

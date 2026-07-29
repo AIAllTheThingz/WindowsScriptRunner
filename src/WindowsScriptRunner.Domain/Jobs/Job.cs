@@ -313,6 +313,12 @@ public sealed class Job
     public void BeginPostValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can enter post-validation.");
+        if (PolicySnapshot?.SupportsPostValidationPhase != true)
+        {
+            throw new DomainValidationException(
+                "The pinned script version does not support post-validation.");
+        }
+
         ApplyTransition(JobStatus.PostValidation, actingUser, updatedUtc);
     }
 

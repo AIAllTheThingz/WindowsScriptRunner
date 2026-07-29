@@ -67,6 +67,12 @@ public sealed class ScriptVersion
         EnsureMutable();
         ArgumentNullException.ThrowIfNull(definition);
 
+        if (_parameterDefinitions.Any(existing => existing.Id == definition.Id))
+        {
+            throw new InvalidParameterDefinitionException(
+                $"Parameter definition identifier '{definition.Id}' already exists in version {Version}.");
+        }
+
         if (_parameterDefinitions.Any(
             existing => string.Equals(existing.Name, definition.Name, StringComparison.OrdinalIgnoreCase)))
         {

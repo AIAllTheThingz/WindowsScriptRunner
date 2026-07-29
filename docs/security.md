@@ -15,7 +15,7 @@
 - Published Execute-capable script versions must also support DryRun; Execute job submissions enforce the same invariant defensively before policy capture.
 - Web has no direct reference to Worker or PowerShell.
 - Domain references no solution, ASP.NET Core, Entity Framework Core, or SQL client assembly.
-- Submission captures trusted script risk and Execute-phase capability in an immutable job policy snapshot only after rejecting undefined risk and phase enum values.
+- Submission captures trusted script risk plus Execute- and PostValidation-phase capabilities in an immutable job policy snapshot only after rejecting undefined risk and phase enum values.
 - New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured Phase 2 policy until future runtime governance is implemented.
 - Submitted jobs enforce the requested phase: Validation stops after validation, DryRun stops after dry-run, and only Execute requests may enter approval/execution states.
 - Requesters cannot self-approve Medium, High, or Critical work, and callers cannot lower risk at approval time. The documented Phase 2 policy permits ReadOnly and Low self-approval.
