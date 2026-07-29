@@ -151,12 +151,13 @@ public sealed class Job
     public void RemoveParameter(string name, UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureDraft();
+        var validatedName = JobParameter.ValidateName(name);
         ValidateMutation(actingUser, updatedUtc);
         var existing = _parameters.SingleOrDefault(parameter =>
-            string.Equals(parameter.Name, name, StringComparison.OrdinalIgnoreCase));
+            string.Equals(parameter.Name, validatedName, StringComparison.OrdinalIgnoreCase));
         if (existing is null)
         {
-            throw new InvalidJobParameterException(name, "the job does not contain this parameter.");
+            throw new InvalidJobParameterException(validatedName, "the job does not contain this parameter.");
         }
 
         _parameters.Remove(existing);

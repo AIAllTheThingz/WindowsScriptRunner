@@ -21,7 +21,7 @@
 
 Dedicated rules permit `Validated -> Completed` for validation-only requests and `DryRunCompleted -> Completed` for dry-run-only requests. A separate trusted read-only rule permits `DryRunCompleted -> Completed` only for `ReadOnly` work when the captured policy says the version has no Execute phase.
 
-Submitted is reachable only through `Submit`; Approved and Rejected only through evidence-recording decision operations; Executing only through creation of an execution attempt; and Completed or CompletedWithWarnings only through a terminal execution outcome, except for the read-only rule above. The retained application transition command exposes only an explicit allowlist of non-protected operational transitions.
+Submitted is reachable only through `Submit`; Approved and Rejected only through evidence-recording decision operations; Executing only through creation of an execution attempt; and CompletedWithWarnings only through a terminal execution outcome. Completed is also reachable through the dedicated validation-only, dry-run-only, and trusted read-only completion rules above. The retained application transition command exposes only an explicit allowlist of non-protected operational transitions.
 
 Appropriate non-terminal states may end as Failed, Cancelled, TimedOut, Blocked, or NotRun. If an execution attempt is active, those terminal outcomes must be recorded with the execution-outcome operation so the attempt and job reach terminal state together. Rejected is reachable only from AwaitingApproval. Failure is never represented as Completed.
 

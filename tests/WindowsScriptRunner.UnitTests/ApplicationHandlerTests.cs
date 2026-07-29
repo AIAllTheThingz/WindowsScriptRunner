@@ -79,6 +79,7 @@ public sealed class ApplicationHandlerTests
 
         var audit = Assert.Single(fixture.Audits.Events);
         Assert.Equal("[REDACTED]", audit.Properties["Value"]);
+        Assert.Equal("0", audit.Properties["SerializedLength"]);
         Assert.DoesNotContain(
             credential.Id.ToString(),
             string.Join(' ', audit.Properties.Values),
@@ -526,6 +527,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal("secret-marker", parameter.SerializedValue);
         Assert.Equal("String", audit.Properties["ParameterType"]);
         Assert.Equal("True", audit.Properties["IsSensitive"]);
+        Assert.Equal("0", audit.Properties["SerializedLength"]);
         Assert.DoesNotContain("secret-marker", string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
     }
 
@@ -944,6 +946,10 @@ public sealed class ApplicationHandlerTests
     {
         var fixture = HandlerFixture.WithClaimedJob();
         var workerNodeId = WorkerNodeId.New();
+        fixture.Workers.WorkerNode = new WorkerNode(
+            workerNodeId,
+            "worker-01",
+            TestDomainFactory.Time);
         using var source = new CancellationTokenSource();
 
         await fixture.StartExecutionAttemptHandler.HandleAsync(
@@ -966,6 +972,52 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(1, fixture.Jobs.UpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
+    }
+
+    [Fact]
+    public async Task StartExecutionAttemptHandlerRejectsMissingWorkerWithoutMutation()
+    {
+        var fixture = HandlerFixture.WithClaimedJob();
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => fixture.StartExecutionAttemptHandler.HandleAsync(
+                new StartExecutionAttemptCommand(
+                    fixture.Jobs.Job!.Id,
+                    WorkerNodeId.New(),
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Claimed, fixture.Jobs.Job!.Status);
+        Assert.Empty(fixture.Jobs.Job.Executions);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task StartExecutionAttemptHandlerRejectsDisabledWorkerWithoutMutation()
+    {
+        var fixture = HandlerFixture.WithClaimedJob();
+        var workerNodeId = WorkerNodeId.New();
+        fixture.Workers.WorkerNode = new WorkerNode(
+            workerNodeId,
+            "worker-01",
+            TestDomainFactory.Time,
+            isEnabled: false);
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.StartExecutionAttemptHandler.HandleAsync(
+                new StartExecutionAttemptCommand(
+                    fixture.Jobs.Job!.Id,
+                    workerNodeId,
+                    TestDomainFactory.OtherUser),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Claimed, fixture.Jobs.Job!.Status);
+        Assert.Empty(fixture.Jobs.Job.Executions);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]
@@ -1145,7 +1197,12 @@ public sealed class ApplicationHandlerTests
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
-            StartExecutionAttemptHandler = new StartExecutionAttemptHandler(Jobs, Audits, UnitOfWork, Clock);
+            StartExecutionAttemptHandler = new StartExecutionAttemptHandler(
+                Jobs,
+                Workers,
+                Audits,
+                UnitOfWork,
+                Clock);
             RecordExecutionOutcomeHandler = new RecordExecutionOutcomeHandler(Jobs, Audits, UnitOfWork, Clock);
             GetHandler = new GetJobHandler(Jobs, Scripts);
         }
@@ -1153,6 +1210,7 @@ public sealed class ApplicationHandlerTests
         public FakeJobRepository Jobs { get; } = new();
         public FakeScriptRepository Scripts { get; } = new();
         public FakeCredentialRepository Credentials { get; } = new();
+        public FakeWorkerRepository Workers { get; } = new();
         public FakeAuditWriter Audits { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public TestClock Clock { get; } = new(TestDomainFactory.Time.AddHours(1));
@@ -1173,6 +1231,7 @@ public sealed class ApplicationHandlerTests
             Jobs.ObservedTokens
                 .Concat(Scripts.ObservedTokens)
                 .Concat(Credentials.ObservedTokens)
+                .Concat(Workers.ObservedTokens)
                 .Concat(Audits.ObservedTokens)
                 .Concat(UnitOfWork.ObservedTokens);
 
@@ -1351,14 +1410,32 @@ public sealed class ApplicationHandlerTests
         }
     }
 
-    private sealed class UnusedWorkerRepository : IWorkerNodeRepository
+    private sealed class FakeWorkerRepository : IWorkerNodeRepository
     {
-        public Task<WorkerNode?> GetByIdAsync(WorkerNodeId id, CancellationToken cancellationToken) =>
-            Task.FromResult<WorkerNode?>(null);
-        public Task AddAsync(WorkerNode workerNode, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-        public Task UpdateAsync(WorkerNode workerNode, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public WorkerNode? WorkerNode { get; set; }
+        public List<CancellationToken> ObservedTokens { get; } = [];
+
+        public Task<WorkerNode?> GetByIdAsync(
+            WorkerNodeId id,
+            CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            return Task.FromResult(WorkerNode?.Id == id ? WorkerNode : null);
+        }
+
+        public Task AddAsync(WorkerNode workerNode, CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            WorkerNode = workerNode;
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(WorkerNode workerNode, CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            WorkerNode = workerNode;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeCredentialRepository : ICredentialReferenceRepository

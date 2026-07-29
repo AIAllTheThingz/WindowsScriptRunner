@@ -33,7 +33,7 @@ public sealed class ScriptParameterDefinition
         ParameterType = EnumGuard.RequireDefined(parameterType, nameof(ParameterType));
         IsRequired = isRequired;
         IsSensitive = isSensitive;
-        DefaultValue = defaultValue;
+        DefaultValue = string.IsNullOrWhiteSpace(defaultValue) ? null : defaultValue;
         _allowedValues = NormalizeAllowedValues(allowedValues);
 
         ValidateDefinition();

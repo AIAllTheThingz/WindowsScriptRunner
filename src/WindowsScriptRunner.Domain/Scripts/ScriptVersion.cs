@@ -132,12 +132,12 @@ public sealed class ScriptVersion
 
     private static string? ValidateCommitSha(string? value)
     {
-        if (value is null)
+        var hash = value?.Trim();
+        if (string.IsNullOrEmpty(hash))
         {
             return null;
         }
 
-        var hash = value.Trim();
         return CommitPattern.IsMatch(hash)
             ? hash.ToLowerInvariant()
             : throw new InvalidScriptVersionException("Git commit SHA must contain 7 to 64 hexadecimal characters.");

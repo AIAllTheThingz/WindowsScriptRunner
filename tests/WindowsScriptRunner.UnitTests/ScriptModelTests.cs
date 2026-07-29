@@ -263,6 +263,9 @@ public sealed class ScriptModelTests
     [Fact]
     public void TypedDefaultsAreValidated()
     {
+        var text = TestDomainFactory.Parameter(
+            "Text",
+            defaultValue: "  preserved value  ");
         _ = TestDomainFactory.Parameter("Enabled", ScriptParameterType.Boolean, defaultValue: "true");
         _ = TestDomainFactory.Parameter("Count", ScriptParameterType.Integer, defaultValue: "42");
         _ = TestDomainFactory.Parameter(
@@ -270,12 +273,49 @@ public sealed class ScriptModelTests
             ScriptParameterType.DateTime,
             defaultValue: "2026-07-28T12:00:00+00:00");
 
+        Assert.Equal("  preserved value  ", text.DefaultValue);
         Assert.Throws<InvalidParameterDefinitionException>(
             () => TestDomainFactory.Parameter("Enabled", ScriptParameterType.Boolean, defaultValue: "yes"));
         Assert.Throws<InvalidParameterDefinitionException>(
             () => TestDomainFactory.Parameter("Count", ScriptParameterType.Integer, defaultValue: "4.2"));
         Assert.Throws<InvalidParameterDefinitionException>(
             () => TestDomainFactory.Parameter("When", ScriptParameterType.DateTime, defaultValue: "tomorrow"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public void BlankParameterDefaultsAreCanonicalAbsence(string defaultValue)
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Mode",
+            required: true,
+            defaultValue: defaultValue);
+
+        Assert.Null(definition.DefaultValue);
+        Assert.Throws<InvalidJobParameterException>(
+            () => definition.ValidateSerializedValue(null));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public void BlankGitCommitShaIsCanonicalAbsence(string gitCommitSha)
+    {
+        var version = new ScriptVersion(
+            ScriptVersionId.New(),
+            ScriptVersionNumber.Parse("1.0.0"),
+            "scripts/Test.ps1",
+            new string('a', 64),
+            gitCommitSha,
+            "7.4",
+            30,
+            [ExecutionPhase.DryRun],
+            [],
+            TestDomainFactory.Time,
+            TestDomainFactory.User);
+
+        Assert.Null(version.GitCommitSha);
     }
 
     [Theory]

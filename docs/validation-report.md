@@ -1,15 +1,15 @@
-# Phase 1 validation report
+# Validation report
 
 Validation date: 2026-07-28
 
-Unless otherwise noted, commands ran from `C:\Users\mez\Documents\WindowsScriptRunner`.
+Unless otherwise noted, commands ran from the repository root.
 
 ## Prerequisites
 
 ### Git
 
 - Command: `git --version`
-- Working directory: `C:\Users\mez\Documents\Script Runner .net application`
+- Working directory: original workspace root
 - Outcome: Git was available.
 - Important output: `git version 2.54.0.windows.1`
 - Limitations: Version presence only; no remote operation was attempted.
@@ -27,7 +27,7 @@ Unless otherwise noted, commands ran from `C:\Users\mez\Documents\WindowsScriptR
 ### PowerShell
 
 - Command: `pwsh --version`
-- Working directory: `C:\Users\mez\Documents\Script Runner .net application`
+- Working directory: original workspace root
 - Outcome: PowerShell 7 was available.
 - Important output: `PowerShell 7.6.4`
 - Limitations: No PowerShell scripts were executed.
@@ -128,7 +128,7 @@ An earlier terminal session could not forward Ctrl+C, so that exact process was 
 
 # Phase 2 validation
 
-Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Working directory for every command below was `C:\Users\mez\Documents\WindowsScriptRunner`.
+Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Every command below ran from the repository root.
 
 ## Baseline
 
@@ -280,7 +280,7 @@ No database connection, PowerShell child process, job claim, or job execution oc
 
 # Phase 2 Review Remediation
 
-Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Every repository command ran from `C:\Users\mez\Documents\WindowsScriptRunner`.
+Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Every repository command ran from the repository root.
 
 ## Baseline before remediation
 
@@ -414,7 +414,7 @@ No database access, PowerShell child process, job claim, or script execution occ
 
 # Phase 2 Fifth Review Remediation
 
-All commands in this section ran from `C:\Users\mez\Documents\WindowsScriptRunner` on branch `agent/phase-2-domain-application-contracts`. This remediation fixes optional parameter clearing and atomic script-definition detail updates without adding persistence, PowerShell execution, authentication, API, UI, deployment, or Phase 3 behavior.
+All commands in this section ran from the repository root on branch `agent/phase-2-domain-application-contracts`. This remediation fixes optional parameter clearing and atomic script-definition detail updates without adding persistence, PowerShell execution, authentication, API, UI, deployment, or Phase 3 behavior.
 
 ## Baseline before editing
 
@@ -548,7 +548,7 @@ All commands in this section ran from `C:\Users\mez\Documents\WindowsScriptRunne
 
 # Phase 2 Second Review Remediation
 
-Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from `C:\Users\mez\Documents\WindowsScriptRunner` unless otherwise noted.
+Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from the repository root unless otherwise noted.
 
 ## Baseline before editing
 
@@ -708,7 +708,7 @@ No database access, PowerShell child process, job claim, or script execution occ
 
 # Phase 2 Third Review Remediation
 
-Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from `C:\Users\mez\Documents\WindowsScriptRunner` unless otherwise noted.
+Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from the repository root unless otherwise noted.
 
 ## Baseline before editing
 
@@ -904,7 +904,7 @@ No database access, PowerShell child process, job claim, or script execution occ
 
 # Phase 2 Fourth Review Remediation
 
-Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from `C:\Users\mez\Documents\WindowsScriptRunner` unless otherwise noted.
+Validation date: 2026-07-28. All times are America/Chicago (`-05:00`). Commands ran from the repository root unless otherwise noted.
 
 ## Baseline before editing
 

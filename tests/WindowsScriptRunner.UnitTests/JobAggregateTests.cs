@@ -144,6 +144,25 @@ public sealed class JobAggregateTests
     }
 
     [Fact]
+    public void RemoveParameterNormalizesNameBeforeLookup()
+    {
+        var version = TestDomainFactory.Version([TestDomainFactory.Parameter("Mode")]);
+        var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
+        job.SetParameterValue(
+            "Mode",
+            "Safe",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        var removedUtc = TestDomainFactory.Time.AddMinutes(2);
+
+        job.RemoveParameter(" mode ", TestDomainFactory.OtherUser, removedUtc);
+
+        Assert.Empty(job.Parameters);
+        Assert.Equal(removedUtc, job.UpdatedUtc);
+        Assert.Equal(TestDomainFactory.OtherUser, job.LastActingUser);
+    }
+
+    [Fact]
     public void FailedClearParameterValueLeavesBindingActorAndTimestampUnchanged()
     {
         var version = TestDomainFactory.Version([TestDomainFactory.Parameter("Mode")]);
@@ -203,10 +222,16 @@ public sealed class JobAggregateTests
         Assert.Null(job.SubmittedUtc);
     }
 
-    [Fact]
-    public void SubmissionRequiresRequiredParameter()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public void SubmissionRequiresRequiredParameter(string? defaultValue)
     {
-        var required = TestDomainFactory.Parameter("Mode", required: true);
+        var required = TestDomainFactory.Parameter(
+            "Mode",
+            required: true,
+            defaultValue: defaultValue);
         var version = TestDomainFactory.Version([required]);
         var script = TestDomainFactory.Script(version);
         var job = TestDomainFactory.DraftJob(script, version);

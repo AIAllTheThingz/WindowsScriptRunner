@@ -6,6 +6,7 @@ using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
+using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.Application.Jobs;
 
@@ -214,7 +215,10 @@ public sealed class SetJobParameterHandler(
             ["ParameterType"] = definition.ParameterType.ToString(),
             ["IsSensitive"] = definition.IsSensitive.ToString(),
             ["ValueProvided"] = (!string.IsNullOrWhiteSpace(serializedValue)).ToString(),
-            ["SerializedLength"] = (serializedValue?.Length ?? 0).ToString(
+            ["SerializedLength"] = (definition.IsSensitive ||
+                definition.ParameterType == Domain.ScriptParameterType.SecureReference
+                    ? 0
+                    : serializedValue?.Length ?? 0).ToString(
                 System.Globalization.CultureInfo.InvariantCulture),
             ["ReferenceSupplied"] = (definition.ParameterType == Domain.ScriptParameterType.SecureReference &&
                 !string.IsNullOrWhiteSpace(serializedValue)).ToString(),
@@ -530,6 +534,7 @@ public sealed class CompleteDryRunJobHandler(
 
 public sealed class StartExecutionAttemptHandler(
     IJobRepository jobRepository,
+    IWorkerNodeRepository workerNodeRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
     IClock clock)
@@ -542,6 +547,22 @@ public sealed class StartExecutionAttemptHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
+        if (command.WorkerNodeId is not null)
+        {
+            var workerNode = await workerNodeRepository.GetByIdAsync(
+                command.WorkerNodeId,
+                cancellationToken);
+            if (workerNode is null)
+            {
+                throw new EntityNotFoundException(nameof(WorkerNode), command.WorkerNodeId.ToString());
+            }
+
+            if (!workerNode.IsEnabled)
+            {
+                throw new ApplicationValidationException("Worker node is disabled.");
+            }
+        }
+
         var now = clock.UtcNow;
         var execution = job.StartExecutionAttempt(
             command.WorkerNodeId,
