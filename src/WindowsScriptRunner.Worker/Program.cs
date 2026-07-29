@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Options;
+using WindowsScriptRunner.Infrastructure;
 using WindowsScriptRunner.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddOptions<WorkerOptions>()
     .Bind(builder.Configuration.GetSection(WorkerOptions.SectionName))
