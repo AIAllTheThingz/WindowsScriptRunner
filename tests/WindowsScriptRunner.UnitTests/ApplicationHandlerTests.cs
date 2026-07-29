@@ -16,6 +16,20 @@ namespace WindowsScriptRunner.UnitTests;
 public sealed class ApplicationHandlerTests
 {
     [Fact]
+    public void StartExecutionAttemptRequestCarriesOptionalWorkerAssignment()
+    {
+        var jobId = Guid.NewGuid();
+        var workerNodeId = Guid.NewGuid();
+
+        var assigned = new Contracts.Jobs.StartExecutionAttemptRequest(jobId, workerNodeId);
+        var unassigned = new Contracts.Jobs.StartExecutionAttemptRequest(jobId, null);
+
+        Assert.Equal(jobId, assigned.JobId);
+        Assert.Equal(workerNodeId, assigned.WorkerNodeId);
+        Assert.Null(unassigned.WorkerNodeId);
+    }
+
+    [Fact]
     public async Task CreateDraftPersistsAuditsCommitsAndPropagatesCancellation()
     {
         var fixture = new HandlerFixture();

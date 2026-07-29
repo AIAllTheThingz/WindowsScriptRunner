@@ -10,6 +10,7 @@
 - `ApproveJobCommand` and `RejectJobCommand` record a structurally validated fingerprint, optional comment, and actor through dedicated aggregate operations. They contain no caller-selected risk.
 - `CompleteReadOnlyJobCommand` invokes the dedicated trusted read-only completion rule and contains no caller-selected risk or Execute capability.
 - `CompleteValidationJobCommand` and `CompleteDryRunJobCommand` complete requested validation-only and dry-run-only work through explicit operations. They contain no arbitrary target status.
+- `StartExecutionAttemptCommand` validates an optional worker reference and starts the single execution attempt that moves a claimed Execute job into Executing.
 - `RecordExecutionOutcomeCommand` completes the single active execution attempt and moves the job to the matching terminal state as one aggregate operation. This prevents orphaned active attempts when execution work ends as success, warning, failure, cancellation, timeout, blocked, or not-run.
 - `GetJobQuery` maps a job to `JobDetailResponse` by loading the pinned script definition/version and deriving parameter type, sensitivity, and redaction from the pinned definitions. Inconsistent or corrupted parameter bindings fail closed without returning raw values.
 
@@ -25,7 +26,7 @@ No generic repository or SQL terminology is exposed. Phase 3 will provide Infras
 
 ## DTOs and sensitive values
 
-Contracts uses immutable records, GUIDs at the external boundary, string enum names, and `DateTimeOffset`. Contracts does not reference Domain or expose domain entities. `JobParameterResponse` reports whether a value is redacted; application mapping always replaces a sensitive serialized value with `[REDACTED]` based on the pinned immutable `ScriptParameterDefinition`, never on duplicated job-parameter metadata.
+Contracts uses immutable records, GUIDs at the external boundary, string enum names, and `DateTimeOffset`. `StartExecutionAttemptRequest` carries the job ID and optional worker-node ID required to enter Executing without exposing domain entities. Contracts does not reference Domain or expose domain entities. `JobParameterResponse` reports whether a value is redacted; application mapping always replaces a sensitive serialized value with `[REDACTED]` based on the pinned immutable `ScriptParameterDefinition`, never on duplicated job-parameter metadata.
 
 Serialized `StringArray` parameter values use a JSON array of strings, for example `["server-01","server-02"]`. This representation is validated in Domain but is not passed to PowerShell in Phase 2. `SecureReference` values must use canonical GUID `D` format and represent `CredentialReferenceId`; arbitrary strings and raw secret-shaped values are rejected before storage.
 

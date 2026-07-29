@@ -21,6 +21,8 @@ public sealed record CompleteValidationJobRequest(Guid JobId);
 
 public sealed record CompleteDryRunJobRequest(Guid JobId);
 
+public sealed record StartExecutionAttemptRequest(Guid JobId, Guid? WorkerNodeId);
+
 public sealed record RecordExecutionOutcomeRequest(
     Guid JobId,
     string Outcome,
