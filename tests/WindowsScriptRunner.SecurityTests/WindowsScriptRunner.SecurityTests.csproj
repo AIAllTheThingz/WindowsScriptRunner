@@ -13,6 +13,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
     <ProjectReference Include="..\..\src\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
     <ProjectReference Include="..\..\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj" />
   </ItemGroup>

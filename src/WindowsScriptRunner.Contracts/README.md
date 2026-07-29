@@ -1,3 +1,3 @@
 # Contracts
 
-Reserved for future requests, responses, DTOs, messages, and shared contracts. Phase 1 contains no business logic.
+Contains immutable, behavior-free Phase 2 request and response DTOs. It does not reference Domain and never exposes raw sensitive parameter values.

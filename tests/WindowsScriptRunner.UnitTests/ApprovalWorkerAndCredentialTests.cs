@@ -1,0 +1,154 @@
+using WindowsScriptRunner.Domain;
+using WindowsScriptRunner.Domain.Credentials;
+using WindowsScriptRunner.Domain.Exceptions;
+using WindowsScriptRunner.Domain.Identifiers;
+using WindowsScriptRunner.Domain.Workers;
+
+namespace WindowsScriptRunner.UnitTests;
+
+public sealed class ApprovalWorkerAndCredentialTests
+{
+    [Theory]
+    [InlineData(RiskLevel.Medium)]
+    [InlineData(RiskLevel.High)]
+    [InlineData(RiskLevel.Critical)]
+    public void RequesterCannotSelfApproveElevatedRisk(RiskLevel riskLevel)
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version, riskLevel),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        TestDomainFactory.AdvanceToAwaitingApproval(job);
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordApproval(
+                TestDomainFactory.User,
+                TestDomainFactory.Fingerprint,
+                null,
+                job.UpdatedUtc.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void ReadOnlyRequesterMaySelfApprove()
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version, RiskLevel.ReadOnly),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        TestDomainFactory.AdvanceToAwaitingApproval(job);
+
+        job.RecordApproval(
+            TestDomainFactory.User,
+            TestDomainFactory.Fingerprint,
+            null,
+            job.UpdatedUtc.AddMinutes(1));
+
+        Assert.Equal(JobStatus.Approved, job.Status);
+    }
+
+    [Fact]
+    public void InvalidApprovalFingerprintIsRejected()
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        TestDomainFactory.AdvanceToAwaitingApproval(job);
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RecordApproval(
+                TestDomainFactory.OtherUser,
+                "invalid",
+                null,
+                job.UpdatedUtc.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void WorkerCapabilitiesHeartbeatAndAvailabilityAreProtected()
+    {
+        var worker = new WorkerNode(
+            WorkerNodeId.New(),
+            "worker-01",
+            TestDomainFactory.Time);
+        worker.RegisterCapability(new WorkerCapability("PowerShellVersion", "7.6"));
+        Assert.Throws<DomainValidationException>(
+            () => worker.RegisterCapability(new WorkerCapability("powershellversion", "7.5")));
+
+        worker.RecordHeartbeat(TestDomainFactory.Time.AddMinutes(1));
+        Assert.Throws<DomainValidationException>(
+            () => worker.RecordHeartbeat(TestDomainFactory.Time));
+        worker.Disable();
+        Assert.False(worker.IsEnabled);
+        worker.Enable();
+
+        Assert.True(worker.IsEnabled);
+    }
+
+    [Fact]
+    public void CredentialReferenceContainsNoSecretAndRedactsExternalIdentifier()
+    {
+        const string externalIdentifier = "externalvault://vault/path/credential-1";
+        var reference = new CredentialReference(
+            CredentialReferenceId.New(),
+            "ExternalVault",
+            externalIdentifier,
+            "Deployment Credential",
+            TestDomainFactory.Time,
+            TestDomainFactory.User);
+
+        Assert.DoesNotContain(
+            reference.GetType().GetProperties(),
+            property => property.Name.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Equals("Secret", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(externalIdentifier, reference.ToString(), StringComparison.Ordinal);
+        Assert.Throws<DomainValidationException>(
+            () => new CredentialReference(
+                CredentialReferenceId.New(),
+                "ExternalVault",
+                "password=actual-value",
+                "Bad",
+                TestDomainFactory.Time,
+                TestDomainFactory.User));
+    }
+
+    [Theory]
+    [InlineData("externalvault://vault/apikey=actual-value")]
+    [InlineData("externalvault://vault/api_key=actual-value")]
+    [InlineData("externalvault://vault/token=actual-value")]
+    [InlineData("externalvault://vault/accesskey=actual-value")]
+    [InlineData("externalvault://vault/clientsecret=actual-value")]
+    [InlineData("externalvault://vault/authorization:actual-value")]
+    public void CredentialReferenceRejectsCommonEmbeddedSecretMarkers(string externalIdentifier)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new CredentialReference(
+                CredentialReferenceId.New(),
+                "ExternalVault",
+                externalIdentifier,
+                "Bad",
+                TestDomainFactory.Time,
+                TestDomainFactory.User));
+    }
+
+    [Theory]
+    [InlineData("hunter2")]
+    [InlineData("externalvault://credential")]
+    [InlineData("othervault://vault/path/credential")]
+    [InlineData("externalvault://user:secret@vault/path/credential")]
+    [InlineData("externalvault://vault/path/credential?version=secret")]
+    [InlineData("externalvault://vault/path/credential#secret")]
+    public void CredentialReferenceRejectsUnscopedOrMismatchedIdentifiers(string externalIdentifier)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new CredentialReference(
+                CredentialReferenceId.New(),
+                "ExternalVault",
+                externalIdentifier,
+                "Bad",
+                TestDomainFactory.Time,
+                TestDomainFactory.User));
+    }
+}
