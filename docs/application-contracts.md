@@ -22,7 +22,7 @@ Accepted clears write `JobParameterCleared` rather than misleading set semantics
 
 `IJobRepository`, `IScriptDefinitionRepository`, `IWorkerNodeRepository`, and `ICredentialReferenceRepository` are domain-specific async interfaces. `ICredentialReferenceRepository` is used only to verify that a supplied secure parameter references an existing enabled credential reference; it does not return or store raw credential values. `IAuditWriter` records audit events, `IUnitOfWork` defines the commit boundary, `IClock` supplies UTC time, `ICurrentUser` represents an actor, and `IJobFingerprintService` defines future approval fingerprint creation.
 
-No generic repository or SQL terminology is exposed. Phase 3 will provide Infrastructure implementations and persistence mappings.
+No generic repository or SQL terminology is exposed through Application. Phase 3 provides SQL Server implementations entirely in Infrastructure. Repository methods load or stage tracked aggregate graphs and propagate cancellation; they do not commit. The scoped `IUnitOfWork` performs the one atomic commit for both aggregate and audit changes.
 
 ## DTOs and sensitive values
 
@@ -30,6 +30,6 @@ Contracts uses immutable records, GUIDs at the external boundary, string enum na
 
 Serialized `StringArray` parameter values use a JSON array of strings, for example `["server-01","server-02"]`. This representation is validated in Domain but is not passed to PowerShell in Phase 2. `SecureReference` values must use canonical GUID `D` format and represent `CredentialReferenceId`; arbitrary strings and raw secret-shaped values are rejected before storage.
 
-`JobParameter` stores only explicit binding data: parameter name and a present serialized value. Future persistence must reconstruct only this binding data and validate it against the pinned immutable `ScriptVersion` before any value is exposed. Absent values are represented by no binding, never by a null, empty, or whitespace `JobParameter`.
+`JobParameter` stores only explicit binding data: parameter name and a present serialized value. Persistence reconstructs only this binding data; Application continues to validate it against the pinned immutable `ScriptVersion` before any value is exposed. Absent values are represented by no binding, never by a null, empty, or whitespace `JobParameter`.
 
 Domain and application boundaries reject undefined enum values before they can be captured into policy snapshots, job requests, parameters, approvals, execution outcomes, or operational transitions. Contract DTOs continue to expose enum names as strings; parsing and validation are expected at the eventual API boundary.

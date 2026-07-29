@@ -1,10 +1,12 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application foundation for future controlled automation. The repository has completed **Phase 2: Domain and Application Contracts**.
+Windows Script Runner is a Windows-hosted .NET application foundation for future controlled automation. **Phase 3: SQL Server Persistence is implemented on this branch and pending review.**
 
 ## Status
 
-The solution contains a validated domain model, application commands and queries, public DTOs, a Razor Pages scaffold, a configurable heartbeat worker, architectural boundaries, and meaningful tests. Phase 2 review remediation protects evidence-bearing lifecycle transitions, completes active execution attempts only through the execution-outcome operation, derives approval and read-only rules from an immutable submission-time policy snapshot, requires Execute-capable script versions to also support DryRun, enforces the requested phase selected at submission, rejects undefined domain enum values at aggregate and application boundaries, validates aggregate changes before mutation, stores job parameters as name/value bindings whose type and sensitivity always come from the pinned script version, requires credential-reference IDs for secure parameters, keeps audit metadata bounded, and keeps unexpected worker failures observable. No persistence or operational automation is implemented.
+The solution contains the validated Phase 2 domain/application model plus an EF Core SQL Server persistence layer. Infrastructure owns explicit persistence entities, mappings, repositories, append-only audit staging, a single unit-of-work commit boundary, optimistic concurrency, migrations, SQL readiness checks, and bounded exception translation. Real SQL Server tests exercise schema creation and rollback, idempotent deployment SQL, repository round trips, constraints, transactions, concurrency, cancellation, health checks, and query shape.
+
+Production startup does not apply migrations by default. Operators must deploy the reviewed migration artifact or explicitly opt into startup migration for a controlled environment.
 
 ## Solution structure
 
@@ -12,11 +14,11 @@ The solution contains a validated domain model, application commands and queries
 - `src/WindowsScriptRunner.Worker` — cancellation-aware worker heartbeat
 - `src/WindowsScriptRunner.Application` — use-case handlers and persistence/audit abstractions
 - `src/WindowsScriptRunner.Domain` — independent aggregates, lifecycle rules, and value objects
-- `src/WindowsScriptRunner.Infrastructure` — future external concerns
+- `src/WindowsScriptRunner.Infrastructure` — EF Core SQL Server persistence, repositories, migrations, health checks, and composition
 - `src/WindowsScriptRunner.Contracts` — shared public request and response contracts
 - `src/WindowsScriptRunner.PowerShell` — future isolated execution boundary
 - `src/WindowsScriptRunner.Reporting` — future report generation
-- `tests` — unit, integration scaffold, worker, security, and PowerShell boundary tests
+- `tests` — unit, integration scaffold, real SQL Server, worker, security, and PowerShell boundary tests
 - `automation`, `deployment`, `docs` — future operational assets and documentation
 
 ## Prerequisites
@@ -24,6 +26,7 @@ The solution contains a validated domain model, application commands and queries
 - Git
 - Stable .NET 10 SDK
 - PowerShell 7
+- SQL Server; SQL Server LocalDB is supported for development and tests
 
 ## Commands
 
@@ -32,23 +35,25 @@ dotnet restore
 dotnet build --configuration Release
 dotnet test --configuration Release
 dotnet format --verify-no-changes
+dotnet tool restore
+dotnet ef database update --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj
 dotnet run --project .\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj
 dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker.csproj
 ```
 
 ## Current limitations
 
-- No database has been implemented.
 - No PowerShell scripts are executed.
 - No production job processing exists.
 - No authentication or authorization model is complete.
 - Approval fingerprints are supplied and validated structurally, but trusted fingerprint calculation is future work.
 - Windows identities compare case-insensitively in Phase 2; future authentication should map users to stable SIDs or equivalent principal identifiers.
 - Secure parameters store only credential-reference IDs. External credential lookup and secret retrieval remain future Infrastructure work.
+- Credential-reference persistence stores a provider-scoped external identifier and a SHA-256 lookup hash, never raw credential material.
 - Job parameter type and sensitivity are never trusted from stored job-parameter metadata; responses and audit classification derive from the pinned immutable `ScriptParameterDefinition`.
 - Null, empty, and whitespace parameter input is one canonical absent value. If the pinned definition permits absence, the draft removes the explicit binding, leaves any definition-owned default in place, skips credential lookup, and writes a bounded `JobParameterCleared` audit event without the prior value.
 - Domain aggregate operations validate every proposed value before changing scalar, collection, timestamp, or child state. In particular, `ScriptDefinition.UpdateDetails` applies display name, description, and timestamp atomically.
 - Deployment documentation is planning-only.
 - The project is not production-ready.
 
-The next implementation phase is **Phase 3: SQL Server Persistence**.
+See [SQL Server persistence](docs/sql-server-persistence.md), [database schema](docs/database-schema.md), and [database migrations](docs/database-migrations.md) for Phase 3 operational details.
