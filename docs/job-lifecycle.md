@@ -44,3 +44,14 @@ Phase 2 supports submitted requests for `Validation`, `DryRun`, and `Execute`.
 - `Execute` requests are the only requests that may require approval, queue execution, be claimed, start execution attempts, enter post-validation, and record execution outcomes. Execute requests require a script version that also supports DryRun so approval and execution cannot bypass dry-run capability.
 
 Other enum values, including `Discovery`, `Report`, and `PostValidation`, are rejected during submission until a full lifecycle is modeled for them. Undefined enum values are rejected before job creation, policy capture, transition, approval, parameter, or execution-outcome mutation.
+
+## Lease-controlled transitions
+
+Phase 4 makes worker-controlled transitions lease-aware. The current lease ID, worker ID, and fencing token are required for renewal and every transition after acquisition. The generic transition application handler cannot enter `DryRunRunning`, `DryRunCompleted`, `Claimed`, or `PostValidation`, and it cannot mutate a leased job.
+
+| Work | Acquisition | Handler start | Successful resolution | Expiration before start | Expiration after start |
+|---|---|---|---|---|---|
+| DryRun | remains `DryRunQueued` with lease | `DryRunQueued -> DryRunRunning` | `DryRunRunning -> DryRunCompleted`, lease removed | lease removed; remains queued | `DryRunRunning -> TimedOut`, lease removed |
+| Execute | `ExecutionQueued -> Claimed` with lease | `Claimed -> Executing` and creates attempt | terminal outcome completes attempt/job and removes lease | `Claimed -> ExecutionQueued`, lease removed | active attempt becomes `TimedOut`, lease removed |
+
+Execute may enter `PostValidation` only through the lease-aware handler. Lease renewal changes only lease timestamps. A stale worker cannot renew, release, transition, or report success after expiration recovery or ownership change.

@@ -38,3 +38,16 @@
 - Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
 Authentication, authorization, executable signing, trusted hash calculation, external credential retrieval, process isolation, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.
+
+## Phase 4 queue security
+
+- Production registers no `IJobWorkHandler`, so it advertises zero work kinds and leases no jobs.
+- Worker continues to have no PowerShell project reference, `Process.Start`, `System.Diagnostics.Process`, or `System.Management.Automation` use.
+- Candidate and claimed-work descriptors contain no parameters, serialized values, credential-reference IDs, external identifiers, or script content.
+- The SQL candidate projection is bounded, parameterized, filters exact eligible status plus lease absence, and orders deterministically.
+- Every worker-controlled mutation requires current lease ID, worker ID, and fencing token. Domain validation precedes mutation; stale audit and job state cannot commit.
+- Acquisition revalidates that the persisted worker is enabled and live. Heartbeat failure immediately pauses new claims, and prolonged inability to heartbeat fails the hosted service.
+- Renewal uses the existing fencing token and writes no routine audit. Loss or inability to renew safely cancels the handler.
+- Audit metadata is limited to work kind, worker ID, lease ID, fencing token, expiration, and recovery disposition. `FencingToken` is coordination metadata, not authentication or secret material.
+- Logs use identifiers, counts, outcomes, and bounded persistence categories. They omit parameter values, credential data, scripts, connection strings, SQL authentication data, and approval comments.
+- Lease coordination is at-least-once. A future side-effecting handler must make its downstream operations idempotent and propagate or validate fencing where that downstream system supports it.
