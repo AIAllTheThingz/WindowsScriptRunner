@@ -54,6 +54,12 @@ public sealed class CredentialReference
             "user id=",
             "connectionstring=",
             "secret=",
+            "apikey=",
+            "api_key=",
+            "token=",
+            "accesskey=",
+            "clientsecret=",
+            "authorization:",
         ];
         if (prohibitedMarkers.Any(
             marker => identifier.Contains(marker, StringComparison.OrdinalIgnoreCase)))

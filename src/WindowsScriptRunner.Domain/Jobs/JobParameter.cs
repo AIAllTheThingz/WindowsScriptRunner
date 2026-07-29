@@ -20,7 +20,7 @@ public sealed class JobParameter
     }
 
     public string Name { get; }
-    public string? SerializedValue { get; }
+    public string SerializedValue { get; }
 
     public override string ToString() => $"{Name}=[VALUE OMITTED]";
 
@@ -30,7 +30,9 @@ public sealed class JobParameter
         if (string.IsNullOrWhiteSpace(name) || !NamePattern.IsMatch(name))
         {
             throw new InvalidJobParameterException(
-                value ?? "(null)",
+                name is null
+                    ? "(null)"
+                    : new string(name.Where(character => !char.IsControl(character)).Take(64).ToArray()),
                 "name must be a valid PowerShell-style parameter identifier.");
         }
 

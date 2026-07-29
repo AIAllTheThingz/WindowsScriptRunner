@@ -56,7 +56,11 @@ public sealed class AuditEvent
                 throw new DomainValidationException("Sensitive values cannot be stored in audit properties.");
             }
 
-            copy.Add(key, value);
+            if (!copy.TryAdd(key, value))
+            {
+                throw new DomainValidationException(
+                    $"Audit property keys must be unique ignoring case: '{key}'.");
+            }
         }
 
         return new ReadOnlyDictionary<string, string>(copy);

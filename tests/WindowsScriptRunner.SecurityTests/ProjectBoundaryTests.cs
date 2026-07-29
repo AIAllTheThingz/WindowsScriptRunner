@@ -243,7 +243,8 @@ public sealed class ProjectBoundaryTests
         return document.Descendants("ProjectReference")
             .Select(element => element.Attribute("Include")?.Value)
             .Where(include => !string.IsNullOrWhiteSpace(include))
-            .Select(include => Path.GetFileNameWithoutExtension(include!))
+            .Select(include => Path.GetFileNameWithoutExtension(
+                include!.Replace('\\', Path.DirectorySeparatorChar)))
             .ToArray();
     }
 

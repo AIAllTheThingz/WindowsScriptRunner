@@ -11,7 +11,7 @@
 | Validated | DryRunQueued, or Completed through validation-only completion |
 | DryRunQueued | DryRunRunning |
 | DryRunRunning | DryRunCompleted |
-| DryRunCompleted | AwaitingApproval, or Completed under the trusted read-only rule |
+| DryRunCompleted | AwaitingApproval for Execute requests, or Completed for DryRun-only requests and the trusted read-only rule |
 | AwaitingApproval | Approved or Rejected |
 | Approved | ExecutionQueued |
 | ExecutionQueued | Claimed |

@@ -113,4 +113,23 @@ public sealed class ApprovalWorkerAndCredentialTests
                 TestDomainFactory.Time,
                 TestDomainFactory.User));
     }
+
+    [Theory]
+    [InlineData("apikey=actual-value")]
+    [InlineData("api_key=actual-value")]
+    [InlineData("token=actual-value")]
+    [InlineData("accesskey=actual-value")]
+    [InlineData("clientsecret=actual-value")]
+    [InlineData("authorization: Bearer actual-value")]
+    public void CredentialReferenceRejectsCommonEmbeddedSecretMarkers(string externalIdentifier)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new CredentialReference(
+                CredentialReferenceId.New(),
+                "ExternalVault",
+                externalIdentifier,
+                "Bad",
+                TestDomainFactory.Time,
+                TestDomainFactory.User));
+    }
 }

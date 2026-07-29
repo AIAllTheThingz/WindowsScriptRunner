@@ -344,8 +344,9 @@ public sealed class ApplicationHandlerTests
         var audit = Assert.Single(fixture.Audits.Events);
         Assert.Equal("JobParameterCleared", audit.EventType);
         Assert.Equal("True", audit.Properties["BindingExisted"]);
-        Assert.DoesNotContain("3", audit.Properties.Values);
-        Assert.DoesNotContain("7", audit.Properties.Values);
+        var joined = string.Join(' ', audit.Properties.Values);
+        Assert.DoesNotContain("3", joined, StringComparison.Ordinal);
+        Assert.DoesNotContain("7", joined, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -1174,7 +1175,8 @@ public sealed class ApplicationHandlerTests
             $"<{nameof(ScriptVersion.IsPublished)}>k__BackingField",
             BindingFlags.Instance | BindingFlags.NonPublic);
 
-        field?.SetValue(version, true);
+        Assert.NotNull(field);
+        field.SetValue(version, true);
     }
 
     private sealed class HandlerFixture

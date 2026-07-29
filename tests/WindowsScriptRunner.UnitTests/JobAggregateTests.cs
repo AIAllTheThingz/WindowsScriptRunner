@@ -1026,6 +1026,27 @@ public sealed class JobAggregateTests
             () => new JobApproval(null!, ApprovalDecision.Approved, TestDomainFactory.OtherUser, TestDomainFactory.Time, null, TestDomainFactory.Fingerprint));
     }
 
+    [Fact]
+    public void AuditPropertiesRejectCaseInsensitiveDuplicateKeysWithDomainException()
+    {
+        var properties = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["JobId"] = "first",
+            ["jobid"] = "second",
+        };
+
+        Assert.Throws<DomainValidationException>(
+            () => new AuditEvent(
+                AuditEventId.New(),
+                "Event",
+                "Entity",
+                "id",
+                TestDomainFactory.User,
+                TestDomainFactory.Time,
+                "Summary",
+                properties));
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(999)]
@@ -1059,15 +1080,29 @@ public sealed class JobAggregateTests
     [Fact]
     public void JobParameterStoresOnlyBindingData()
     {
-        var parameter = new JobParameter("Mode", "Safe");
+        var parameter = new JobParameter("Mode", "  Safe  ");
         var publicProperties = typeof(JobParameter).GetProperties(BindingFlags.Instance | BindingFlags.Public);
 
         Assert.Equal("Mode", parameter.Name);
-        Assert.Equal("Safe", parameter.SerializedValue);
+        Assert.Equal("  Safe  ", parameter.SerializedValue);
         Assert.DoesNotContain(
             publicProperties,
             property => property.Name is "ParameterType" or "IsSensitive");
         Assert.DoesNotContain("Safe", parameter.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvalidParameterNameIsSanitizedAndBoundedInException()
+    {
+        var invalidName = new string('x', 200) + "\r\nsecret";
+
+        var exception = Assert.Throws<InvalidJobParameterException>(
+            () => new JobParameter(invalidName, "value"));
+
+        Assert.DoesNotContain('\r', exception.Message);
+        Assert.DoesNotContain('\n', exception.Message);
+        Assert.DoesNotContain("secret", exception.Message, StringComparison.Ordinal);
+        Assert.True(exception.Message.Length < invalidName.Length);
     }
 
     [Fact]
@@ -1254,7 +1289,8 @@ public sealed class JobAggregateTests
         var field = typeof(Job).GetField(
             $"<{nameof(Job.Status)}>k__BackingField",
             BindingFlags.Instance | BindingFlags.NonPublic);
-        field?.SetValue(job, status);
+        Assert.NotNull(field);
+        field.SetValue(job, status);
     }
 
     private static void ForcePublished(ScriptVersion version)
@@ -1262,7 +1298,8 @@ public sealed class JobAggregateTests
         var field = typeof(ScriptVersion).GetField(
             $"<{nameof(ScriptVersion.IsPublished)}>k__BackingField",
             BindingFlags.Instance | BindingFlags.NonPublic);
-        field?.SetValue(version, true);
+        Assert.NotNull(field);
+        field.SetValue(version, true);
     }
 
     private static void AddReconstructedParameter(Job job, JobParameter parameter)

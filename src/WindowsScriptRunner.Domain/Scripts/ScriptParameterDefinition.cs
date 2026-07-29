@@ -9,6 +9,8 @@ namespace WindowsScriptRunner.Domain.Scripts;
 
 public sealed class ScriptParameterDefinition
 {
+    private const int MaximumSerializedValueLength = 4000;
+
     private static readonly Regex ParameterNamePattern = new(
         @"\A[A-Za-z_][A-Za-z0-9_]{0,99}\z",
         RegexOptions.CultureInvariant);
@@ -59,6 +61,11 @@ public sealed class ScriptParameterDefinition
             }
 
             return;
+        }
+
+        if (serializedValue.Length > MaximumSerializedValueLength)
+        {
+            throw new InvalidJobParameterException(Name, "the supplied value is too long.");
         }
 
         var valid = ParameterType switch

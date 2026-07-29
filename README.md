@@ -13,7 +13,7 @@ The solution contains a validated domain model, application commands and queries
 - `src/WindowsScriptRunner.Application` — use-case handlers and persistence/audit abstractions
 - `src/WindowsScriptRunner.Domain` — independent aggregates, lifecycle rules, and value objects
 - `src/WindowsScriptRunner.Infrastructure` — future external concerns
-- `src/WindowsScriptRunner.Contracts` — future shared contracts
+- `src/WindowsScriptRunner.Contracts` — shared public request and response contracts
 - `src/WindowsScriptRunner.PowerShell` — future isolated execution boundary
 - `src/WindowsScriptRunner.Reporting` — future report generation
 - `tests` — unit, integration scaffold, worker, security, and PowerShell boundary tests

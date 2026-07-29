@@ -1,3 +1,4 @@
+using System.Text.Json;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -326,6 +327,27 @@ public sealed class ScriptModelTests
         var definition = TestDomainFactory.Parameter(
             "Targets",
             ScriptParameterType.StringArray);
+
+        Assert.Throws<InvalidJobParameterException>(
+            () => definition.ValidateSerializedValue(serializedValue));
+    }
+
+    [Fact]
+    public void SerializedValuesRejectOversizedInput()
+    {
+        var definition = TestDomainFactory.Parameter("Text");
+
+        Assert.Throws<InvalidJobParameterException>(
+            () => definition.ValidateSerializedValue(new string('a', 4001)));
+    }
+
+    [Fact]
+    public void SerializedStringArraysRejectOversizedInput()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Targets",
+            ScriptParameterType.StringArray);
+        var serializedValue = JsonSerializer.Serialize(new[] { new string('a', 4001) });
 
         Assert.Throws<InvalidJobParameterException>(
             () => definition.ValidateSerializedValue(serializedValue));
