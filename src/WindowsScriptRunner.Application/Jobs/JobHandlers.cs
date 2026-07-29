@@ -372,23 +372,11 @@ public sealed class TransitionJobHandler(
             case Domain.JobStatus.DryRunQueued:
                 job.QueueDryRun(command.ActingUser, now);
                 break;
-            case Domain.JobStatus.DryRunRunning:
-                job.StartDryRun(command.ActingUser, now);
-                break;
-            case Domain.JobStatus.DryRunCompleted:
-                job.CompleteDryRun(command.ActingUser, now);
-                break;
             case Domain.JobStatus.AwaitingApproval:
                 job.RequireApproval(command.ActingUser, now);
                 break;
             case Domain.JobStatus.ExecutionQueued:
                 job.QueueExecution(command.ActingUser, now);
-                break;
-            case Domain.JobStatus.Claimed:
-                job.Claim(command.ActingUser, now);
-                break;
-            case Domain.JobStatus.PostValidation:
-                job.BeginPostValidation(command.ActingUser, now);
                 break;
             case Domain.JobStatus.Failed:
                 job.Fail(command.ActingUser, now);
@@ -422,7 +410,8 @@ public sealed class TransitionJobHandler(
             return false;
         }
 
-        return job.Status is Domain.JobStatus.Executing or Domain.JobStatus.PostValidation ||
+        return job.Lease is not null ||
+            job.Status is Domain.JobStatus.Executing or Domain.JobStatus.PostValidation ||
             job.HasActiveExecutionAttempt;
     }
 }
@@ -583,7 +572,6 @@ public sealed class CompleteDryRunJobHandler(
 
 public sealed class StartExecutionAttemptHandler(
     IJobRepository jobRepository,
-    IWorkerNodeRepository workerNodeRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
     IClock clock)
@@ -597,26 +585,9 @@ public sealed class StartExecutionAttemptHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        WorkerNode? workerNode = null;
-        if (command.WorkerNodeId is not null)
-        {
-            workerNode = await workerNodeRepository.GetByIdAsync(
-                command.WorkerNodeId,
-                cancellationToken);
-            if (workerNode is null)
-            {
-                throw new EntityNotFoundException(nameof(WorkerNode), command.WorkerNodeId.ToString());
-            }
-
-            if (!workerNode.IsEnabled)
-            {
-                throw new ApplicationValidationException("Worker node is disabled.");
-            }
-        }
-
         var now = clock.UtcNow;
-        var execution = job.StartExecutionAttempt(
-            command.WorkerNodeId,
+        var execution = job.StartLeasedExecutionAttempt(
+            command.LeaseCredentials,
             command.ActingUser,
             now);
         var audit = CreateDraftJobHandler.Audit(
@@ -655,6 +626,7 @@ public sealed class RecordExecutionOutcomeHandler(
             cancellationToken);
         var now = clock.UtcNow;
         var execution = job.RecordTerminalExecutionOutcome(
+            command.LeaseCredentials,
             command.Outcome,
             command.ExitCode,
             command.Summary,

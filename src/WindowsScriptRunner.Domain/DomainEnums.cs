@@ -24,6 +24,12 @@ public enum JobStatus
     NotRun,
 }
 
+public enum JobWorkKind
+{
+    DryRun,
+    Execute,
+}
+
 public enum RiskLevel
 {
     ReadOnly,

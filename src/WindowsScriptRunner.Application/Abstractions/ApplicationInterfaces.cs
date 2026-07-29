@@ -1,3 +1,5 @@
+using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -64,4 +66,26 @@ public interface IUnitOfWork
 public interface IJobFingerprintService
 {
     Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken);
+}
+
+public interface IJobQueueCandidateSource
+{
+    Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
+        IReadOnlySet<JobWorkKind> supportedWorkKinds,
+        int maximumCount,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+}
+
+public interface IExpiredJobLeaseCandidateSource
+{
+    Task<IReadOnlyList<ExpiredJobLeaseCandidate>> FindExpiredAsync(
+        DateTimeOffset now,
+        int maximumCount,
+        CancellationToken cancellationToken);
+}
+
+public interface IFencingTokenSource
+{
+    Task<long> GetNextAsync(CancellationToken cancellationToken);
 }

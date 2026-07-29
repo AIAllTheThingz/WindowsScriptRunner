@@ -21,10 +21,17 @@ public sealed record CompleteValidationJobRequest(Guid JobId);
 
 public sealed record CompleteDryRunJobRequest(Guid JobId);
 
-public sealed record StartExecutionAttemptRequest(Guid JobId, Guid? WorkerNodeId);
+public sealed record StartExecutionAttemptRequest(
+    Guid JobId,
+    Guid LeaseId,
+    Guid WorkerNodeId,
+    long FencingToken);
 
 public sealed record RecordExecutionOutcomeRequest(
     Guid JobId,
+    Guid LeaseId,
+    Guid WorkerNodeId,
+    long FencingToken,
     string Outcome,
     int? ExitCode,
     string? Summary);
