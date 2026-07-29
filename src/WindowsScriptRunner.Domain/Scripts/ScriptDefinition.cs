@@ -49,6 +49,64 @@ public sealed class ScriptDefinition
         DateTimeOffset createdUtc) =>
         new(id, name, displayName, description, riskLevel, createdBy, createdUtc);
 
+    internal static ScriptDefinition Rehydrate(
+        ScriptDefinitionId id,
+        ScriptName name,
+        string displayName,
+        string description,
+        RiskLevel riskLevel,
+        bool isEnabled,
+        UserIdentity createdBy,
+        DateTimeOffset createdUtc,
+        DateTimeOffset updatedUtc,
+        IEnumerable<ScriptVersion> versions)
+    {
+        if (updatedUtc < createdUtc)
+        {
+            throw new DomainValidationException(
+                "Script definition update timestamp cannot precede creation.");
+        }
+
+        var definition = new ScriptDefinition(
+            id,
+            name,
+            displayName,
+            description,
+            riskLevel,
+            createdBy,
+            createdUtc)
+        {
+            IsEnabled = isEnabled,
+            UpdatedUtc = updatedUtc,
+        };
+
+        foreach (var version in versions ?? throw new DomainValidationException("Script versions are required."))
+        {
+            ArgumentNullException.ThrowIfNull(version);
+            if (definition._versions.Any(existing => existing.Id == version.Id))
+            {
+                throw new InvalidScriptVersionException(
+                    $"Script version identifier {version.Id} is duplicated in persisted state.");
+            }
+
+            if (definition._versions.Any(existing => existing.Version == version.Version))
+            {
+                throw new InvalidScriptVersionException(
+                    $"Script version {version.Version} is duplicated in persisted state.");
+            }
+
+            if (version.CreatedUtc < createdUtc || version.CreatedUtc > updatedUtc)
+            {
+                throw new InvalidScriptVersionException(
+                    "Persisted script version timestamp must fall within the script definition lifetime.");
+            }
+
+            definition._versions.Add(version);
+        }
+
+        return definition;
+    }
+
     public void UpdateDetails(string displayName, string description, DateTimeOffset updatedUtc)
     {
         EnsureTimestamp(updatedUtc);

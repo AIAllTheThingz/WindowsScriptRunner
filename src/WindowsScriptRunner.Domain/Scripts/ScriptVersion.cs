@@ -62,6 +62,69 @@ public sealed class ScriptVersion
     public IReadOnlyCollection<ScriptParameterDefinition> ParameterDefinitions => _parameterDefinitions.AsReadOnly();
     public IReadOnlyCollection<ReportFormat> SupportedReportFormats => _supportedReportFormats;
 
+    internal static ScriptVersion Rehydrate(
+        ScriptVersionId id,
+        ScriptVersionNumber version,
+        string relativeScriptPath,
+        string sha256,
+        string? gitCommitSha,
+        string minimumPowerShellVersion,
+        int defaultTimeoutMinutes,
+        IEnumerable<ExecutionPhase> supportedPhases,
+        IEnumerable<ReportFormat> supportedReportFormats,
+        DateTimeOffset createdUtc,
+        UserIdentity createdBy,
+        bool isPublished,
+        IEnumerable<ScriptParameterDefinition> parameterDefinitions)
+    {
+        var scriptVersion = new ScriptVersion(
+            id,
+            version,
+            relativeScriptPath,
+            sha256,
+            gitCommitSha,
+            minimumPowerShellVersion,
+            defaultTimeoutMinutes,
+            supportedPhases,
+            supportedReportFormats,
+            createdUtc,
+            createdBy);
+
+        foreach (var definition in parameterDefinitions ??
+            throw new DomainValidationException("Script parameter definitions are required."))
+        {
+            ArgumentNullException.ThrowIfNull(definition);
+            if (scriptVersion._parameterDefinitions.Any(existing => existing.Id == definition.Id))
+            {
+                throw new InvalidParameterDefinitionException(
+                    $"Parameter definition identifier '{definition.Id}' is duplicated in persisted state.");
+            }
+
+            if (scriptVersion._parameterDefinitions.Any(
+                existing => string.Equals(
+                    existing.Name,
+                    definition.Name,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidParameterDefinitionException(
+                    $"Parameter name '{definition.Name}' is duplicated in persisted state.");
+            }
+
+            scriptVersion._parameterDefinitions.Add(definition);
+        }
+
+        if (isPublished &&
+            scriptVersion._supportedPhases.Contains(ExecutionPhase.Execute) &&
+            !scriptVersion._supportedPhases.Contains(ExecutionPhase.DryRun))
+        {
+            throw new InvalidScriptVersionException(
+                "Published Execute-capable versions must also support DryRun.");
+        }
+
+        scriptVersion.IsPublished = isPublished;
+        return scriptVersion;
+    }
+
     public void AddParameterDefinition(ScriptParameterDefinition definition)
     {
         EnsureMutable();

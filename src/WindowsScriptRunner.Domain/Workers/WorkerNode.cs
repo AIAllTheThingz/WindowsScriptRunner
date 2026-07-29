@@ -27,6 +27,45 @@ public sealed class WorkerNode
     public DateTimeOffset? LastHeartbeatUtc { get; private set; }
     public IReadOnlyCollection<WorkerCapability> Capabilities => _capabilities.AsReadOnly();
 
+    internal static WorkerNode Rehydrate(
+        WorkerNodeId id,
+        string name,
+        bool isEnabled,
+        DateTimeOffset registeredUtc,
+        DateTimeOffset? lastHeartbeatUtc,
+        IEnumerable<WorkerCapability> capabilities)
+    {
+        if (lastHeartbeatUtc is not null && lastHeartbeatUtc < registeredUtc)
+        {
+            throw new DomainValidationException(
+                "Worker heartbeat timestamp cannot precede registration.");
+        }
+
+        var worker = new WorkerNode(id, name, registeredUtc, isEnabled)
+        {
+            LastHeartbeatUtc = lastHeartbeatUtc,
+        };
+
+        foreach (var capability in capabilities ??
+            throw new DomainValidationException("Worker capabilities are required."))
+        {
+            ArgumentNullException.ThrowIfNull(capability);
+            if (worker._capabilities.Any(
+                existing => string.Equals(
+                    existing.Name,
+                    capability.Name,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new DomainValidationException(
+                    $"Worker capability '{capability.Name}' is duplicated in persisted state.");
+            }
+
+            worker._capabilities.Add(capability);
+        }
+
+        return worker;
+    }
+
     public void RegisterCapability(WorkerCapability capability)
     {
         ArgumentNullException.ThrowIfNull(capability);
