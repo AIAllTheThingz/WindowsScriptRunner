@@ -2,6 +2,7 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain.Auditing;
+using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
@@ -171,6 +172,7 @@ public sealed class SetJobParameterHandler(
         definition.ValidateSerializedValue(suppliedValue);
         var now = clock.UtcNow;
 
+        CredentialReference? credentialReference = null;
         AuditEvent audit;
         if (isAbsent)
         {
@@ -191,10 +193,11 @@ public sealed class SetJobParameterHandler(
             var serializedValue = suppliedValue;
             if (definition.ParameterType == Domain.ScriptParameterType.SecureReference)
             {
-                serializedValue = await ResolveCredentialReferenceAsync(
+                credentialReference = await ResolveCredentialReferenceAsync(
                     credentialRepository,
                     suppliedValue,
                     cancellationToken);
+                serializedValue = credentialReference.Id.ToString();
             }
 
             definition.ValidateSerializedValue(serializedValue);
@@ -209,6 +212,11 @@ public sealed class SetJobParameterHandler(
         }
 
         await jobRepository.UpdateAsync(job, cancellationToken);
+        if (credentialReference is not null)
+        {
+            await credentialRepository.UpdateAsync(credentialReference, cancellationToken);
+        }
+
         await auditWriter.WriteAsync(audit, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }
@@ -220,7 +228,7 @@ public sealed class SetJobParameterHandler(
         await repository.GetByIdAsync(id, cancellationToken)
         ?? throw new EntityNotFoundException(nameof(ScriptDefinition), id.ToString());
 
-    private static async Task<string> ResolveCredentialReferenceAsync(
+    private static async Task<CredentialReference> ResolveCredentialReferenceAsync(
         ICredentialReferenceRepository credentialRepository,
         string? serializedValue,
         CancellationToken cancellationToken)
@@ -243,7 +251,7 @@ public sealed class SetJobParameterHandler(
             throw new ApplicationValidationException("Credential reference is disabled.");
         }
 
-        return credentialReference.Id.ToString();
+        return credentialReference;
     }
 
     private static IReadOnlyDictionary<string, string> CreateParameterAuditProperties(

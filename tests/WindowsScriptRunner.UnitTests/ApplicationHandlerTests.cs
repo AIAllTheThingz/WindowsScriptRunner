@@ -192,6 +192,7 @@ public sealed class ApplicationHandlerTests
             string.Join(' ', audit.Properties.Values),
             StringComparison.Ordinal);
         Assert.Equal(credential.Id.ToString(), Assert.Single(fixture.Jobs.Job.Parameters).SerializedValue);
+        Assert.Equal(1, fixture.Credentials.UpdateCount);
     }
 
     [Theory]
@@ -1586,6 +1587,7 @@ public sealed class ApplicationHandlerTests
     {
         public CredentialReference? CredentialReference { get; set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
+        public int UpdateCount { get; private set; }
 
         public Task<CredentialReference?> GetByIdAsync(
             CredentialReferenceId id,
@@ -1610,6 +1612,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             CredentialReference = credentialReference;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }

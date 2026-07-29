@@ -4,6 +4,7 @@ using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
+using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
@@ -276,6 +277,66 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
+    public async Task SecureParameterBindingRevalidatesCredentialAfterConcurrentDisable()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var parameter = SqlServerTestData.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            required: true,
+            sensitive: true);
+        var version = SqlServerTestData.Version([parameter]);
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DraftJob(script, version);
+        var credential = SqlServerTestData.Credential();
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(job, CancellationToken.None);
+            await seed.Credentials.AddAsync(credential, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using (var binding = new PersistenceTestScope(database))
+        {
+            var handler = new SetJobParameterHandler(
+                binding.Jobs,
+                binding.Scripts,
+                binding.Credentials,
+                binding.Audits,
+                new ConcurrentCredentialDisableUnitOfWork(
+                    database,
+                    binding.UnitOfWork,
+                    credential.Id),
+                new FixedClock(job.UpdatedUtc.AddMinutes(1)));
+
+            await Assert.ThrowsAsync<ApplicationConflictException>(
+                () => handler.HandleAsync(
+                    new SetJobParameterCommand(
+                        job.Id,
+                        parameter.Name,
+                        credential.Id.ToString(),
+                        SqlServerTestData.Requester),
+                    CancellationToken.None));
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Empty(
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None))
+                .Parameters);
+        Assert.False(
+            Assert.IsType<CredentialReference>(
+                await verification.Credentials.GetByIdAsync(
+                    credential.Id,
+                    CancellationToken.None))
+                .IsEnabled);
+        Assert.False(await verification.Context.AuditEvents.AnyAsync(
+            item => item.EventType == "JobParameterSet" &&
+                item.EntityId == job.Id.ToString()));
+    }
+
+    [Fact]
     public async Task StaleWorkerChildOnlyCommitConflicts()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
@@ -394,6 +455,28 @@ public sealed class TransactionAndConcurrencyTests
                         cancellationToken));
                 worker.Disable();
                 await competing.Workers.UpdateAsync(worker, cancellationToken);
+                await competing.UnitOfWork.CommitAsync(cancellationToken);
+            }
+
+            await inner.CommitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class ConcurrentCredentialDisableUnitOfWork(
+        SqlServerDatabase database,
+        IUnitOfWork inner,
+        CredentialReferenceId credentialReferenceId) : IUnitOfWork
+    {
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            await using (var competing = new PersistenceTestScope(database))
+            {
+                var credential = Assert.IsType<CredentialReference>(
+                    await competing.Credentials.GetByIdAsync(
+                        credentialReferenceId,
+                        cancellationToken));
+                credential.Disable();
+                await competing.Credentials.UpdateAsync(credential, cancellationToken);
                 await competing.UnitOfWork.CommitAsync(cancellationToken);
             }
 
