@@ -374,6 +374,62 @@ internal sealed class JobApprovalConfiguration : IEntityTypeConfiguration<JobApp
     }
 }
 
+internal sealed class JobLeaseConfiguration : IEntityTypeConfiguration<JobLeaseEntity>
+{
+    public void Configure(EntityTypeBuilder<JobLeaseEntity> builder)
+    {
+        builder.ToTable(
+            "JobLeases",
+            "wsr",
+            table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_JobLeases_JobId",
+                    "[JobId] <> '00000000-0000-0000-0000-000000000000'");
+                table.HasCheckConstraint(
+                    "CK_JobLeases_LeaseId",
+                    "[LeaseId] <> '00000000-0000-0000-0000-000000000000'");
+                table.HasCheckConstraint(
+                    "CK_JobLeases_WorkerNodeId",
+                    "[WorkerNodeId] <> '00000000-0000-0000-0000-000000000000'");
+                table.HasCheckConstraint(
+                    "CK_JobLeases_WorkKind",
+                    "[WorkKind] IN ('DryRun','Execute')");
+                table.HasCheckConstraint(
+                    "CK_JobLeases_FencingToken",
+                    "[FencingToken] > 0");
+                table.HasCheckConstraint(
+                    "CK_JobLeases_Timestamps",
+                    "[LastRenewedUtc] >= [AcquiredUtc] AND [ExpiresUtc] > [LastRenewedUtc]");
+            });
+        builder.HasKey(entity => entity.JobId);
+        builder.Property(entity => entity.JobId).ValueGeneratedNever();
+        builder.Property(entity => entity.LeaseId).ValueGeneratedNever();
+        builder.Property(entity => entity.WorkKind).HasMaxLength(16).IsRequired();
+        builder.Property(entity => entity.AcquiredUtc).HasColumnType("datetimeoffset(7)");
+        builder.Property(entity => entity.LastRenewedUtc).HasColumnType("datetimeoffset(7)");
+        builder.Property(entity => entity.ExpiresUtc).HasColumnType("datetimeoffset(7)");
+        builder.Property(entity => entity.RowVersion).IsRowVersion().IsConcurrencyToken();
+        builder.HasIndex(entity => entity.LeaseId)
+            .IsUnique()
+            .HasDatabaseName("UX_JobLeases_LeaseId");
+        builder.HasIndex(entity => entity.ExpiresUtc)
+            .HasDatabaseName("IX_JobLeases_ExpiresUtc");
+        builder.HasIndex(entity => new { entity.WorkerNodeId, entity.ExpiresUtc })
+            .HasDatabaseName("IX_JobLeases_WorkerNodeId_ExpiresUtc");
+        builder.HasIndex(entity => new { entity.WorkKind, entity.ExpiresUtc })
+            .HasDatabaseName("IX_JobLeases_WorkKind_ExpiresUtc");
+        builder.HasOne(entity => entity.Job)
+            .WithOne(entity => entity.Lease)
+            .HasForeignKey<JobLeaseEntity>(entity => entity.JobId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<WorkerNodeEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.WorkerNodeId)
+            .OnDelete(DeleteBehavior.NoAction);
+    }
+}
+
 internal sealed class WorkerNodeConfiguration : IEntityTypeConfiguration<WorkerNodeEntity>
 {
     public void Configure(EntityTypeBuilder<WorkerNodeEntity> builder)
@@ -496,7 +552,7 @@ internal sealed class AuditEventPropertyConfiguration :
             "wsr",
             table => table.HasCheckConstraint(
                 "CK_AuditEventProperties_NonSensitiveKey",
-                "[NormalizedKey] NOT LIKE '%PASSWORD%' AND [NormalizedKey] NOT LIKE '%SECRET%' AND [NormalizedKey] NOT LIKE '%TOKEN%'"));
+                "[NormalizedKey] NOT LIKE '%PASSWORD%' AND [NormalizedKey] NOT LIKE '%SECRET%' AND ([NormalizedKey] NOT LIKE '%TOKEN%' OR [NormalizedKey] = 'FENCINGTOKEN')"));
         builder.HasKey(entity => new { entity.AuditEventId, entity.NormalizedKey });
         builder.Property(entity => entity.Key).HasMaxLength(200).IsRequired();
         builder.Property(entity => entity.NormalizedKey).HasMaxLength(200).IsRequired();

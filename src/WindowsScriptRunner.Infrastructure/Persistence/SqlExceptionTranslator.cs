@@ -16,6 +16,7 @@ internal static class SqlExceptionTranslator
         64,
         233,
         258,
+        1205,
         4060,
         10928,
         10929,

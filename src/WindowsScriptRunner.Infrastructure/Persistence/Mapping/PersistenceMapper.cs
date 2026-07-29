@@ -137,6 +137,11 @@ internal static class PersistenceMapper
             entity.Approvals.Add(ToEntity(approval, entity.Id));
         }
 
+        if (job.Lease is not null)
+        {
+            entity.Lease = ToEntity(job.Lease, entity.Id);
+        }
+
         return entity;
     }
 
@@ -182,7 +187,8 @@ internal static class PersistenceMapper
                     item.DecisionUtc,
                     item.Comment,
                     item.ApprovalFingerprint))
-                .ToArray());
+                .ToArray(),
+            entity.Lease is null ? null : ToDomain(entity.Lease));
     }
 
     public static void Synchronize(Job job, JobEntity entity)
@@ -207,6 +213,7 @@ internal static class PersistenceMapper
         SynchronizeParameters(job, entity);
         SynchronizeExecutions(job, entity);
         SynchronizeApprovals(job, entity);
+        SynchronizeLease(job, entity);
     }
 
     public static WorkerNodeEntity ToEntity(WorkerNode worker)
@@ -254,28 +261,24 @@ internal static class PersistenceMapper
         entity.IsEnabled = worker.IsEnabled;
         entity.LastHeartbeatUtc = ToUtc(worker.LastHeartbeatUtc);
 
-        foreach (var capability in worker.Capabilities)
+        var desired = worker.Capabilities.ToDictionary(
+            capability => Normalize(capability.Name),
+            StringComparer.Ordinal);
+        entity.Capabilities.RemoveAll(capability => !desired.ContainsKey(capability.NormalizedName));
+        foreach (var capability in desired)
         {
-            var normalizedName = Normalize(capability.Name);
             var persisted = entity.Capabilities.SingleOrDefault(
-                item => item.NormalizedName == normalizedName);
+                item => item.NormalizedName == capability.Key);
             if (persisted is null)
             {
-                entity.Capabilities.Add(ToEntity(capability, entity.Id));
+                entity.Capabilities.Add(ToEntity(capability.Value, entity.Id));
             }
             else
             {
-                RequireSame(
-                    persisted.Name == capability.Name && persisted.Value == capability.Value,
-                    "Worker capabilities are immutable after registration.");
+                persisted.Name = capability.Value.Name;
+                persisted.Value = capability.Value.Value;
             }
         }
-
-        RequireSame(
-            entity.Capabilities.All(item =>
-                worker.Capabilities.Any(capability =>
-                    Normalize(capability.Name) == item.NormalizedName)),
-            "Worker capabilities cannot be removed through persistence.");
     }
 
     public static CredentialReferenceEntity ToEntity(CredentialReference credential)
@@ -581,6 +584,29 @@ internal static class PersistenceMapper
             entity.ExitCode,
             entity.Summary);
 
+    private static JobLeaseEntity ToEntity(JobLease lease, Guid jobId) =>
+        new()
+        {
+            JobId = jobId,
+            LeaseId = lease.Id.Value,
+            WorkerNodeId = lease.WorkerNodeId.Value,
+            WorkKind = lease.WorkKind.ToString(),
+            FencingToken = lease.FencingToken,
+            AcquiredUtc = ToUtc(lease.AcquiredUtc),
+            LastRenewedUtc = ToUtc(lease.LastRenewedUtc),
+            ExpiresUtc = ToUtc(lease.ExpiresUtc),
+        };
+
+    private static JobLease ToDomain(JobLeaseEntity entity) =>
+        new(
+            new JobLeaseId(entity.LeaseId),
+            new WorkerNodeId(entity.WorkerNodeId),
+            ParseEnum<JobWorkKind>(entity.WorkKind, "job lease work kind"),
+            entity.FencingToken,
+            entity.AcquiredUtc,
+            entity.LastRenewedUtc,
+            entity.ExpiresUtc);
+
     private static JobApprovalEntity ToEntity(JobApproval approval, Guid jobId) =>
         new()
         {
@@ -616,6 +642,32 @@ internal static class PersistenceMapper
                     "Job target immutable persistence state does not match the aggregate.");
             }
         }
+    }
+
+    private static void SynchronizeLease(Job job, JobEntity entity)
+    {
+        if (job.Lease is null)
+        {
+            entity.Lease = null;
+            return;
+        }
+
+        if (entity.Lease is null)
+        {
+            entity.Lease = ToEntity(job.Lease, entity.Id);
+            return;
+        }
+
+        RequireSame(
+            entity.Lease.JobId == entity.Id &&
+            entity.Lease.LeaseId == job.Lease.Id.Value &&
+            entity.Lease.WorkerNodeId == job.Lease.WorkerNodeId.Value &&
+            entity.Lease.WorkKind == job.Lease.WorkKind.ToString() &&
+            entity.Lease.FencingToken == job.Lease.FencingToken &&
+            entity.Lease.AcquiredUtc == ToUtc(job.Lease.AcquiredUtc),
+            "Job lease immutable persistence state does not match the aggregate.");
+        entity.Lease.LastRenewedUtc = ToUtc(job.Lease.LastRenewedUtc);
+        entity.Lease.ExpiresUtc = ToUtc(job.Lease.ExpiresUtc);
     }
 
     private static void SynchronizeParameters(Job job, JobEntity entity)

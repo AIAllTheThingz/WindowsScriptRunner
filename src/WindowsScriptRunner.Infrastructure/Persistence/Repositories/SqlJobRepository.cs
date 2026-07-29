@@ -35,6 +35,7 @@ public sealed class SqlJobRepository(
                             .Include(item => item.Parameters)
                             .Include(item => item.Executions)
                             .Include(item => item.Approvals)
+                            .Include(item => item.Lease)
                             .AsNoTrackingWithIdentityResolution()
                             .AsSplitQuery()
                             .SingleOrDefaultAsync(

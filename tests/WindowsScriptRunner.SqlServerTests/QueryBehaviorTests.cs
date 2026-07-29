@@ -8,9 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Infrastructure;
 using WindowsScriptRunner.Infrastructure.Persistence;
+using WindowsScriptRunner.Infrastructure.Persistence.Queue;
 using WindowsScriptRunner.Infrastructure.Persistence.Repositories;
 
 namespace WindowsScriptRunner.SqlServerTests;
@@ -127,6 +129,56 @@ public sealed class QueryBehaviorTests
         Assert.NotNull(loaded);
         Assert.Equal(script.Id, loaded.Id);
         Assert.Single(loaded.Versions);
+    }
+
+    [Fact]
+    public async Task QueueCandidateQueryIsBoundedParameterizedAndLoadsOnlySafeMetadata()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var parameter = SqlServerTestData.Parameter("Mode");
+        var version = SqlServerTestData.Version([parameter]);
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DryRunQueuedJob(script, version);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(job, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        var capture = new CommandCaptureInterceptor();
+        await using var context = database.CreateContext(capture);
+        var source = new SqlJobQueueCandidateSource(
+            context,
+            NullLogger<SqlJobQueueCandidateSource>.Instance);
+
+        var candidates = await source.FindCandidatesAsync(
+            new HashSet<JobWorkKind> { JobWorkKind.DryRun },
+            5,
+            SqlServerTestData.Time.AddDays(1),
+            CancellationToken.None);
+
+        Assert.Single(candidates);
+        var command = Assert.Single(capture.Commands);
+        Assert.Contains("TOP(", command, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ORDER BY", command, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UpdatedUtc", command, StringComparison.Ordinal);
+        Assert.Contains("CreatedUtc", command, StringComparison.Ordinal);
+        Assert.Contains("JobLeases", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("SerializedValue", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("Credential", command, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(job.Id.ToString(), command, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(capture.ParameterCounts, count => count >= 2);
+
+        capture.Commands.Clear();
+        capture.ParameterCounts.Clear();
+        var none = await source.FindCandidatesAsync(
+            new HashSet<JobWorkKind>(),
+            5,
+            SqlServerTestData.Time.AddDays(1),
+            CancellationToken.None);
+        Assert.Empty(none);
+        Assert.Empty(capture.Commands);
     }
 
     private sealed class CommandCaptureInterceptor : DbCommandInterceptor

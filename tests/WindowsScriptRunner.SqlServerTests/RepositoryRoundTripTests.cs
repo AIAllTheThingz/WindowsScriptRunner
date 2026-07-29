@@ -6,6 +6,7 @@ using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Workers;
 using WindowsScriptRunner.Infrastructure.Persistence.Entities;
 using WindowsScriptRunner.Infrastructure.Persistence.Mapping;
 
@@ -214,6 +215,10 @@ public sealed class RepositoryRoundTripTests
             SqlServerTestData.Fingerprint,
             null,
             approved.UpdatedUtc.AddMinutes(1));
+        var worker = new WorkerNode(
+            WorkerNodeId.New(),
+            "worker-lifecycle",
+            SqlServerTestData.Time);
         var executing = SqlServerTestData.SubmittedJob(script, version);
         executing.MarkValidated(SqlServerTestData.Approver, executing.UpdatedUtc.AddMinutes(1));
         executing.QueueDryRun(SqlServerTestData.Approver, executing.UpdatedUtc.AddMinutes(1));
@@ -226,14 +231,22 @@ public sealed class RepositoryRoundTripTests
             null,
             executing.UpdatedUtc.AddMinutes(1));
         executing.QueueExecution(SqlServerTestData.Approver, executing.UpdatedUtc.AddMinutes(1));
-        executing.Claim(SqlServerTestData.Approver, executing.UpdatedUtc.AddMinutes(1));
-        executing.StartExecutionAttempt(
-            null,
+        var lease = executing.AcquireWorkLease(
+            JobLeaseId.New(),
+            worker.Id,
+            JobWorkKind.Execute,
+            1,
+            SqlServerTestData.Approver,
+            executing.UpdatedUtc.AddMinutes(1),
+            executing.UpdatedUtc.AddMinutes(3));
+        executing.StartLeasedExecutionAttempt(
+            lease.Credentials,
             SqlServerTestData.Approver,
             executing.UpdatedUtc.AddMinutes(1));
         await using (var scope = new PersistenceTestScope(database))
         {
             await scope.Scripts.AddAsync(script, CancellationToken.None);
+            await scope.Workers.AddAsync(worker, CancellationToken.None);
             await scope.Jobs.AddAsync(draft, CancellationToken.None);
             await scope.Jobs.AddAsync(submitted, CancellationToken.None);
             await scope.Jobs.AddAsync(approved, CancellationToken.None);
@@ -355,10 +368,15 @@ public sealed class RepositoryRoundTripTests
         var version = SqlServerTestData.Version();
         var script = SqlServerTestData.Script(version);
         var job = SqlServerTestData.DraftJob(script, version);
+        var worker = new WorkerNode(
+            WorkerNodeId.New(),
+            "worker-child-graph",
+            SqlServerTestData.Time);
         await using (var seed = new PersistenceTestScope(database))
         {
             await seed.Scripts.AddAsync(script, CancellationToken.None);
             await seed.Jobs.AddAsync(job, CancellationToken.None);
+            await seed.Workers.AddAsync(worker, CancellationToken.None);
             await seed.UnitOfWork.CommitAsync(CancellationToken.None);
         }
 
@@ -395,9 +413,16 @@ public sealed class RepositoryRoundTripTests
                 "Approved",
                 loaded.UpdatedUtc.AddMinutes(1));
             loaded.QueueExecution(SqlServerTestData.Approver, loaded.UpdatedUtc.AddMinutes(1));
-            loaded.Claim(SqlServerTestData.Approver, loaded.UpdatedUtc.AddMinutes(1));
-            loaded.StartExecutionAttempt(
-                null,
+            var lease = loaded.AcquireWorkLease(
+                JobLeaseId.New(),
+                worker.Id,
+                JobWorkKind.Execute,
+                1,
+                SqlServerTestData.Approver,
+                loaded.UpdatedUtc.AddMinutes(1),
+                loaded.UpdatedUtc.AddMinutes(10));
+            loaded.StartLeasedExecutionAttempt(
+                lease.Credentials,
                 SqlServerTestData.Approver,
                 loaded.UpdatedUtc.AddMinutes(1));
             await executionStart.Jobs.UpdateAsync(loaded, CancellationToken.None);
@@ -409,9 +434,11 @@ public sealed class RepositoryRoundTripTests
             var loaded = Assert.IsType<Job>(
                 await completion.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
             loaded.BeginPostValidation(
+                loaded.Lease!.Credentials,
                 SqlServerTestData.Approver,
                 loaded.UpdatedUtc.AddMinutes(1));
             loaded.RecordTerminalExecutionOutcome(
+                loaded.Lease.Credentials,
                 ExecutionOutcome.Succeeded,
                 0,
                 "Completed",

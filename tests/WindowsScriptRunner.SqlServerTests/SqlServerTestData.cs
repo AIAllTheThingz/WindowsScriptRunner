@@ -142,6 +142,34 @@ internal static class SqlServerTestData
         return job;
     }
 
+    public static Job DryRunQueuedJob(
+        ScriptDefinition script,
+        ScriptVersion version,
+        ExecutionPhase phase = ExecutionPhase.DryRun)
+    {
+        var job = SubmittedJob(script, version, phase: phase);
+        job.MarkValidated(Approver, job.UpdatedUtc.AddMinutes(1));
+        job.QueueDryRun(Approver, job.UpdatedUtc.AddMinutes(1));
+        return job;
+    }
+
+    public static Job ExecutionQueuedJob(
+        ScriptDefinition script,
+        ScriptVersion version)
+    {
+        var job = DryRunQueuedJob(script, version, ExecutionPhase.Execute);
+        job.StartDryRun(Approver, job.UpdatedUtc.AddMinutes(1));
+        job.CompleteDryRun(Approver, job.UpdatedUtc.AddMinutes(1));
+        job.RequireApproval(Approver, job.UpdatedUtc.AddMinutes(1));
+        job.RecordApproval(
+            Approver,
+            Fingerprint,
+            "Approved",
+            job.UpdatedUtc.AddMinutes(1));
+        job.QueueExecution(Approver, job.UpdatedUtc.AddMinutes(1));
+        return job;
+    }
+
     public static WorkerNode Worker()
     {
         var worker = new WorkerNode(WorkerNodeId.New(), "worker-01", Time);

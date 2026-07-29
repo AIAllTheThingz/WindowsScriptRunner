@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using WindowsScriptRunner.Infrastructure.Persistence;
+using WindowsScriptRunner.Infrastructure.Persistence.Queue;
 using WindowsScriptRunner.Infrastructure.Persistence.Repositories;
 
 namespace WindowsScriptRunner.SqlServerTests;
@@ -21,6 +22,15 @@ internal sealed class PersistenceTestScope : IAsyncDisposable
             NullLogger<SqlCredentialReferenceRepository>.Instance);
         Audits = new SqlAuditWriter(Context, NullLogger<SqlAuditWriter>.Instance);
         UnitOfWork = new SqlUnitOfWork(Context, NullLogger<SqlUnitOfWork>.Instance);
+        Candidates = new SqlJobQueueCandidateSource(
+            Context,
+            NullLogger<SqlJobQueueCandidateSource>.Instance);
+        ExpiredLeases = new SqlExpiredJobLeaseCandidateSource(
+            Context,
+            NullLogger<SqlExpiredJobLeaseCandidateSource>.Instance);
+        FencingTokens = new SqlFencingTokenSource(
+            Context,
+            NullLogger<SqlFencingTokenSource>.Instance);
     }
 
     public WindowsScriptRunnerDbContext Context { get; }
@@ -30,6 +40,9 @@ internal sealed class PersistenceTestScope : IAsyncDisposable
     public SqlCredentialReferenceRepository Credentials { get; }
     public SqlAuditWriter Audits { get; }
     public SqlUnitOfWork UnitOfWork { get; }
+    public SqlJobQueueCandidateSource Candidates { get; }
+    public SqlExpiredJobLeaseCandidateSource ExpiredLeases { get; }
+    public SqlFencingTokenSource FencingTokens { get; }
 
     public ValueTask DisposeAsync() => Context.DisposeAsync();
 }

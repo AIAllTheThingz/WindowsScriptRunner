@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WindowsScriptRunner.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using WindowsScriptRunner.Infrastructure.Persistence;
 namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(WindowsScriptRunnerDbContext))]
-    partial class WindowsScriptRunnerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260729224310_AddWorkerQueueLeases")]
+    partial class AddWorkerQueueLeases
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
