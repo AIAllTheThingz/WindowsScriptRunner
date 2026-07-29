@@ -205,6 +205,42 @@ public sealed class ScriptModelTests
     }
 
     [Fact]
+    public void VersionTimestampMustFallWithinDefinitionLifetime()
+    {
+        var script = TestDomainFactory.Script(TestDomainFactory.Version());
+        var beforeDefinition = new ScriptVersion(
+            ScriptVersionId.New(),
+            ScriptVersionNumber.Parse("2.0.0"),
+            "scripts/Before.ps1",
+            new string('e', 64),
+            null,
+            "7.4",
+            30,
+            [ExecutionPhase.DryRun],
+            [],
+            script.CreatedUtc.AddTicks(-1),
+            TestDomainFactory.User);
+        var afterUpdate = new ScriptVersion(
+            ScriptVersionId.New(),
+            ScriptVersionNumber.Parse("3.0.0"),
+            "scripts/After.ps1",
+            new string('f', 64),
+            null,
+            "7.4",
+            30,
+            [ExecutionPhase.DryRun],
+            [],
+            script.UpdatedUtc.AddMinutes(2),
+            TestDomainFactory.User);
+
+        Assert.Throws<InvalidScriptVersionException>(
+            () => script.AddVersion(beforeDefinition, script.UpdatedUtc.AddMinutes(1)));
+        Assert.Throws<InvalidScriptVersionException>(
+            () => script.AddVersion(afterUpdate, script.UpdatedUtc.AddMinutes(1)));
+        Assert.Single(script.Versions);
+    }
+
+    [Fact]
     public void PublishedVersionRejectsParameterMutation()
     {
         var version = TestDomainFactory.Version();

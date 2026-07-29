@@ -190,6 +190,18 @@ public sealed class PersistenceMappingTests
     }
 
     [Fact]
+    public void SubmittedJobWithoutTargetsCannotRehydrate()
+    {
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version);
+        var entity = PersistenceMapper.ToEntity(
+            TestDomainFactory.SubmittedJob(script, version));
+        entity.Targets.Clear();
+
+        Assert.Throws<DomainValidationException>(() => PersistenceMapper.ToDomain(entity));
+    }
+
+    [Fact]
     public void ScriptVersionOutsideAggregateLifetimeCannotRehydrate()
     {
         var version = TestDomainFactory.Version();

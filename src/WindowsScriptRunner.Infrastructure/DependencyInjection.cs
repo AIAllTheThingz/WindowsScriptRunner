@@ -17,6 +17,13 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        var connectionString = configuration.GetConnectionString("WindowsScriptRunner");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Connection string 'WindowsScriptRunner' is required for SQL Server persistence.");
+        }
+
         services.AddOptions<SqlServerPersistenceOptions>()
             .Bind(configuration.GetSection(SqlServerPersistenceOptions.SectionName))
             .Validate(options => options.IsValid(), "Persistence options are outside supported bounds.")
@@ -28,8 +35,6 @@ public static class DependencyInjection
                     .GetRequiredService<
                         Microsoft.Extensions.Options.IOptions<SqlServerPersistenceOptions>>()
                     .Value;
-                var connectionString =
-                    configuration.GetConnectionString("WindowsScriptRunner") ?? string.Empty;
                 options.UseSqlServer(
                     connectionString,
                     sql =>

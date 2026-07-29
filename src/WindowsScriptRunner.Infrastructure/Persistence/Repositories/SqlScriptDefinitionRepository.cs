@@ -20,16 +20,18 @@ public sealed class SqlScriptDefinitionRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var entity = await dbContext.ScriptDefinitions
-            .Include(item => item.Versions)
-                .ThenInclude(item => item.SupportedPhases)
-            .Include(item => item.Versions)
-                .ThenInclude(item => item.SupportedReportFormats)
-            .Include(item => item.Versions)
-                .ThenInclude(item => item.ParameterDefinitions)
-                    .ThenInclude(item => item.AllowedValues)
-            .AsSplitQuery()
-            .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken);
+        var entity = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.ScriptDefinitions
+                .Include(item => item.Versions)
+                    .ThenInclude(item => item.SupportedPhases)
+                .Include(item => item.Versions)
+                    .ThenInclude(item => item.SupportedReportFormats)
+                .Include(item => item.Versions)
+                    .ThenInclude(item => item.ParameterDefinitions)
+                        .ThenInclude(item => item.AllowedValues)
+                .AsSplitQuery()
+                .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
+            logger);
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(GetByIdAsync),
@@ -66,6 +68,7 @@ public sealed class SqlScriptDefinitionRepository(
             throw new ApplicationConflictException(
                 "The script definition must be loaded in the current persistence scope before it can be updated.");
         PersistenceMapper.Synchronize(definition, entity);
+        dbContext.Entry(entity).Property(item => item.UpdatedUtc).IsModified = true;
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(UpdateAsync),

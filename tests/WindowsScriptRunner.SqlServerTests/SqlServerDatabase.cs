@@ -20,7 +20,8 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
 
     public static async Task<SqlServerDatabase> CreateAsync(
         bool applyMigrations = true,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? connectionTimeoutSeconds = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var supplied = Environment.GetEnvironmentVariable(
@@ -35,14 +36,27 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
         {
             InitialCatalog = $"WindowsScriptRunner_Test_{Guid.NewGuid():N}",
         };
-        var database = new SqlServerDatabase(builder.ConnectionString, runtimeName);
-        if (applyMigrations)
+        if (connectionTimeoutSeconds is not null)
         {
-            await using var context = database.CreateContext();
-            await context.Database.MigrateAsync(cancellationToken);
+            builder.ConnectTimeout = connectionTimeoutSeconds.Value;
         }
 
-        return database;
+        var database = new SqlServerDatabase(builder.ConnectionString, runtimeName);
+        try
+        {
+            if (applyMigrations)
+            {
+                await using var context = database.CreateContext();
+                await context.Database.MigrateAsync(cancellationToken);
+            }
+
+            return database;
+        }
+        catch
+        {
+            await database.DisposeAsync();
+            throw;
+        }
     }
 
     public WindowsScriptRunnerDbContext CreateContext(params IInterceptor[] interceptors)

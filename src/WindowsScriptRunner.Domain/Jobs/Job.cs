@@ -151,6 +151,12 @@ public sealed class Job
         job.RestoreExecutions(executions);
         job.RestoreApprovals(approvals);
         job.ValidateRehydratedExecutionState();
+        if (status != JobStatus.Draft && job._targets.Count == 0)
+        {
+            throw new DomainValidationException(
+                "Submitted job state requires at least one target.");
+        }
+
         return job;
     }
 

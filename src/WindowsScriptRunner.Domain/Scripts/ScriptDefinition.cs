@@ -136,6 +136,12 @@ public sealed class ScriptDefinition
     {
         ArgumentNullException.ThrowIfNull(version);
         EnsureTimestamp(updatedUtc);
+        if (version.CreatedUtc < CreatedUtc || version.CreatedUtc > updatedUtc)
+        {
+            throw new InvalidScriptVersionException(
+                "Script version timestamp must fall within the script definition lifetime.");
+        }
+
         if (_versions.Any(existing => existing.Version == version.Version))
         {
             throw new InvalidScriptVersionException($"Script version {version.Version} already exists.");

@@ -32,21 +32,16 @@ public sealed class SqlUnitOfWork(
                 "Cancelled");
             throw;
         }
-        catch (DbUpdateConcurrencyException exception)
-        {
-            logger.LogWarning(
-                "Persistence unit of work failed in {DurationMs} ms with concurrency category {Category}",
-                stopwatch.ElapsedMilliseconds,
-                "OptimisticConcurrency");
-            throw new ApplicationConflictException(
-                "The persisted aggregate changed after it was loaded.",
-                exception);
-        }
         catch (DbUpdateException exception)
         {
             throw SqlExceptionTranslator.Translate(exception, logger);
         }
         catch (RetryLimitExceededException exception)
+            when (exception.InnerException is SqlException sqlException)
+        {
+            throw SqlExceptionTranslator.Translate(exception, sqlException, logger);
+        }
+        catch (InvalidOperationException exception)
             when (exception.InnerException is SqlException sqlException)
         {
             throw SqlExceptionTranslator.Translate(exception, sqlException, logger);

@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application.Exceptions;
 
@@ -26,11 +27,21 @@ internal static class SqlExceptionTranslator
     {
         ArgumentNullException.ThrowIfNull(exception);
         ArgumentNullException.ThrowIfNull(logger);
+        if (exception is DbUpdateConcurrencyException concurrencyException)
+        {
+            logger.LogWarning(
+                "Persistence operation failed due to a concurrency conflict for {AffectedEntries} entries",
+                concurrencyException.Entries.Count);
+            return new ApplicationConflictException(
+                "The persisted aggregate changed after it was loaded.",
+                exception);
+        }
+
         if (exception.InnerException is not SqlException sqlException)
         {
             logger.LogError(
-                "Persistence commit failed with provider category {Category}",
-                exception.GetType().Name);
+                "Persistence operation failed with provider exception type {ExceptionType}",
+                exception.InnerException?.GetType().Name ?? exception.GetType().Name);
             return new PersistenceOperationException(
                 "The persistence operation failed.",
                 exception);
@@ -57,13 +68,43 @@ internal static class SqlExceptionTranslator
         return TranslateSqlException(operationException, sqlException, logger);
     }
 
+    public static async Task<T> ExecuteAsync<T>(
+        Func<Task<T>> operation,
+        ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(logger);
+        try
+        {
+            return await operation();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (RetryLimitExceededException exception)
+            when (exception.InnerException is SqlException sqlException)
+        {
+            throw Translate(exception, sqlException, logger);
+        }
+        catch (InvalidOperationException exception)
+            when (exception.InnerException is SqlException sqlException)
+        {
+            throw Translate(exception, sqlException, logger);
+        }
+        catch (SqlException exception)
+        {
+            throw Translate(exception, logger);
+        }
+    }
+
     private static Exception TranslateSqlException(
         Exception operationException,
         SqlException sqlException,
         ILogger logger)
     {
         logger.LogWarning(
-            "Persistence commit failed with SQL Server category {SqlErrorNumber}",
+            "Persistence operation failed with SQL Server category {SqlErrorNumber}",
             sqlException.Number);
         return sqlException.Number switch
         {

@@ -18,13 +18,15 @@ public sealed class SqlJobRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var entity = await dbContext.Jobs
-            .Include(item => item.Targets)
-            .Include(item => item.Parameters)
-            .Include(item => item.Executions)
-            .Include(item => item.Approvals)
-            .AsSplitQuery()
-            .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken);
+        var entity = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.Jobs
+                .Include(item => item.Targets)
+                .Include(item => item.Parameters)
+                .Include(item => item.Executions)
+                .Include(item => item.Approvals)
+                .AsSplitQuery()
+                .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
+            logger);
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(GetByIdAsync),
@@ -39,9 +41,11 @@ public sealed class SqlJobRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var exists = await dbContext.Jobs
-            .AsNoTracking()
-            .AnyAsync(item => item.Id == id.Value, cancellationToken);
+        var exists = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.Jobs
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == id.Value, cancellationToken),
+            logger);
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(ExistsAsync),
@@ -78,6 +82,7 @@ public sealed class SqlJobRepository(
             throw new ApplicationConflictException(
                 "The job must be loaded in the current persistence scope before it can be updated.");
         PersistenceMapper.Synchronize(job, entity);
+        dbContext.Entry(entity).Property(item => item.UpdatedUtc).IsModified = true;
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(UpdateAsync),

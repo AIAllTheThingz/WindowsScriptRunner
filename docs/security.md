@@ -35,6 +35,6 @@
 - Mutable aggregate roots use SQL Server rowversion concurrency tokens. Persistence exceptions are translated to bounded application exceptions without leaking SQL text or connection details.
 - Audit events are append-only through the application abstraction and are committed in the same transaction as aggregate changes.
 - Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
-- Database constraints repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
+- Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
 Authentication, authorization, executable signing, trusted hash calculation, external credential retrieval, process isolation, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.

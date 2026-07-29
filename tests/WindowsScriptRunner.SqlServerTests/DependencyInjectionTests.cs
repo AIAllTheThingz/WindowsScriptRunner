@@ -10,6 +10,21 @@ namespace WindowsScriptRunner.SqlServerTests;
 public sealed class DependencyInjectionTests
 {
     [Fact]
+    public void MissingConnectionStringFailsDuringRegistration()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => services.AddInfrastructure(configuration));
+
+        Assert.Contains(
+            "Connection string 'WindowsScriptRunner' is required",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task InfrastructureRegistrationsShareOneScopedDbContextAndKeepMigrationsDisabled()
     {
         await using var database = await SqlServerDatabase.CreateAsync();

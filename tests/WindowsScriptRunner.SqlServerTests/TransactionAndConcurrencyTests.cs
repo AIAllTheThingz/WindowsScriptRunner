@@ -3,6 +3,7 @@ using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.SqlServerTests;
 
@@ -128,10 +129,10 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
-    public async Task StaleScriptDefinitionCommitConflicts()
+    public async Task StaleScriptChildOnlyCommitConflictsAndRollsBackItsAudit()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
-        var version = SqlServerTestData.Version();
+        var version = SqlServerTestData.Version(publish: false);
         var script = SqlServerTestData.Script(version);
         await using (var seed = new PersistenceTestScope(database))
         {
@@ -145,24 +146,36 @@ public sealed class TransactionAndConcurrencyTests
             await first.Scripts.GetByIdAsync(script.Id, CancellationToken.None));
         var winner = Assert.IsType<WindowsScriptRunner.Domain.Scripts.ScriptDefinition>(
             await second.Scripts.GetByIdAsync(script.Id, CancellationToken.None));
-        winner.UpdateDetails("Winner", winner.Description, winner.UpdatedUtc.AddMinutes(1));
+        Assert.Single(winner.Versions).Publish();
         await second.Scripts.UpdateAsync(winner, CancellationToken.None);
         await second.UnitOfWork.CommitAsync(CancellationToken.None);
-        stale.UpdateDetails("Stale", stale.Description, stale.UpdatedUtc.AddMinutes(2));
+        Assert.Single(stale.Versions).Publish();
         await first.Scripts.UpdateAsync(stale, CancellationToken.None);
+        var staleAudit = new AuditEvent(
+            AuditEventId.New(),
+            "ScriptVersionPublished",
+            "ScriptDefinition",
+            script.Id.ToString(),
+            SqlServerTestData.Requester,
+            SqlServerTestData.Time.AddMinutes(2),
+            "Stale publication");
+        await first.Audits.WriteAsync(staleAudit, CancellationToken.None);
 
         await Assert.ThrowsAsync<ApplicationConflictException>(
             () => first.UnitOfWork.CommitAsync(CancellationToken.None));
         await using var verification = new PersistenceTestScope(database);
-        Assert.Equal(
-            "Winner",
-            Assert.IsType<WindowsScriptRunner.Domain.Scripts.ScriptDefinition>(
-                await verification.Scripts.GetByIdAsync(script.Id, CancellationToken.None))
-                .DisplayName);
+        Assert.True(
+            Assert.Single(
+                Assert.IsType<WindowsScriptRunner.Domain.Scripts.ScriptDefinition>(
+                    await verification.Scripts.GetByIdAsync(script.Id, CancellationToken.None))
+                    .Versions)
+                .IsPublished);
+        Assert.False(await verification.Context.AuditEvents.AnyAsync(
+            item => item.Id == staleAudit.Id.Value));
     }
 
     [Fact]
-    public async Task StaleWorkerCommitConflicts()
+    public async Task StaleWorkerChildOnlyCommitConflicts()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
         var worker = SqlServerTestData.Worker();
@@ -178,19 +191,23 @@ public sealed class TransactionAndConcurrencyTests
             await first.Workers.GetByIdAsync(worker.Id, CancellationToken.None));
         var winner = Assert.IsType<WindowsScriptRunner.Domain.Workers.WorkerNode>(
             await second.Workers.GetByIdAsync(worker.Id, CancellationToken.None));
-        winner.Disable();
+        winner.RegisterCapability(new WorkerCapability("OperatingSystem", "Windows"));
         await second.Workers.UpdateAsync(winner, CancellationToken.None);
         await second.UnitOfWork.CommitAsync(CancellationToken.None);
-        stale.RecordHeartbeat(stale.LastHeartbeatUtc!.Value.AddMinutes(1));
+        stale.RegisterCapability(new WorkerCapability("Role", "General"));
         await first.Workers.UpdateAsync(stale, CancellationToken.None);
 
         await Assert.ThrowsAsync<ApplicationConflictException>(
             () => first.UnitOfWork.CommitAsync(CancellationToken.None));
         await using var verification = new PersistenceTestScope(database);
-        Assert.False(
-            Assert.IsType<WindowsScriptRunner.Domain.Workers.WorkerNode>(
-                await verification.Workers.GetByIdAsync(worker.Id, CancellationToken.None))
-                .IsEnabled);
+        var persisted = Assert.IsType<WindowsScriptRunner.Domain.Workers.WorkerNode>(
+            await verification.Workers.GetByIdAsync(worker.Id, CancellationToken.None));
+        Assert.Contains(
+            persisted.Capabilities,
+            capability => capability.Name == "OperatingSystem");
+        Assert.DoesNotContain(
+            persisted.Capabilities,
+            capability => capability.Name == "Role");
     }
 
     private static async Task SeedJobAsync(

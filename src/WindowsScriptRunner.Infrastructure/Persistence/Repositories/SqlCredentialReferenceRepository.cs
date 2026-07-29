@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application.Abstractions;
@@ -20,8 +21,10 @@ public sealed class SqlCredentialReferenceRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var entity = await dbContext.CredentialReferences
-            .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken);
+        var entity = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.CredentialReferences
+                .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
+            logger);
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(GetByIdAsync),
@@ -41,20 +44,28 @@ public sealed class SqlCredentialReferenceRepository(
         var stopwatch = Stopwatch.StartNew();
         RejectDuplicateTracking(credentialReference.Id.Value);
         var candidate = PersistenceMapper.ToEntity(credentialReference);
-        var hashMatch = await dbContext.CredentialReferences
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
+        var trackedHashMatch = dbContext.ChangeTracker
+            .Entries<CredentialReferenceEntity>()
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => entry.Entity)
+            .FirstOrDefault(
                 item =>
                     item.NormalizedProviderType == candidate.NormalizedProviderType &&
-                    item.ExternalIdentifierHash == candidate.ExternalIdentifierHash,
-                cancellationToken);
-        if (hashMatch is not null)
-        {
-            var message = hashMatch.ExternalIdentifier == candidate.ExternalIdentifier
-                ? "A credential reference with the same provider and external identifier already exists."
-                : "A credential reference identifier hash collision prevents this insert.";
-            throw new ApplicationConflictException(message);
-        }
+                    CryptographicOperations.FixedTimeEquals(
+                        item.ExternalIdentifierHash,
+                        candidate.ExternalIdentifierHash));
+        RejectIdentifierDuplicate(candidate, trackedHashMatch);
+
+        var hashMatch = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.CredentialReferences
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.NormalizedProviderType == candidate.NormalizedProviderType &&
+                        item.ExternalIdentifierHash == candidate.ExternalIdentifierHash,
+                    cancellationToken),
+            logger);
+        RejectIdentifierDuplicate(candidate, hashMatch);
 
         dbContext.CredentialReferences.Add(candidate);
         logger.LogDebug(
@@ -77,6 +88,7 @@ public sealed class SqlCredentialReferenceRepository(
             throw new ApplicationConflictException(
                 "The credential reference must be loaded in the current persistence scope before it can be updated.");
         PersistenceMapper.Synchronize(credentialReference, entity);
+        dbContext.Entry(entity).Property(item => item.IsEnabled).IsModified = true;
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(UpdateAsync),
@@ -100,5 +112,20 @@ public sealed class SqlCredentialReferenceRepository(
             throw new ApplicationConflictException(
                 "A credential reference with the same identifier is already tracked in this persistence scope.");
         }
+    }
+
+    private static void RejectIdentifierDuplicate(
+        CredentialReferenceEntity candidate,
+        CredentialReferenceEntity? hashMatch)
+    {
+        if (hashMatch is null)
+        {
+            return;
+        }
+
+        var message = hashMatch.ExternalIdentifier == candidate.ExternalIdentifier
+            ? "A credential reference with the same provider and external identifier already exists."
+            : "A credential reference identifier hash collision prevents this insert.";
+        throw new ApplicationConflictException(message);
     }
 }

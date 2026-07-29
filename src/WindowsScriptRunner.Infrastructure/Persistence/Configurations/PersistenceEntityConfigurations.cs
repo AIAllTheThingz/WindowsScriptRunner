@@ -52,6 +52,7 @@ internal sealed class ScriptVersionConfiguration : IEntityTypeConfiguration<Scri
                 table.HasCheckConstraint(
                     "CK_ScriptVersions_GitCommitSha",
                     "[GitCommitSha] IS NULL OR (LEN([GitCommitSha]) BETWEEN 7 AND 64 AND [GitCommitSha] NOT LIKE '%[^0-9a-f]%' COLLATE Latin1_General_100_BIN2)");
+                table.UseSqlOutputClause(false);
             });
         builder.HasKey(entity => entity.Id);
         builder.Property(entity => entity.Id).ValueGeneratedNever();
@@ -82,9 +83,13 @@ internal sealed class ScriptVersionPhaseConfiguration : IEntityTypeConfiguration
         builder.ToTable(
             "ScriptVersionPhases",
             "wsr",
-            table => table.HasCheckConstraint(
-                "CK_ScriptVersionPhases_Phase",
-                "[Phase] IN ('Discovery','Validation','DryRun','Report','Execute','PostValidation')"));
+            table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_ScriptVersionPhases_Phase",
+                    "[Phase] IN ('Discovery','Validation','DryRun','Report','Execute','PostValidation')");
+                table.UseSqlOutputClause(false);
+            });
         builder.HasKey(entity => new { entity.ScriptVersionId, entity.Phase });
         builder.Property(entity => entity.Phase).HasMaxLength(32);
         builder.HasOne(entity => entity.ScriptVersion)
@@ -134,6 +139,7 @@ internal sealed class ScriptParameterDefinitionConfiguration :
                 table.HasCheckConstraint(
                     "CK_ScriptParameterDefinitions_SensitiveDefault",
                     "[IsSensitive] = 0 OR [DefaultValue] IS NULL");
+                table.UseSqlOutputClause(false);
             });
         builder.HasKey(entity => entity.Id);
         builder.Property(entity => entity.Id).ValueGeneratedNever();
@@ -158,7 +164,10 @@ internal sealed class ScriptParameterAllowedValueConfiguration :
 {
     public void Configure(EntityTypeBuilder<ScriptParameterAllowedValueEntity> builder)
     {
-        builder.ToTable("ScriptParameterAllowedValues", "wsr");
+        builder.ToTable(
+            "ScriptParameterAllowedValues",
+            "wsr",
+            table => table.UseSqlOutputClause(false));
         builder.HasKey(entity => new { entity.ScriptParameterDefinitionId, entity.NormalizedValue });
         builder.Property(entity => entity.Value).HasMaxLength(200).IsRequired();
         builder.Property(entity => entity.NormalizedValue).HasMaxLength(200).IsRequired();

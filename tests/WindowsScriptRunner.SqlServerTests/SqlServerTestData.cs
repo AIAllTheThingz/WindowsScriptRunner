@@ -36,7 +36,8 @@ internal static class SqlServerTestData
     public static ScriptVersion Version(
         IEnumerable<ScriptParameterDefinition>? parameters = null,
         IEnumerable<ExecutionPhase>? phases = null,
-        string version = "1.0.0")
+        string version = "1.0.0",
+        bool publish = true)
     {
         var result = new ScriptVersion(
             ScriptVersionId.New(),
@@ -55,7 +56,11 @@ internal static class SqlServerTestData
             result.AddParameterDefinition(parameter);
         }
 
-        result.Publish();
+        if (publish)
+        {
+            result.Publish();
+        }
+
         return result;
     }
 

@@ -510,6 +510,29 @@ public sealed class RepositoryRoundTripTests
     {
         await using var database = await SqlServerDatabase.CreateAsync();
         var credential = SqlServerTestData.Credential();
+        await using (var stagedScope = new PersistenceTestScope(database))
+        {
+            await stagedScope.Credentials.AddAsync(credential, CancellationToken.None);
+            var stagedDuplicate = new CredentialReference(
+                CredentialReferenceId.New(),
+                credential.ProviderType.ToUpperInvariant(),
+                credential.ExternalIdentifier,
+                "Staged duplicate",
+                SqlServerTestData.Time,
+                SqlServerTestData.Requester);
+
+            var exception = await Assert.ThrowsAsync<ApplicationConflictException>(
+                () => stagedScope.Credentials.AddAsync(
+                    stagedDuplicate,
+                    CancellationToken.None));
+
+            Assert.Contains("already exists", exception.Message, StringComparison.Ordinal);
+            Assert.Single(
+                stagedScope.Context.ChangeTracker
+                    .Entries<CredentialReferenceEntity>(),
+                entry => entry.State == EntityState.Added);
+        }
+
         var collisionCandidate = new CredentialReference(
             CredentialReferenceId.New(),
             credential.ProviderType,

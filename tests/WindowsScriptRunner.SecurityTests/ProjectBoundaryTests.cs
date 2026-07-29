@@ -131,6 +131,7 @@ public sealed class ProjectBoundaryTests
                 reference.PackageName.StartsWith(
                     "Microsoft.EntityFrameworkCore",
                     StringComparison.Ordinal) ||
+                reference.PackageName == "Microsoft.Data.SqlClient" ||
                 reference.PackageName == "Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore")
             .ToArray();
 

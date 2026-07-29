@@ -1077,7 +1077,7 @@ No database access, PowerShell child process, job claim, or script execution occ
 
 # Phase 3 SQL Server Persistence
 
-Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran from `C:\Users\mez\Documents\WindowsScriptRunner` unless noted.
+Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran from the repository root unless noted.
 
 ## Starting gate and baseline
 

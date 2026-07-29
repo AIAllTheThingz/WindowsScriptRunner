@@ -20,9 +20,11 @@ public sealed class SqlWorkerNodeRepository(
     {
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
-        var entity = await dbContext.WorkerNodes
-            .Include(item => item.Capabilities)
-            .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken);
+        var entity = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.WorkerNodes
+                .Include(item => item.Capabilities)
+                .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
+            logger);
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(GetByIdAsync),
@@ -59,6 +61,7 @@ public sealed class SqlWorkerNodeRepository(
             throw new ApplicationConflictException(
                 "The worker node must be loaded in the current persistence scope before it can be updated.");
         PersistenceMapper.Synchronize(workerNode, entity);
+        dbContext.Entry(entity).Property(item => item.IsEnabled).IsModified = true;
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
             nameof(UpdateAsync),
