@@ -17,6 +17,10 @@ public sealed class ConstraintTests
         var parameter = SqlServerTestData.Parameter("Mode");
         var version = SqlServerTestData.Version([parameter]);
         var script = SqlServerTestData.Script(version);
+        var otherVersion = SqlServerTestData.Version();
+        var otherScript = SqlServerTestData.Script(
+            otherVersion,
+            name: "other.script");
         var job = SqlServerTestData.SubmittedJob(
             script,
             version,
@@ -53,6 +57,7 @@ public sealed class ConstraintTests
         await using (var seed = new PersistenceTestScope(database))
         {
             await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Scripts.AddAsync(otherScript, CancellationToken.None);
             await seed.Jobs.AddAsync(job, CancellationToken.None);
             await seed.Workers.AddAsync(worker, CancellationToken.None);
             await seed.Audits.WriteAsync(audit, CancellationToken.None);
@@ -79,6 +84,21 @@ public sealed class ConstraintTests
             database,
             context => context.ScriptVersions.Add(
                 ValidVersionEntity(Guid.NewGuid(), script.Id.Value, 1, 0, 0)));
+        await AssertRejectedAsync(
+            database,
+            context => context.Jobs.Add(
+                new JobEntity
+                {
+                    Id = Guid.NewGuid(),
+                    ScriptDefinitionId = script.Id.Value,
+                    ScriptVersionId = otherVersion.Id.Value,
+                    RequestedPhase = nameof(ExecutionPhase.DryRun),
+                    Status = nameof(JobStatus.Draft),
+                    RequestedBy = SqlServerTestData.Requester.Value,
+                    LastActingUser = SqlServerTestData.Requester.Value,
+                    CreatedUtc = SqlServerTestData.Time,
+                    UpdatedUtc = SqlServerTestData.Time,
+                }));
         await AssertRejectedAsync(
             database,
             context => context.ScriptParameterDefinitions.Add(

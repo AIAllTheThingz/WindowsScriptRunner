@@ -1,3 +1,4 @@
+using System.Data;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -21,16 +22,24 @@ public sealed class SqlScriptDefinitionRepository(
         ArgumentNullException.ThrowIfNull(id);
         var stopwatch = Stopwatch.StartNew();
         var entity = await SqlExceptionTranslator.ExecuteAsync(
-            () => dbContext.ScriptDefinitions
-                .Include(item => item.Versions)
-                    .ThenInclude(item => item.SupportedPhases)
-                .Include(item => item.Versions)
-                    .ThenInclude(item => item.SupportedReportFormats)
-                .Include(item => item.Versions)
-                    .ThenInclude(item => item.ParameterDefinitions)
-                        .ThenInclude(item => item.AllowedValues)
-                .AsSplitQuery()
-                .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken),
+            async () =>
+            {
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable,
+                    cancellationToken);
+                var result = await dbContext.ScriptDefinitions
+                    .Include(item => item.Versions)
+                        .ThenInclude(item => item.SupportedPhases)
+                    .Include(item => item.Versions)
+                        .ThenInclude(item => item.SupportedReportFormats)
+                    .Include(item => item.Versions)
+                        .ThenInclude(item => item.ParameterDefinitions)
+                            .ThenInclude(item => item.AllowedValues)
+                    .AsSplitQuery()
+                    .SingleOrDefaultAsync(item => item.Id == id.Value, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return result;
+            },
             logger);
         logger.LogDebug(
             "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",

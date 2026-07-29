@@ -1,8 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Application.Jobs;
+using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Scripts;
+using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.SqlServerTests;
@@ -175,6 +180,51 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
+    public async Task SubmissionRevalidatesScriptAfterConcurrentDisable()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DraftJob(script, version);
+        job.AddTarget(
+            new TargetName("server-01"),
+            SqlServerTestData.Requester,
+            SqlServerTestData.Time.AddMinutes(1));
+        await SeedJobAsync(database, script, job);
+
+        await using (var submission = new PersistenceTestScope(database))
+        {
+            var handler = new SubmitJobHandler(
+                submission.Jobs,
+                submission.Scripts,
+                submission.Audits,
+                new ConcurrentScriptDisableUnitOfWork(
+                    database,
+                    submission.UnitOfWork,
+                    script.Id),
+                new FixedClock(SqlServerTestData.Time.AddMinutes(2)));
+
+            await Assert.ThrowsAsync<ApplicationConflictException>(
+                () => handler.HandleAsync(
+                    new SubmitJobCommand(job.Id, SqlServerTestData.Requester),
+                    CancellationToken.None));
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.Equal(
+            JobStatus.Draft,
+            Assert.IsType<Job>(
+                await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None)).Status);
+        Assert.False(
+            Assert.IsType<ScriptDefinition>(
+                await verification.Scripts.GetByIdAsync(script.Id, CancellationToken.None))
+                .IsEnabled);
+        Assert.False(await verification.Context.AuditEvents.AnyAsync(
+            item => item.EventType == "JobSubmitted" &&
+                item.EntityId == job.Id.ToString()));
+    }
+
+    [Fact]
     public async Task StaleWorkerChildOnlyCommitConflicts()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
@@ -230,4 +280,31 @@ public sealed class TransactionAndConcurrencyTests
             SqlServerTestData.Requester,
             SqlServerTestData.Time.AddMinutes(10),
             eventType);
+
+    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    {
+        public DateTimeOffset UtcNow { get; } = utcNow;
+    }
+
+    private sealed class ConcurrentScriptDisableUnitOfWork(
+        SqlServerDatabase database,
+        IUnitOfWork inner,
+        ScriptDefinitionId scriptDefinitionId) : IUnitOfWork
+    {
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            await using (var competing = new PersistenceTestScope(database))
+            {
+                var script = Assert.IsType<ScriptDefinition>(
+                    await competing.Scripts.GetByIdAsync(
+                        scriptDefinitionId,
+                        cancellationToken));
+                script.Disable(script.UpdatedUtc.AddMinutes(1));
+                await competing.Scripts.UpdateAsync(script, cancellationToken);
+                await competing.UnitOfWork.CommitAsync(cancellationToken);
+            }
+
+            await inner.CommitAsync(cancellationToken);
+        }
+    }
 }

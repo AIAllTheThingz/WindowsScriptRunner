@@ -303,6 +303,7 @@ public sealed class SubmitJobHandler(
         job.Submit(script, command.ActingUser, now);
 
         await jobRepository.UpdateAsync(job, cancellationToken);
+        await scriptRepository.UpdateAsync(script, cancellationToken);
         await auditWriter.WriteAsync(
             CreateDraftJobHandler.Audit(
                 "JobSubmitted",

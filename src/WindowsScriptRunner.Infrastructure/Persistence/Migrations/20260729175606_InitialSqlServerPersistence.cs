@@ -146,6 +146,9 @@ public partial class InitialSqlServerPersistence : Migration
             constraints: table =>
             {
                 table.PrimaryKey("PK_ScriptVersions", x => x.Id);
+                table.UniqueConstraint(
+                    "AK_ScriptVersions_ScriptDefinitionId_Id",
+                    x => new { x.ScriptDefinitionId, x.Id });
                 table.CheckConstraint("CK_ScriptVersions_GitCommitSha", "[GitCommitSha] IS NULL OR (LEN([GitCommitSha]) BETWEEN 7 AND 64 AND [GitCommitSha] NOT LIKE '%[^0-9a-f]%' COLLATE Latin1_General_100_BIN2)");
                 table.CheckConstraint("CK_ScriptVersions_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
                 table.CheckConstraint("CK_ScriptVersions_Sha256", "LEN([Sha256]) = 64 AND [Sha256] NOT LIKE '%[^0-9a-f]%' COLLATE Latin1_General_100_BIN2");
@@ -223,11 +226,11 @@ public partial class InitialSqlServerPersistence : Migration
                     principalTable: "ScriptDefinitions",
                     principalColumn: "Id");
                 table.ForeignKey(
-                    name: "FK_Jobs_ScriptVersions_ScriptVersionId",
-                    column: x => x.ScriptVersionId,
+                    name: "FK_Jobs_ScriptVersions_ScriptDefinitionId_ScriptVersionId",
+                    columns: x => new { x.ScriptDefinitionId, x.ScriptVersionId },
                     principalSchema: "wsr",
                     principalTable: "ScriptVersions",
-                    principalColumn: "Id");
+                    principalColumns: new[] { "ScriptDefinitionId", "Id" });
             });
 
         migrationBuilder.CreateTable(
@@ -510,10 +513,10 @@ public partial class InitialSqlServerPersistence : Migration
             columns: new[] { "RequestedBy", "CreatedUtc" });
 
         migrationBuilder.CreateIndex(
-            name: "IX_Jobs_ScriptDefinitionId",
+            name: "IX_Jobs_ScriptDefinitionId_ScriptVersionId",
             schema: "wsr",
             table: "Jobs",
-            column: "ScriptDefinitionId");
+            columns: new[] { "ScriptDefinitionId", "ScriptVersionId" });
 
         migrationBuilder.CreateIndex(
             name: "IX_Jobs_ScriptVersionId",

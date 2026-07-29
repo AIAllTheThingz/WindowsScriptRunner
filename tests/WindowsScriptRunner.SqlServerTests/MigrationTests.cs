@@ -99,6 +99,13 @@ public sealed class MigrationTests
             WHERE [name] = N'FK_Jobs_ScriptDefinitions_ScriptDefinitionId'
               AND [delete_referential_action_desc] = N'NO_ACTION'
             """).SingleAsync();
+        var pinnedVersionNoActionCount = await context.Database.SqlQueryRaw<int>(
+            """
+            SELECT COUNT(*) AS [Value]
+            FROM [sys].[foreign_keys]
+            WHERE [name] = N'FK_Jobs_ScriptVersions_ScriptDefinitionId_ScriptVersionId'
+              AND [delete_referential_action_desc] = N'NO_ACTION'
+            """).SingleAsync();
         var workerNoActionCount = await context.Database.SqlQueryRaw<int>(
             """
             SELECT COUNT(*) AS [Value]
@@ -130,6 +137,7 @@ public sealed class MigrationTests
             rowVersionTables);
         Assert.Equal(1, ownedCascadeCount);
         Assert.Equal(1, scriptNoActionCount);
+        Assert.Equal(1, pinnedVersionNoActionCount);
         Assert.Equal(1, workerNoActionCount);
         Assert.Contains(
             "TR_ScriptVersionPhases_RequireDryRunForPublishedExecute",

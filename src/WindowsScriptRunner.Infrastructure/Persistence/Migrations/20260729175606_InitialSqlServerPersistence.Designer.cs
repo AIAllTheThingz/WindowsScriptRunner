@@ -285,14 +285,14 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedUtc")
                         .HasDatabaseName("IX_Jobs_CreatedUtc");
 
-                    b.HasIndex("ScriptDefinitionId")
-                        .HasDatabaseName("IX_Jobs_ScriptDefinitionId");
-
                     b.HasIndex("ScriptVersionId")
                         .HasDatabaseName("IX_Jobs_ScriptVersionId");
 
                     b.HasIndex("RequestedBy", "CreatedUtc")
                         .HasDatabaseName("IX_Jobs_RequestedBy_CreatedUtc");
+
+                    b.HasIndex("ScriptDefinitionId", "ScriptVersionId")
+                        .HasDatabaseName("IX_Jobs_ScriptDefinitionId_ScriptVersionId");
 
                     b.HasIndex("Status", "UpdatedUtc")
                         .HasDatabaseName("IX_Jobs_Status_UpdatedUtc");
@@ -514,6 +514,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.HasKey("ScriptParameterDefinitionId", "NormalizedValue");
 
                     b.ToTable("ScriptParameterAllowedValues", "wsr");
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptParameterDefinitionEntity", b =>
@@ -574,6 +576,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_ScriptParameterDefinitions_Type", "[ParameterType] IN ('String','StringArray','Integer','Boolean','DateTime','Enum','SecureReference')");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptVersionEntity", b =>
@@ -626,6 +630,9 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasAlternateKey("ScriptDefinitionId", "Id")
+                        .HasName("AK_ScriptVersions_ScriptDefinitionId_Id");
+
                     b.HasIndex("ScriptDefinitionId", "Major", "Minor", "Patch")
                         .IsUnique()
                         .HasDatabaseName("UX_ScriptVersions_Definition_SemanticVersion");
@@ -642,6 +649,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_ScriptVersions_Version", "[Major] >= 0 AND [Minor] >= 0 AND [Patch] >= 0");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptVersionPhaseEntity", b =>
@@ -659,6 +668,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_ScriptVersionPhases_Phase", "[Phase] IN ('Discovery','Validation','DryRun','Report','Execute','PostValidation')");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptVersionReportFormatEntity", b =>
@@ -784,7 +795,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
                     b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptVersionEntity", null)
                         .WithMany()
-                        .HasForeignKey("ScriptVersionId")
+                        .HasForeignKey("ScriptDefinitionId", "ScriptVersionId")
+                        .HasPrincipalKey("ScriptDefinitionId", "Id")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

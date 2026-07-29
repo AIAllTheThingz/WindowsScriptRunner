@@ -703,6 +703,7 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(JobStatus.Validated, fixture.Jobs.Job.Status);
         Assert.NotNull(fixture.Jobs.Job.PolicySnapshot);
         Assert.Equal(fixture.Scripts.Script!.RiskLevel, fixture.Jobs.Job.PolicySnapshot.RiskLevel);
+        Assert.Equal(1, fixture.Scripts.UpdateCount);
         Assert.Equal(2, fixture.UnitOfWork.CommitCount);
         Assert.Equal(["JobSubmitted", "JobStatusChanged"], fixture.Audits.Events.Select(item => item.EventType));
     }
@@ -1497,6 +1498,7 @@ public sealed class ApplicationHandlerTests
     private sealed class FakeScriptRepository : IScriptDefinitionRepository
     {
         public ScriptDefinition? Script { get; set; }
+        public int UpdateCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<ScriptDefinition?> GetByIdAsync(
@@ -1518,6 +1520,7 @@ public sealed class ApplicationHandlerTests
         {
             ObservedTokens.Add(cancellationToken);
             Script = definition;
+            UpdateCount++;
             return Task.CompletedTask;
         }
     }

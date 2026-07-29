@@ -10,7 +10,7 @@ The initial migration creates the `wsr` schema and uses `wsr.__EFMigrationsHisto
 - `CredentialReferences`
 - append-only `AuditEvents` with `AuditEventProperties`
 
-Foreign keys preserve aggregate ownership and use explicit delete behavior. Script-to-version, version-to-child, job-to-child, worker-to-capability, and audit-to-property relationships cascade only within their aggregate. Job-to-script, job-to-version, and execution-to-worker relationships use `NO ACTION`, so historical jobs cannot disappear through cross-aggregate deletion.
+Foreign keys preserve aggregate ownership and use explicit delete behavior. Script-to-version, version-to-child, job-to-child, worker-to-capability, and audit-to-property relationships cascade only within their aggregate. Jobs use a composite `(ScriptDefinitionId, ScriptVersionId)` foreign key to ensure the pinned version belongs to the pinned script. Job-to-script, job-to-version, and execution-to-worker relationships use `NO ACTION`, so historical jobs cannot disappear through cross-aggregate deletion.
 
 Unique indexes enforce semantic version uniqueness per script, child-name uniqueness, normalized worker-name uniqueness, credential provider/reference uniqueness, and audit event identity. A filtered unique index permits at most one active execution for each job.
 

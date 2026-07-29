@@ -1103,7 +1103,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - Separate internal persistence entities and explicit Fluent API mappings cover 16 tables: `ScriptDefinitions`, `ScriptVersions`, `ScriptVersionPhases`, `ScriptVersionReportFormats`, `ScriptParameterDefinitions`, `ScriptParameterAllowedValues`, `Jobs`, `JobTargets`, `JobParameters`, `JobExecutions`, `JobApprovals`, `WorkerNodes`, `WorkerCapabilities`, `CredentialReferences`, `AuditEvents`, and `AuditEventProperties`.
 - All strong IDs use `uniqueidentifier`; timestamps use `datetimeoffset(7)` and are normalized to UTC on write; SHA-256 metadata uses fixed-length storage; enums use checked stable strings.
 - Mutable roots `ScriptDefinitions`, `Jobs`, `WorkerNodes`, and `CredentialReferences` use SQL Server `rowversion`.
-- Aggregate-owned children cascade. Job-to-script, job-to-version, and execution-to-worker relationships use `NO ACTION`.
+- Aggregate-owned children cascade. A composite Job-to-version relationship guarantees the pinned version belongs to the pinned script; Job-to-script, Job-to-version, and execution-to-worker relationships use `NO ACTION`.
 - Unique, check, and filtered indexes cover normalized identities, semantic versions, parameter/target/capability/property names, credential provider/hash pairs, job access patterns, audit access patterns, and one active execution per job.
 - SQL triggers enforce published Execute-with-DryRun and allowed-values-only-for-Enum rules that cross table boundaries.
 - No production seed data, raw credential column, Phase 4 queue table, polling index, lease, claim, or scheduling construct was added.
@@ -1146,6 +1146,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - `dotnet format --verify-no-changes`: `2026-07-29T13:38:47.9571098-05:00` to `2026-07-29T13:39:13.2315808-05:00`, exit 0.
 - `dotnet build --configuration Release --no-restore`: `2026-07-29T13:39:21.1724388-05:00` to `2026-07-29T13:39:25.0247762-05:00`, exit 0, 0 warnings and 0 errors.
 - `dotnet test --configuration Release --no-build`: `2026-07-29T13:39:30.4900528-05:00` to `2026-07-29T13:39:41.5073024-05:00`, exit 0, the same 349 passed with 0 failed and 0 skipped.
+- Review-remediation revalidation on `2026-07-29T15:07:01-05:00`: Release build passed with 0 warnings and 0 errors; the full suite passed 355 tests (Unit 286, Security 35, SQL Server 22, Integration 3, Worker 7, PowerShell boundary 2); formatting verification passed; and EF reported no pending model changes.
 
 ## Web, Worker, and health validation
 

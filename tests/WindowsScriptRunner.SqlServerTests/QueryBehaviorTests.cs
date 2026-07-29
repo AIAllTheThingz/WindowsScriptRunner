@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -44,6 +45,9 @@ public sealed class QueryBehaviorTests
         Assert.Equal(2, loaded.Versions.Count);
         Assert.InRange(capture.Commands.Count, 2, 6);
         Assert.All(
+            capture.IsolationLevels,
+            isolationLevel => Assert.Equal(IsolationLevel.Serializable, isolationLevel));
+        Assert.All(
             capture.Commands,
             command => Assert.DoesNotContain(
                 script.Id.ToString(),
@@ -72,6 +76,7 @@ public sealed class QueryBehaviorTests
     {
         public ConcurrentQueue<string> Commands { get; } = new();
         public ConcurrentQueue<int> ParameterCounts { get; } = new();
+        public ConcurrentQueue<IsolationLevel?> IsolationLevels { get; } = new();
 
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
             DbCommand command,
@@ -81,6 +86,7 @@ public sealed class QueryBehaviorTests
         {
             Commands.Enqueue(command.CommandText);
             ParameterCounts.Enqueue(command.Parameters.Count);
+            IsolationLevels.Enqueue(command.Transaction?.IsolationLevel);
             return base.ReaderExecutingAsync(
                 command,
                 eventData,

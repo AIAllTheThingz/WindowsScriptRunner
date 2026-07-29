@@ -55,6 +55,8 @@ internal sealed class ScriptVersionConfiguration : IEntityTypeConfiguration<Scri
                 table.UseSqlOutputClause(false);
             });
         builder.HasKey(entity => entity.Id);
+        builder.HasAlternateKey(entity => new { entity.ScriptDefinitionId, entity.Id })
+            .HasName("AK_ScriptVersions_ScriptDefinitionId_Id");
         builder.Property(entity => entity.Id).ValueGeneratedNever();
         builder.Property(entity => entity.RelativeScriptPath).HasMaxLength(500).IsRequired();
         builder.Property(entity => entity.Sha256).HasColumnType("char(64)").IsRequired();
@@ -225,8 +227,11 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<JobEntity>
         builder.HasIndex(entity => entity.CreatedUtc).HasDatabaseName("IX_Jobs_CreatedUtc");
         builder.HasIndex(entity => new { entity.RequestedBy, entity.CreatedUtc })
             .HasDatabaseName("IX_Jobs_RequestedBy_CreatedUtc");
-        builder.HasIndex(entity => entity.ScriptDefinitionId)
-            .HasDatabaseName("IX_Jobs_ScriptDefinitionId");
+        builder.HasIndex(entity => new
+        {
+            entity.ScriptDefinitionId,
+            entity.ScriptVersionId,
+        }).HasDatabaseName("IX_Jobs_ScriptDefinitionId_ScriptVersionId");
         builder.HasIndex(entity => entity.ScriptVersionId)
             .HasDatabaseName("IX_Jobs_ScriptVersionId");
         builder.HasOne<ScriptDefinitionEntity>()
@@ -235,7 +240,16 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<JobEntity>
             .OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ScriptVersionEntity>()
             .WithMany()
-            .HasForeignKey(entity => entity.ScriptVersionId)
+            .HasForeignKey(entity => new
+            {
+                entity.ScriptDefinitionId,
+                entity.ScriptVersionId,
+            })
+            .HasPrincipalKey(entity => new
+            {
+                entity.ScriptDefinitionId,
+                entity.Id,
+            })
             .OnDelete(DeleteBehavior.NoAction);
     }
 }
