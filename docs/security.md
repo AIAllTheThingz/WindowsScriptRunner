@@ -7,6 +7,7 @@
 - Sensitive job parameters redact `ToString`, query responses, and audit values.
 - `JobParameter` stores only name/value binding data. Parameter type, sensitivity, SecureReference classification, value validation, audit classification, and response redaction derive from the pinned immutable `ScriptParameterDefinition`.
 - Parameter audit events store bounded metadata such as parameter name, pinned type, pinned sensitivity, value-present flag, and serialized length. Full parameter values are not written to audit properties.
+- Credential external identifiers must be provider-scoped reference URIs whose scheme matches the provider type and which contain an authority and path. User information, query strings, fragments, unlabelled values, and obvious embedded-secret markers are rejected.
 - Draft, submitted, approved, executing, and terminal job responses derive redaction from the pinned script version. Inconsistent or corrupted parameter bindings fail closed and do not expose raw values.
 - Script paths must be relative and reject rooted or traversal forms.
 - Script SHA-256 metadata must contain exactly 64 hexadecimal characters.

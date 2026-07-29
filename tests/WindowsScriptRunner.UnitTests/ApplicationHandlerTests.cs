@@ -120,7 +120,7 @@ public sealed class ApplicationHandlerTests
         var credential = new CredentialReference(
             CredentialReferenceId.New(),
             "TestVault",
-            "path/to/credential",
+            "testvault://path/to/credential",
             "Test Credential",
             TestDomainFactory.Time,
             TestDomainFactory.User);
@@ -183,7 +183,7 @@ public sealed class ApplicationHandlerTests
         var credential = new CredentialReference(
             CredentialReferenceId.New(),
             "TestVault",
-            "path/to/credential",
+            "testvault://path/to/credential",
             "Test Credential",
             TestDomainFactory.Time,
             TestDomainFactory.User,
@@ -225,7 +225,7 @@ public sealed class ApplicationHandlerTests
         var credential = new CredentialReference(
             CredentialReferenceId.New(),
             "TestVault",
-            "path/to/credential",
+            "testvault://path/to/credential",
             "Test Credential",
             TestDomainFactory.Time,
             TestDomainFactory.User);

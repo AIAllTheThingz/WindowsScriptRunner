@@ -165,13 +165,13 @@ public sealed class ProjectBoundaryTests
         var credential = new CredentialReference(
             CredentialReferenceId.New(),
             "ExternalVault",
-            "vault/private/path",
+            "externalvault://vault/private/path",
             "Automation credential",
             DateTimeOffset.UtcNow,
             new UserIdentity("DOMAIN\\user"));
 
         Assert.DoesNotContain(credentialReferenceId, parameter.ToString(), StringComparison.Ordinal);
-        Assert.DoesNotContain("vault/private/path", credential.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("externalvault://vault/private/path", credential.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

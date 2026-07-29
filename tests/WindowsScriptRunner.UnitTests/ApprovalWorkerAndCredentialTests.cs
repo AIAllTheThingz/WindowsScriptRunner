@@ -90,7 +90,7 @@ public sealed class ApprovalWorkerAndCredentialTests
     [Fact]
     public void CredentialReferenceContainsNoSecretAndRedactsExternalIdentifier()
     {
-        const string externalIdentifier = "vault/path/credential-1";
+        const string externalIdentifier = "externalvault://vault/path/credential-1";
         var reference = new CredentialReference(
             CredentialReferenceId.New(),
             "ExternalVault",
@@ -115,13 +115,32 @@ public sealed class ApprovalWorkerAndCredentialTests
     }
 
     [Theory]
-    [InlineData("apikey=actual-value")]
-    [InlineData("api_key=actual-value")]
-    [InlineData("token=actual-value")]
-    [InlineData("accesskey=actual-value")]
-    [InlineData("clientsecret=actual-value")]
-    [InlineData("authorization: Bearer actual-value")]
+    [InlineData("externalvault://vault/apikey=actual-value")]
+    [InlineData("externalvault://vault/api_key=actual-value")]
+    [InlineData("externalvault://vault/token=actual-value")]
+    [InlineData("externalvault://vault/accesskey=actual-value")]
+    [InlineData("externalvault://vault/clientsecret=actual-value")]
+    [InlineData("externalvault://vault/authorization:actual-value")]
     public void CredentialReferenceRejectsCommonEmbeddedSecretMarkers(string externalIdentifier)
+    {
+        Assert.Throws<DomainValidationException>(
+            () => new CredentialReference(
+                CredentialReferenceId.New(),
+                "ExternalVault",
+                externalIdentifier,
+                "Bad",
+                TestDomainFactory.Time,
+                TestDomainFactory.User));
+    }
+
+    [Theory]
+    [InlineData("hunter2")]
+    [InlineData("externalvault://credential")]
+    [InlineData("othervault://vault/path/credential")]
+    [InlineData("externalvault://user:secret@vault/path/credential")]
+    [InlineData("externalvault://vault/path/credential?version=secret")]
+    [InlineData("externalvault://vault/path/credential#secret")]
+    public void CredentialReferenceRejectsUnscopedOrMismatchedIdentifiers(string externalIdentifier)
     {
         Assert.Throws<DomainValidationException>(
             () => new CredentialReference(
