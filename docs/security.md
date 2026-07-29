@@ -3,7 +3,9 @@
 - No raw credential property exists in the domain model; `CredentialReference` stores only an external identifier.
 - `SecureReference` job parameters must contain a canonical non-empty `CredentialReferenceId` GUID. Application handlers resolve the ID, reject missing or disabled references, store only the canonical ID, and never audit external vault identifiers.
 - Sensitive job parameters redact `ToString`, query responses, and audit values.
-- Parameter audit events store bounded metadata such as parameter name, type, sensitivity, value-present flag, and serialized length. Full parameter values are not written to audit properties.
+- `JobParameter` stores only name/value binding data. Parameter type, sensitivity, SecureReference classification, value validation, audit classification, and response redaction derive from the pinned immutable `ScriptParameterDefinition`.
+- Parameter audit events store bounded metadata such as parameter name, pinned type, pinned sensitivity, value-present flag, and serialized length. Full parameter values are not written to audit properties.
+- Draft, submitted, approved, executing, and terminal job responses derive redaction from the pinned script version. Inconsistent or corrupted parameter bindings fail closed and do not expose raw values.
 - Script paths must be relative and reject rooted or traversal forms.
 - Script SHA-256 metadata must contain exactly 64 hexadecimal characters.
 - Published script versions reject mutation.

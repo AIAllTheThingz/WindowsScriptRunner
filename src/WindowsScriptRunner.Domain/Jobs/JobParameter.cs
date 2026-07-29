@@ -9,26 +9,16 @@ public sealed class JobParameter
         @"\A[A-Za-z_][A-Za-z0-9_]{0,99}\z",
         RegexOptions.CultureInvariant);
 
-    public JobParameter(
-        string name,
-        string? serializedValue,
-        ScriptParameterType parameterType,
-        bool isSensitive)
+    public JobParameter(string name, string? serializedValue)
     {
         Name = ValidateName(name);
         SerializedValue = serializedValue;
-        ParameterType = EnumGuard.RequireDefined(parameterType, nameof(ParameterType));
-        IsSensitive = isSensitive;
     }
 
     public string Name { get; }
     public string? SerializedValue { get; }
-    public ScriptParameterType ParameterType { get; }
-    public bool IsSensitive { get; }
 
-    public string GetSafeDisplayValue() => IsSensitive ? "[REDACTED]" : SerializedValue ?? "(null)";
-
-    public override string ToString() => $"{Name}={GetSafeDisplayValue()}";
+    public override string ToString() => $"{Name}=[VALUE OMITTED]";
 
     private static string ValidateName(string value)
     {

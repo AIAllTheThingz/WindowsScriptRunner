@@ -103,7 +103,8 @@ internal static class TestDomainFactory
         job.AddTarget(new TargetName("server-01"), User, Time.AddMinutes(1));
         foreach (var parameter in parameters ?? [])
         {
-            job.SetParameter(parameter.Definition, parameter.Value, User, Time.AddMinutes(2));
+            parameter.Definition.ValidateSerializedValue(parameter.Value);
+            job.SetParameterValue(parameter.Definition.Name, parameter.Value, User, Time.AddMinutes(2));
         }
 
         job.Submit(script, User, Time.AddMinutes(3));

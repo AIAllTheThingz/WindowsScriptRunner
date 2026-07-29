@@ -233,6 +233,72 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
+    public async Task SetParameterHandlerUsesPinnedDefinitionForAuditAndStorage()
+    {
+        var pinned = TestDomainFactory.Parameter("Token", sensitive: true);
+        var spoofed = TestDomainFactory.Parameter("Token", ScriptParameterType.Integer, sensitive: false);
+        var fixture = HandlerFixture.WithDraftJob(pinned);
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job!.Id,
+                spoofed.Name,
+                "secret-marker",
+                TestDomainFactory.User),
+            CancellationToken.None);
+
+        var audit = Assert.Single(fixture.Audits.Events);
+        var parameter = Assert.Single(fixture.Jobs.Job.Parameters);
+        Assert.Equal("Token", parameter.Name);
+        Assert.Equal("secret-marker", parameter.SerializedValue);
+        Assert.Equal("String", audit.Properties["ParameterType"]);
+        Assert.Equal("True", audit.Properties["IsSensitive"]);
+        Assert.DoesNotContain("secret-marker", string.Join(' ', audit.Properties.Values), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SetParameterHandlerRejectsInvalidPinnedValueWithoutPersistence()
+    {
+        var definition = TestDomainFactory.Parameter("Count", ScriptParameterType.Integer);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var updated = fixture.Jobs.Job!.UpdatedUtc;
+
+        await Assert.ThrowsAsync<Domain.Exceptions.InvalidJobParameterException>(
+            () => fixture.SetParameterHandler.HandleAsync(
+                new SetJobParameterCommand(
+                    fixture.Jobs.Job.Id,
+                    definition.Name,
+                    "not-an-integer",
+                    TestDomainFactory.User),
+                CancellationToken.None));
+
+        Assert.Empty(fixture.Jobs.Job.Parameters);
+        Assert.Equal(updated, fixture.Jobs.Job.UpdatedUtc);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task SetParameterHandlerPropagatesCancellationToJobAndScriptRepositories()
+    {
+        var definition = TestDomainFactory.Parameter("Mode");
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        using var source = new CancellationTokenSource();
+
+        await fixture.SetParameterHandler.HandleAsync(
+            new SetJobParameterCommand(
+                fixture.Jobs.Job!.Id,
+                definition.Name,
+                "Safe",
+                TestDomainFactory.User),
+            source.Token);
+
+        Assert.Contains(source.Token, fixture.Jobs.ObservedTokens);
+        Assert.Contains(source.Token, fixture.Scripts.ObservedTokens);
+    }
+
+    [Fact]
     public async Task SubmitAndTransitionHandlersEnforceLifecycle()
     {
         var fixture = HandlerFixture.WithDraftJob();
@@ -373,8 +439,8 @@ public sealed class ApplicationHandlerTests
             sensitive: true);
         var fixture = HandlerFixture.WithDraftJob(definition);
         var credentialReferenceId = CredentialReferenceId.New().ToString();
-        fixture.Jobs.Job!.SetParameter(
-            definition,
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
             credentialReferenceId,
             TestDomainFactory.User,
             TestDomainFactory.Time.AddMinutes(1));
@@ -387,6 +453,182 @@ public sealed class ApplicationHandlerTests
         Assert.True(parameter.IsRedacted);
         Assert.Equal("[REDACTED]", parameter.DisplayValue);
         Assert.DoesNotContain(credentialReferenceId, parameter.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetJobQueryRedactsSpoofedDraftSensitiveParameter()
+    {
+        var pinned = TestDomainFactory.Parameter("Token", sensitive: true);
+        var spoofed = TestDomainFactory.Parameter("Token", sensitive: false);
+        var fixture = HandlerFixture.WithDraftJob(pinned);
+        fixture.Jobs.Job!.SetParameterValue(
+            spoofed.Name,
+            "secret-marker",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        var response = await fixture.GetHandler.HandleAsync(
+            new GetJobQuery(fixture.Jobs.Job.Id),
+            CancellationToken.None);
+        var parameter = Assert.Single(response.Parameters);
+
+        Assert.Equal("Token", parameter.Name);
+        Assert.Equal("String", parameter.ParameterType);
+        Assert.True(parameter.IsSensitive);
+        Assert.True(parameter.IsRedacted);
+        Assert.Equal("[REDACTED]", parameter.DisplayValue);
+        Assert.DoesNotContain("secret-marker", parameter.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-marker", response.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetJobQueryFailsClosedForUnknownDraftParameter()
+    {
+        var definition = TestDomainFactory.Parameter("Mode");
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        fixture.Jobs.Job!.SetParameterValue(
+            "Unknown",
+            "secret-marker",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        var exception = await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.GetHandler.HandleAsync(
+                new GetJobQuery(fixture.Jobs.Job.Id),
+                CancellationToken.None));
+
+        Assert.DoesNotContain("secret-marker", exception.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetJobQueryFailsClosedForInvalidPinnedValue()
+    {
+        var definition = TestDomainFactory.Parameter("Count", ScriptParameterType.Integer);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            "secret-marker",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        var exception = await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.GetHandler.HandleAsync(
+                new GetJobQuery(fixture.Jobs.Job.Id),
+                CancellationToken.None));
+
+        Assert.DoesNotContain("secret-marker", exception.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Draft")]
+    [InlineData("Submitted")]
+    [InlineData("Terminal")]
+    public async Task GetJobQueryRedactsSensitiveValueAcrossLifecycle(string state)
+    {
+        var definition = TestDomainFactory.Parameter("Token", sensitive: true);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            "secret-marker",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        fixture.Jobs.Job.AddTarget(
+            new TargetName("server-01"),
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(2));
+
+        if (state is "Submitted" or "Terminal")
+        {
+            fixture.Jobs.Job.Submit(
+                fixture.Scripts.Script!,
+                TestDomainFactory.User,
+                TestDomainFactory.Time.AddMinutes(3));
+        }
+
+        if (state == "Terminal")
+        {
+            fixture.Jobs.Job.MarkValidated(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job.QueueDryRun(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job.StartDryRun(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job.CompleteDryRun(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+            fixture.Jobs.Job.CompleteRequestedDryRun(
+                TestDomainFactory.OtherUser,
+                fixture.Jobs.Job.UpdatedUtc.AddMinutes(1));
+        }
+
+        var response = await fixture.GetHandler.HandleAsync(
+            new GetJobQuery(fixture.Jobs.Job.Id),
+            CancellationToken.None);
+        var parameter = Assert.Single(response.Parameters);
+
+        Assert.Equal("[REDACTED]", parameter.DisplayValue);
+        Assert.True(parameter.IsSensitive);
+        Assert.True(parameter.IsRedacted);
+        Assert.DoesNotContain("secret-marker", response.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ScriptParameterType.String, "hello", "hello")]
+    [InlineData(ScriptParameterType.Integer, "42", "42")]
+    [InlineData(ScriptParameterType.StringArray, "[\"one\",\"two\"]", "[\"one\",\"two\"]")]
+    public async Task GetJobQueryReturnsTrustedNonSensitiveValues(
+        ScriptParameterType parameterType,
+        string serializedValue,
+        string expectedDisplay)
+    {
+        var definition = TestDomainFactory.Parameter("Value", parameterType);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        fixture.Jobs.Job!.SetParameterValue(
+            definition.Name,
+            serializedValue,
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        var response = await fixture.GetHandler.HandleAsync(
+            new GetJobQuery(fixture.Jobs.Job.Id),
+            CancellationToken.None);
+        var parameter = Assert.Single(response.Parameters);
+
+        Assert.Equal(parameterType.ToString(), parameter.ParameterType);
+        Assert.Equal(expectedDisplay, parameter.DisplayValue);
+        Assert.False(parameter.IsSensitive);
+        Assert.False(parameter.IsRedacted);
+    }
+
+    [Fact]
+    public async Task GetJobQueryRedactsSecureReferenceEvenWhenSpoofedAsString()
+    {
+        var definition = TestDomainFactory.Parameter(
+            "Credential",
+            ScriptParameterType.SecureReference,
+            sensitive: true);
+        var spoofed = TestDomainFactory.Parameter("Credential", ScriptParameterType.String);
+        var fixture = HandlerFixture.WithDraftJob(definition);
+        var credentialReferenceId = CredentialReferenceId.New().ToString();
+        fixture.Jobs.Job!.SetParameterValue(
+            spoofed.Name,
+            credentialReferenceId,
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+
+        var response = await fixture.GetHandler.HandleAsync(
+            new GetJobQuery(fixture.Jobs.Job.Id),
+            CancellationToken.None);
+        var parameter = Assert.Single(response.Parameters);
+
+        Assert.Equal("SecureReference", parameter.ParameterType);
+        Assert.True(parameter.IsSensitive);
+        Assert.True(parameter.IsRedacted);
+        Assert.Equal("[REDACTED]", parameter.DisplayValue);
+        Assert.DoesNotContain(credentialReferenceId, response.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]
@@ -582,7 +824,7 @@ public sealed class ApplicationHandlerTests
             CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
             RecordExecutionOutcomeHandler = new RecordExecutionOutcomeHandler(Jobs, Audits, UnitOfWork, Clock);
-            GetHandler = new GetJobHandler(Jobs);
+            GetHandler = new GetJobHandler(Jobs, Scripts);
         }
 
         public FakeJobRepository Jobs { get; } = new();
@@ -605,6 +847,7 @@ public sealed class ApplicationHandlerTests
         public GetJobHandler GetHandler { get; }
         public IEnumerable<CancellationToken> ObservedTokens =>
             Jobs.ObservedTokens
+                .Concat(Scripts.ObservedTokens)
                 .Concat(Credentials.ObservedTokens)
                 .Concat(Audits.ObservedTokens)
                 .Concat(UnitOfWork.ObservedTokens);
@@ -716,20 +959,26 @@ public sealed class ApplicationHandlerTests
     private sealed class FakeScriptRepository : IScriptDefinitionRepository
     {
         public ScriptDefinition? Script { get; set; }
+        public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<ScriptDefinition?> GetByIdAsync(
             ScriptDefinitionId id,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(Script?.Id == id ? Script : null);
+            CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            return Task.FromResult(Script?.Id == id ? Script : null);
+        }
 
         public Task AddAsync(ScriptDefinition definition, CancellationToken cancellationToken)
         {
+            ObservedTokens.Add(cancellationToken);
             Script = definition;
             return Task.CompletedTask;
         }
 
         public Task UpdateAsync(ScriptDefinition definition, CancellationToken cancellationToken)
         {
+            ObservedTokens.Add(cancellationToken);
             Script = definition;
             return Task.CompletedTask;
         }

@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Xml.Linq;
+using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Exceptions;
@@ -159,9 +161,7 @@ public sealed class ProjectBoundaryTests
         var credentialReferenceId = CredentialReferenceId.New().ToString();
         var parameter = new JobParameter(
             "Credential",
-            credentialReferenceId,
-            ScriptParameterType.SecureReference,
-            isSensitive: true);
+            credentialReferenceId);
         var credential = new CredentialReference(
             CredentialReferenceId.New(),
             "ExternalVault",
@@ -172,6 +172,30 @@ public sealed class ProjectBoundaryTests
 
         Assert.DoesNotContain(credentialReferenceId, parameter.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("vault/private/path", credential.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void JobParameterDoesNotExposeSecurityMetadataConstructor()
+    {
+        var constructors = typeof(JobParameter).GetConstructors();
+
+        Assert.DoesNotContain(
+            constructors,
+            constructor => constructor.GetParameters().Any(parameter =>
+                parameter.ParameterType == typeof(bool) ||
+                parameter.ParameterType == typeof(ScriptParameterType)));
+    }
+
+    [Fact]
+    public void GetJobHandlerDependsOnTrustedScriptRepository()
+    {
+        var constructor = Assert.Single(typeof(GetJobHandler).GetConstructors());
+        var parameterTypes = constructor.GetParameters()
+            .Select(parameter => parameter.ParameterType)
+            .ToArray();
+
+        Assert.Contains(typeof(IJobRepository), parameterTypes);
+        Assert.Contains(typeof(IScriptDefinitionRepository), parameterTypes);
     }
 
     [Fact]

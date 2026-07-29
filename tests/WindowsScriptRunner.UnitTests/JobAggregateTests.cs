@@ -54,15 +54,15 @@ public sealed class JobAggregateTests
                 TestDomainFactory.User,
                 job.UpdatedUtc.AddMinutes(1)));
         Assert.Throws<DomainValidationException>(
-            () => job.SetParameter(
-                definition,
+            () => job.SetParameterValue(
+                definition.Name,
                 "value",
                 TestDomainFactory.User,
                 job.UpdatedUtc.AddMinutes(1)));
     }
 
     [Fact]
-    public void DraftParameterCanBeAddedUpdatedAndRedacted()
+    public void DraftParameterCanBeAddedAndUpdatedAsBindingOnly()
     {
         var definition = TestDomainFactory.Parameter(
             "Credential",
@@ -72,20 +72,21 @@ public sealed class JobAggregateTests
         var version = TestDomainFactory.Version([definition]);
         var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
 
-        job.SetParameter(
-            definition,
+        job.SetParameterValue(
+            definition.Name,
             CredentialReferenceId.New().ToString(),
             TestDomainFactory.User,
             TestDomainFactory.Time.AddMinutes(1));
         var replacementId = CredentialReferenceId.New().ToString();
-        job.SetParameter(
-            definition,
+        job.SetParameterValue(
+            definition.Name,
             replacementId,
             TestDomainFactory.User,
             TestDomainFactory.Time.AddMinutes(2));
         var parameter = Assert.Single(job.Parameters);
 
-        Assert.Equal("[REDACTED]", parameter.GetSafeDisplayValue());
+        Assert.Equal(definition.Name, parameter.Name);
+        Assert.Equal(replacementId, parameter.SerializedValue);
         Assert.DoesNotContain(replacementId, parameter.ToString(), StringComparison.Ordinal);
     }
 
@@ -135,18 +136,30 @@ public sealed class JobAggregateTests
     }
 
     [Fact]
-    public void InvalidParameterValueIsRejected()
+    public void InvalidParameterValueIsRejectedAtSubmissionWithoutMutation()
     {
         var count = TestDomainFactory.Parameter("Count", ScriptParameterType.Integer);
         var version = TestDomainFactory.Version([count]);
-        var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(
+            new TargetName("server-01"),
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(1));
+        job.SetParameterValue(
+            count.Name,
+            "not-an-integer",
+            TestDomainFactory.User,
+            TestDomainFactory.Time.AddMinutes(2));
+        var updated = job.UpdatedUtc;
 
         Assert.Throws<InvalidJobParameterException>(
-            () => job.SetParameter(
-                count,
-                "not-an-integer",
-                TestDomainFactory.User,
-                TestDomainFactory.Time.AddMinutes(1)));
+            () => job.Submit(script, TestDomainFactory.User, updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Equal(updated, job.UpdatedUtc);
     }
 
     [Fact]
@@ -908,17 +921,134 @@ public sealed class JobAggregateTests
                 TestDomainFactory.Time));
     }
 
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(999)]
-    public void UndefinedScriptParameterTypeIsRejectedByJobParameter(int parameterType)
+    [Fact]
+    public void JobParameterCannotBeConstructedWithSecurityMetadata()
     {
-        Assert.Throws<DomainValidationException>(
-            () => new JobParameter(
-                "Mode",
-                null,
-                (ScriptParameterType)parameterType,
-                isSensitive: false));
+        var publicConstructors = typeof(JobParameter).GetConstructors();
+
+        Assert.DoesNotContain(
+            publicConstructors,
+            constructor => constructor.GetParameters().Any(parameter =>
+                parameter.ParameterType == typeof(ScriptParameterType) ||
+                parameter.ParameterType == typeof(bool)));
+    }
+
+    [Fact]
+    public void JobParameterStoresOnlyBindingData()
+    {
+        var parameter = new JobParameter("Mode", "Safe");
+        var publicProperties = typeof(JobParameter).GetProperties(BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.Equal("Mode", parameter.Name);
+        Assert.Equal("Safe", parameter.SerializedValue);
+        Assert.DoesNotContain(
+            publicProperties,
+            property => property.Name is "ParameterType" or "IsSensitive");
+        Assert.DoesNotContain("Safe", parameter.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParameterNamesRemainCaseInsensitivelyUnique()
+    {
+        var version = TestDomainFactory.Version([
+            TestDomainFactory.Parameter("Mode"),
+        ]);
+        var job = TestDomainFactory.DraftJob(TestDomainFactory.Script(version), version);
+
+        job.SetParameterValue("Mode", "Safe", TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        job.SetParameterValue("mode", "Fast", TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2));
+
+        var parameter = Assert.Single(job.Parameters);
+        Assert.Equal("mode", parameter.Name);
+        Assert.Equal("Fast", parameter.SerializedValue);
+    }
+
+    [Fact]
+    public void SubmissionRejectsUnknownParameterWithoutMutation()
+    {
+        var version = TestDomainFactory.Version([
+            TestDomainFactory.Parameter("Mode"),
+        ]);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        job.SetParameterValue("Unknown", "secret-marker", TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2));
+        var updated = job.UpdatedUtc;
+        var parameters = job.Parameters.ToArray();
+        var targets = job.Targets.ToArray();
+        var actor = job.LastActingUser;
+
+        var exception = Assert.Throws<InvalidJobParameterException>(
+            () => job.Submit(script, TestDomainFactory.User, updated.AddMinutes(1)));
+
+        Assert.DoesNotContain("secret-marker", exception.ToString(), StringComparison.Ordinal);
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Equal(updated, job.UpdatedUtc);
+        Assert.Equal(actor, job.LastActingUser);
+        Assert.Equal(parameters, job.Parameters);
+        Assert.Equal(targets, job.Targets);
+    }
+
+    [Fact]
+    public void SubmissionUsesPinnedDefinitionForValueValidation()
+    {
+        var pinned = TestDomainFactory.Parameter("Count", ScriptParameterType.Integer);
+        var spoofed = TestDomainFactory.Parameter("Count", ScriptParameterType.String);
+        var version = TestDomainFactory.Version([pinned]);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        job.SetParameterValue(spoofed.Name, "not-an-integer", TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2));
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<InvalidJobParameterException>(
+            () => job.Submit(script, TestDomainFactory.User, updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Equal(updated, job.UpdatedUtc);
+    }
+
+    [Fact]
+    public void SubmissionCannotTrustIndependentlySuppliedSensitivityMetadata()
+    {
+        var pinned = TestDomainFactory.Parameter("Token", sensitive: true);
+        var spoofed = TestDomainFactory.Parameter("Token", sensitive: false);
+        var version = TestDomainFactory.Version([pinned]);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        job.SetParameterValue(spoofed.Name, "secret-marker", TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(2));
+
+        job.Submit(script, TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(3));
+
+        Assert.Equal(JobStatus.Submitted, job.Status);
+        Assert.Single(job.Parameters);
+        Assert.DoesNotContain("secret-marker", Assert.Single(job.Parameters).ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SubmissionRejectsDuplicateReconstructedBindingsWithoutMutation()
+    {
+        var definition = TestDomainFactory.Parameter("Mode");
+        var version = TestDomainFactory.Version([definition]);
+        var script = TestDomainFactory.Script(version);
+        var job = TestDomainFactory.DraftJob(script, version);
+        job.AddTarget(new TargetName("server-01"), TestDomainFactory.User, TestDomainFactory.Time.AddMinutes(1));
+        AddReconstructedParameter(job, new JobParameter("Mode", "Safe"));
+        AddReconstructedParameter(job, new JobParameter("mode", "Fast"));
+        var updated = job.UpdatedUtc;
+
+        Assert.Throws<InvalidJobParameterException>(
+            () => job.Submit(script, TestDomainFactory.User, updated.AddMinutes(1)));
+
+        Assert.Equal(JobStatus.Draft, job.Status);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Null(job.PolicySnapshot);
+        Assert.Equal(updated, job.UpdatedUtc);
     }
 
     [Fact]
@@ -1010,5 +1140,14 @@ public sealed class JobAggregateTests
             $"<{nameof(ScriptVersion.IsPublished)}>k__BackingField",
             BindingFlags.Instance | BindingFlags.NonPublic);
         field?.SetValue(version, true);
+    }
+
+    private static void AddReconstructedParameter(Job job, JobParameter parameter)
+    {
+        var field = typeof(Job).GetField(
+            "_parameters",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var parameters = Assert.IsType<List<JobParameter>>(field?.GetValue(job));
+        parameters.Add(parameter);
     }
 }

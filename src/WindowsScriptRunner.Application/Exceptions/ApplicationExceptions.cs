@@ -6,6 +6,11 @@ public class ApplicationExceptionBase : Exception
         : base(message)
     {
     }
+
+    public ApplicationExceptionBase(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 public sealed class EntityNotFoundException : ApplicationExceptionBase
@@ -28,6 +33,11 @@ public sealed class ApplicationConflictException : ApplicationExceptionBase
 {
     public ApplicationConflictException(string message)
         : base(message)
+    {
+    }
+
+    public ApplicationConflictException(string message, Exception innerException)
+        : base(message, innerException)
     {
     }
 }

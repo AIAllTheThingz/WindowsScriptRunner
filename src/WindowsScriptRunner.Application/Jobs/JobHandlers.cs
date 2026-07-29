@@ -134,8 +134,9 @@ public sealed class SetJobParameterHandler(
                 cancellationToken);
         }
 
+        definition.ValidateSerializedValue(serializedValue);
         var now = clock.UtcNow;
-        job.SetParameter(definition, serializedValue, command.ActingUser, now);
+        job.SetParameterValue(definition.Name, serializedValue, command.ActingUser, now);
         var audit = CreateDraftJobHandler.Audit(
             "JobParameterSet",
             job,
@@ -541,7 +542,9 @@ public sealed class RecordExecutionOutcomeHandler(
         };
 }
 
-public sealed class GetJobHandler(IJobRepository jobRepository)
+public sealed class GetJobHandler(
+    IJobRepository jobRepository,
+    IScriptDefinitionRepository scriptRepository)
 {
     public async Task<JobDetailResponse> HandleAsync(
         GetJobQuery query,
@@ -551,11 +554,23 @@ public sealed class GetJobHandler(IJobRepository jobRepository)
             jobRepository,
             query.JobId,
             cancellationToken);
-        return Map(job);
+        var script = await SetJobParameterHandler.GetScriptAsync(
+            scriptRepository,
+            job.ScriptDefinitionId,
+            cancellationToken);
+        return Map(job, script);
     }
 
-    private static JobDetailResponse Map(Job job) =>
-        new(
+    private static JobDetailResponse Map(Job job, ScriptDefinition script)
+    {
+        try
+        {
+            var version = script.GetVersion(job.ScriptVersionId);
+            var parameters = job.Parameters
+                .Select(parameter => MapParameter(parameter, version))
+                .ToArray();
+
+            return new(
             job.Id.Value,
             job.ScriptDefinitionId.Value,
             job.ScriptVersionId.Value,
@@ -571,12 +586,7 @@ public sealed class GetJobHandler(IJobRepository jobRepository)
                 target.Name.Value,
                 target.AddedUtc,
                 target.AddedBy.Value)).ToArray(),
-            job.Parameters.Select(parameter => new JobParameterResponse(
-                parameter.Name,
-                parameter.ParameterType.ToString(),
-                parameter.GetSafeDisplayValue(),
-                parameter.IsSensitive,
-                parameter.IsSensitive)).ToArray(),
+            parameters,
             job.Executions.Select(execution => new JobExecutionResponse(
                 execution.Id.Value,
                 execution.AttemptNumber,
@@ -593,4 +603,27 @@ public sealed class GetJobHandler(IJobRepository jobRepository)
                 approval.Approver.Value,
                 approval.DecisionUtc,
                 approval.Comment)).ToArray());
+        }
+        catch (Domain.Exceptions.DomainException exception)
+        {
+            throw new ApplicationConflictException(
+                "Job parameter bindings are inconsistent with the pinned script version.",
+                exception);
+        }
+    }
+
+    private static JobParameterResponse MapParameter(JobParameter parameter, ScriptVersion version)
+    {
+        var definition = version.GetParameterDefinition(parameter.Name);
+        definition.ValidateSerializedValue(parameter.SerializedValue);
+        var isSensitive = definition.IsSensitive ||
+            definition.ParameterType == Domain.ScriptParameterType.SecureReference;
+
+        return new JobParameterResponse(
+            definition.Name,
+            definition.ParameterType.ToString(),
+            isSensitive ? "[REDACTED]" : parameter.SerializedValue ?? "(null)",
+            isSensitive,
+            isSensitive);
+    }
 }

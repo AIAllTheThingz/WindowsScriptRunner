@@ -100,23 +100,17 @@ public sealed class Job
         ApplyTouch(actingUser, updatedUtc);
     }
 
-    public void SetParameter(
-        ScriptParameterDefinition definition,
+    public void SetParameterValue(
+        string parameterName,
         string? serializedValue,
         UserIdentity actingUser,
         DateTimeOffset updatedUtc)
     {
         EnsureDraft();
-        ArgumentNullException.ThrowIfNull(definition);
-        definition.ValidateSerializedValue(serializedValue);
+        var replacement = new JobParameter(parameterName, serializedValue);
         ValidateMutation(actingUser, updatedUtc);
-        var replacement = new JobParameter(
-            definition.Name,
-            serializedValue,
-            definition.ParameterType,
-            definition.IsSensitive);
         var existing = _parameters.SingleOrDefault(parameter =>
-            string.Equals(parameter.Name, definition.Name, StringComparison.OrdinalIgnoreCase));
+            string.Equals(parameter.Name, replacement.Name, StringComparison.OrdinalIgnoreCase));
 
         if (existing is not null)
         {
@@ -203,6 +197,26 @@ public sealed class Job
             throw new DomainValidationException("At least one target is required before job submission.");
         }
 
+        ValidateParametersAgainst(version);
+
+        var policySnapshot = JobPolicySnapshot.Capture(scriptDefinition, ScriptVersionId);
+        PolicySnapshot = policySnapshot;
+        SubmittedUtc = submittedUtc;
+        ApplyValidatedTransition(JobStatus.Submitted, actingUser, submittedUtc);
+    }
+
+    private void ValidateParametersAgainst(ScriptVersion version)
+    {
+        var duplicate = _parameters
+            .GroupBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new InvalidJobParameterException(
+                duplicate.Key,
+                "duplicate parameter bindings are not allowed.");
+        }
+
         foreach (var definition in version.ParameterDefinitions)
         {
             var parameter = _parameters.SingleOrDefault(candidate =>
@@ -214,11 +228,6 @@ public sealed class Job
         {
             version.GetParameterDefinition(parameter.Name).ValidateSerializedValue(parameter.SerializedValue);
         }
-
-        var policySnapshot = JobPolicySnapshot.Capture(scriptDefinition, ScriptVersionId);
-        PolicySnapshot = policySnapshot;
-        SubmittedUtc = submittedUtc;
-        ApplyValidatedTransition(JobStatus.Submitted, actingUser, submittedUtc);
     }
 
     public void MarkValidated(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
