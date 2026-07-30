@@ -7,6 +7,25 @@ namespace WindowsScriptRunner.PowerShellTests;
 public sealed class PowerShellExecutionIntegrationTests(
     PowerShellIntegrationFixture fixture)
 {
+    [Fact]
+    public async Task FallbackProbeTerminatesTreeAfterSuccessfulProbe()
+    {
+        var controller = new FallbackProcessTreeController();
+        var options = PowerShellIntegrationFixture.CreateOptions(
+            fixture.AllowedRoot,
+            fixture.WorkingRoot);
+        var probe = new PowerShellRuntimeProbe(
+            Microsoft.Extensions.Options.Options.Create(options),
+            controller);
+
+        var runtime = await probe.ProbeAsync(
+            fixture.Runtime.ExecutablePath,
+            CancellationToken.None);
+
+        Assert.Equal(fixture.Runtime.Version, runtime.Version);
+        Assert.Equal(1, controller.TerminationCount);
+    }
+
     public static TheoryData<string> LiteralMessages => new()
     {
         "plain",

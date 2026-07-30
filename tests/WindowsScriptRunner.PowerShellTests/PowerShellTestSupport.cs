@@ -255,14 +255,23 @@ internal sealed class FallbackProcessTreeController : IProcessTreeController
     private readonly ProcessTreeController _controller =
         new(NullLogger<ProcessTreeController>.Instance);
 
+    public int TerminationCount { get; private set; }
+
     public ProcessTreeContainment Attach(Process process) => new(null);
 
-    public Task TerminateAsync(
+    public async Task TerminateAsync(
         Process process,
         ProcessTreeContainment containment,
         TimeSpan gracePeriod,
-        PowerShellExecutionId? executionId) =>
-        _controller.TerminateAsync(process, containment, gracePeriod, executionId);
+        PowerShellExecutionId? executionId)
+    {
+        TerminationCount++;
+        await _controller.TerminateAsync(
+            process,
+            containment,
+            gracePeriod,
+            executionId);
+    }
 }
 
 internal static class ProcessTest

@@ -142,6 +142,16 @@ internal sealed class PowerShellRuntimeProbe(
         }
 
         await outputPumpsTask.ConfigureAwait(false);
+        if (containment.UsesFallback)
+        {
+            await processTreeController.TerminateAsync(
+                    process,
+                    containment,
+                    TimeSpan.FromSeconds(_options.TerminationGraceSeconds),
+                    null)
+                .ConfigureAwait(false);
+        }
+
         var output = capture.Snapshot();
         if (process.ExitCode != 0 ||
             output.StandardOutputTruncated ||

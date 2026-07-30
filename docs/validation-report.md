@@ -1475,3 +1475,14 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T14:02:43.0542573-05:00` to `14:03:23.2494458-05:00`, exit 0, 551 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 102.
 - `dotnet format --verify-no-changes --no-restore`: `2026-07-30T14:04:05.0742490-05:00` to `14:04:32.7660788-05:00`, exit 0.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 fallback probe correction
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Successful runtime probing now invokes fallback tree termination before parsing or accepting the candidate when Job Object containment is unavailable.
+- Focused successful-probe fallback regression: 1 passed, 0 failed, 0 skipped.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T14:17:40.7831246-05:00` to `14:17:49.2911384-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T14:17:49.3045448-05:00` to `14:18:29.1442555-05:00`, exit 0, 552 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 103.
+- `dotnet format --verify-no-changes --no-restore`: `2026-07-30T14:18:57.2315636-05:00` to `14:19:24.9578560-05:00`, exit 0.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
