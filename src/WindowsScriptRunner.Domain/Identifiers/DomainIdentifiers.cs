@@ -42,6 +42,14 @@ public sealed record JobExecutionId
     public override string ToString() => Value.ToString("D");
 }
 
+public sealed record JobLeaseId
+{
+    public JobLeaseId(Guid value) => Value = IdentifierGuard.NotEmpty(value, nameof(JobLeaseId));
+    public Guid Value { get; }
+    public static JobLeaseId New() => new(Guid.NewGuid());
+    public override string ToString() => Value.ToString("D");
+}
+
 public sealed record JobApprovalId
 {
     public JobApprovalId(Guid value) => Value = IdentifierGuard.NotEmpty(value, nameof(JobApprovalId));

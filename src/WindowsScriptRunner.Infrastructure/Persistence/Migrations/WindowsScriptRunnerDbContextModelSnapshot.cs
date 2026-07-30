@@ -23,6 +23,9 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.HasSequence("JobLeaseFencingSequence", "wsr")
+                .HasMin(1L);
+
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.AuditEventEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -99,7 +102,7 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
                     b.ToTable("AuditEventProperties", "wsr", t =>
                         {
-                            t.HasCheckConstraint("CK_AuditEventProperties_NonSensitiveKey", "[NormalizedKey] NOT LIKE '%PASSWORD%' AND [NormalizedKey] NOT LIKE '%SECRET%' AND [NormalizedKey] NOT LIKE '%TOKEN%'");
+                            t.HasCheckConstraint("CK_AuditEventProperties_NonSensitiveKey", "[NormalizedKey] NOT LIKE '%PASSWORD%' AND [NormalizedKey] NOT LIKE '%SECRET%' AND ([NormalizedKey] NOT LIKE '%TOKEN%' OR [NormalizedKey] = 'FENCINGTOKEN')");
                         });
                 });
 
@@ -372,6 +375,71 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_JobExecutions_Outcome", "[Outcome] IS NULL OR [Outcome] IN ('Succeeded','SucceededWithWarnings','Failed','Cancelled','TimedOut','Blocked','NotRun')");
 
                             t.HasCheckConstraint("CK_JobExecutions_Start", "[StartedUtc] IS NULL OR [StartedUtc] >= [CreatedUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobLeaseEntity", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AcquiredUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<DateTimeOffset>("ExpiresUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<long>("FencingToken")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("LastRenewedUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid>("LeaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("WorkKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("WorkerNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("JobId");
+
+                    b.HasIndex("ExpiresUtc")
+                        .HasDatabaseName("IX_JobLeases_ExpiresUtc");
+
+                    b.HasIndex("LeaseId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_JobLeases_LeaseId");
+
+                    b.HasIndex("WorkKind", "ExpiresUtc")
+                        .HasDatabaseName("IX_JobLeases_WorkKind_ExpiresUtc");
+
+                    b.HasIndex("WorkerNodeId", "ExpiresUtc")
+                        .HasDatabaseName("IX_JobLeases_WorkerNodeId_ExpiresUtc");
+
+                    b.ToTable("JobLeases", "wsr", t =>
+                        {
+                            t.HasCheckConstraint("CK_JobLeases_FencingToken", "[FencingToken] > 0");
+
+                            t.HasCheckConstraint("CK_JobLeases_JobId", "[JobId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_JobLeases_LeaseId", "[LeaseId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_JobLeases_Timestamps", "[LastRenewedUtc] >= [AcquiredUtc] AND [ExpiresUtc] > [LastRenewedUtc]");
+
+                            t.HasCheckConstraint("CK_JobLeases_WorkKind", "[WorkKind] IN ('DryRun','Execute')");
+
+                            t.HasCheckConstraint("CK_JobLeases_WorkerNodeId", "[WorkerNodeId] <> '00000000-0000-0000-0000-000000000000'");
                         });
                 });
 
@@ -814,6 +882,23 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.Navigation("Job");
                 });
 
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobLeaseEntity", b =>
+                {
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobEntity", "Job")
+                        .WithOne("Lease")
+                        .HasForeignKey("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobLeaseEntity", "JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.WorkerNodeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("WorkerNodeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobParameterEntity", b =>
                 {
                     b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobEntity", "Job")
@@ -912,6 +997,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.Navigation("Approvals");
 
                     b.Navigation("Executions");
+
+                    b.Navigation("Lease");
 
                     b.Navigation("Parameters");
 

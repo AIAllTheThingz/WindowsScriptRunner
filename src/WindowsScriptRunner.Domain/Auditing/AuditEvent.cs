@@ -67,7 +67,8 @@ public sealed class AuditEvent
     }
 
     private static bool LooksSensitive(string key) =>
-        key.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+        !key.Equals("FencingToken", StringComparison.OrdinalIgnoreCase) &&
+        (key.Contains("password", StringComparison.OrdinalIgnoreCase) ||
         key.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
-        key.Contains("token", StringComparison.OrdinalIgnoreCase);
+        key.Contains("token", StringComparison.OrdinalIgnoreCase));
 }

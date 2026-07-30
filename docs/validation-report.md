@@ -1187,3 +1187,103 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - Blocked optional environment: Docker daemon/Testcontainers. Real SQL Server validation was not blocked because LocalDB was available and all 19 SQL tests executed.
 - NotRun by Phase 3 scope: Phase 4 polling/claiming/leasing/scheduling, PowerShell execution, script discovery/manifest loading, reporting, REST APIs, new Razor features, authentication, authorization, external secret retrieval, notifications, deployment automation, containers, Kubernetes, and production installation.
 - NotRun environment claims: production SQL Server deployment, external SQL authentication, and production rollback. LocalDB migration rollback and idempotent application were validated.
+
+# Phase 4 Worker Foundation and Queue Processing
+
+Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran from the repository root.
+
+## Starting gate and baseline
+
+- Phase 3 merge commit `5a1e6de` was fetched to `main`, was an ancestor of the Phase 4 branch, and matched the required merged PR #2 state.
+- PR #2 was merged; no open PR, issue, unresolved review thread, local/remote Phase 4 branch, or dirty starting file blocked Phase 4.
+- Phase 4 branch: `agent/phase-4-worker-queue-processing`.
+- Baseline tool restore: `2026-07-29T17:14:49-05:00`, exit 0, dotnet-ef 10.0.10.
+- Baseline restore: `2026-07-29T17:14:49-05:00` to `17:14:52-05:00`, exit 0.
+- Baseline Release build: `2026-07-29T17:14:52-05:00` to `17:15:06-05:00`, exit 0, 0 warnings/errors.
+- Baseline full test: `2026-07-29T17:15:06-05:00` to `17:15:24-05:00`, exit 0, 362 passed: Unit 286, Security 35, SQL Server 29, Integration 3, Worker 7, PowerShell boundary 2.
+- Baseline format verification: `2026-07-29T17:15:24-05:00` to `17:15:48-05:00`, exit 0.
+- Baseline EF pending-model check: `2026-07-29T17:15:48-05:00` to `17:15:57-05:00`, exit 0, none pending.
+
+## Domain lease model and Application contracts
+
+- Added `JobWorkKind` (`DryRun`, `Execute`), strong `JobLeaseId`, fenced `JobLeaseCredentials`, aggregate-owned `JobLease`, timestamp/ownership invariants, renewal, safe release, and state-specific expiration recovery.
+- DryRun acquisition remains `DryRunQueued`; Execute acquisition moves to `Claimed`. Active expiration records timed-out state/outcome. Completion removes the lease.
+- Worker-controlled transitions require current lease ID, worker ID, and fencing token. Stale operations fail before mutation.
+- `WorkerNode` now atomically synchronizes complete capability sets and computes liveness from enabled state plus heartbeat freshness.
+- Added safe candidate/claimed-work DTOs; worker registration/heartbeat; acquisition, renewal, release, inspection, recovery, and lease-aware lifecycle handlers; and fencing/candidate source abstractions.
+- Registration/capability changes and lease lifecycle events are bounded audits. Routine heartbeat and renewal are intentionally not audited.
+
+## Persistence, migration, and query behavior
+
+- Migration `20260729224310_AddWorkerQueueLeases` creates `wsr.JobLeaseFencingSequence`, `wsr.JobLeases`, rowversion, checks, ownership relationships, unique lease ID, and expiration/worker/work-kind indexes.
+- Migration normalizes legacy `DryRunRunning`, `Claimed`, `Executing`, and `PostValidation` states before enforcing the lease requirement and records bounded migration audits.
+- Queue discovery is a bounded parameterized projection, filters exact status/work kind plus lease absence, orders by `UpdatedUtc`, `CreatedUtc`, `JobId`, and returns no parameters or credential references.
+- SQL fencing uses a fixed `SELECT NEXT VALUE FOR [wsr].[JobLeaseFencingSequence]` command through the current context connection/transaction.
+- Real SQL migration tests cover apply, idempotency, rollback to Phase 3, Phase 4 reapply, table/sequence/check/index/FK metadata, and no pending model change.
+
+## Worker behavior
+
+- Startup owns a stable configured node identity, synchronizes capabilities, rejects disabled/name-mismatched identities, records the first heartbeat, and commits once.
+- Persistent heartbeat uses a fresh scope; failure immediately pauses claims, retries with bounded backoff, and becomes fatal after the liveness window. Normal heartbeats write no audit.
+- `JobWorkHandlerRegistry` rejects duplicates and determines the only supported candidate kinds. Production registers zero handlers.
+- Queue polling is non-overlapping, bounded by available slots and candidate batch, tracks all dispatch tasks, observes exceptions/cancellation, and uses separate empty/persistence exponential backoffs with injected jitter.
+- Renewal reuses lease ID/worker/fencing credentials through fresh scopes and cancels handlers on lease loss or when safe renewal can no longer be assured.
+- Shutdown stops acquisition, cancels handlers, continues renewal during the configured drain, safely releases only unstarted work, and leaves active work for expiration recovery after timeout.
+- Expired recovery uses bounded discovery and fresh scopes, ignores expected stale races, and atomically writes expired/recovered audits.
+- Built-in metrics cover queue polls/claims/conflicts/empty polls, dispatch outcomes, lease renewal/loss/recovery, heartbeat outcomes, active dispatches, and available slots.
+
+## Focused and real SQL results
+
+- Domain/Application focused Unit tests passed, including acquisition, renewal, release, stale fencing, recovery, capability synchronization, registration, heartbeat, and cancellation.
+- Worker focused suite: 37 passed, 0 failed, 0 skipped. Coverage includes empty/persistence backoff separation and reset, jitter bounds, handler registry, zero-handler behavior, supported-kind filtering, concurrency, completion slot release, observed exception/cancellation, renewal, immediate post-backoff renewal retry, lost-lease cancellation, invariant release, shutdown drain/completion/timeout, liveness-bounded heartbeat failure, development-only ephemeral identity, malformed capability validation, dispatch-task fault containment, and validated backoff bounds.
+- Security focused suite: 42 passed, 0 failed, 0 skipped. Source/reflection tests cover PowerShell/process absence, safe descriptors, non-secret leases, fenced commands, persistence boundaries, and zero production handler implementations.
+- SQL Server focused suite: 42 passed, 0 failed, 0 skipped against SQL Server LocalDB. Multi-worker coverage includes two-worker/one-job and four-worker/30-job races with unique ownership/fencing. SQL Server UTC coordination and expired-lease discovery use the shared database clock. Renewal/recovery and duplicate-recovery races each produce one valid winner, while concurrent renewal and execution start both commit without a false job rowversion conflict. Active DryRun/Execute/PostValidation recovery and stale completion rejection passed.
+- Query interception proves bounded `TOP`, parameters, exact filters, deterministic ordering, lease absence, safe projection, and bounded command count.
+
+## Final build, test, formatting, and model validation
+
+- `dotnet tool restore`: `2026-07-29T18:10:53.5021690-05:00` to `18:10:54.0544942-05:00`, exit 0, dotnet-ef 10.0.10 restored.
+- `dotnet restore`: `2026-07-29T18:10:59.1265510-05:00` to `18:11:00.9805573-05:00`, exit 0.
+- `dotnet build --configuration Release`: `2026-07-29T18:11:08.7731545-05:00` to `18:11:13.2695465-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release`: `2026-07-29T18:11:18.3354210-05:00` to `18:11:37.2215913-05:00`, exit 0, 431 passed, 0 failed, 0 skipped: Unit 312, Security 42, SQL Server 40, Worker 32, Integration 3, PowerShell boundary 2.
+- `dotnet format`: `2026-07-29T18:11:42.7776216-05:00` to `18:12:08.7482721-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-29T18:12:17.8645441-05:00` to `18:12:43.6955101-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-29T18:12:49.1365159-05:00` to `18:12:53.0936227-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-29T18:12:58.5896094-05:00` to `18:13:14.1668063-05:00`, exit 0, the same 431 tests passed.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ...`: `2026-07-29T18:13:19.6617271-05:00` to `18:13:27.9592647-05:00`, exit 0, no pending changes.
+- Final post-inspection revalidation after recovery-actor and option-bound hardening: Release no-restore build `2026-07-29T18:20:46.5640560-05:00` to `18:20:50.9969892-05:00`, exit 0, 0 warnings/errors; no-build full test `2026-07-29T18:20:51.0122599-05:00` to `18:21:06.0397188-05:00`, exit 0, 432 passed (Unit 312, Security 42, SQL Server 40, Worker 33, Integration 3, PowerShell boundary 2); formatter and verification exit 0; EF still reports no pending model changes.
+- Post-review revalidation after the bounded PR feedback fixes: tool restore, restore, Release build, formatter, formatting verification, and Release no-restore build exited 0 with 0 warnings/errors; both full no-build runs passed 435 tests (Unit 312, Security 42, SQL Server 40, Worker 36, Integration 3, PowerShell boundary 2); the real SQL rollback regression passed with a persisted `FENCINGTOKEN` audit property; EF reported no pending model changes.
+- Final review closeout revalidation: tool restore, restore, Release build, formatter, formatting verification, and Release no-restore build exited 0 with 0 warnings/errors; both full no-build runs passed 437 tests (Unit 312, Security 42, SQL Server 41, Worker 37, Integration 3, PowerShell boundary 2); focused regressions proved SQL-authoritative worker coordination time, immediate post-backoff renewal retry, and heartbeat failure bounded by the liveness window; EF reported no pending model changes.
+- Post-review leased-execution clock closeout: formatting verification and the Release no-restore build exited 0 with 0 warnings/errors; the full no-build run passed 438 tests (Unit 313, Security 42, SQL Server 41, Worker 37, Integration 3, PowerShell boundary 2); a focused skew regression proved execution start and terminal outcome use the SQL-authoritative worker coordination clock.
+- Post-review lease-renewal concurrency closeout: formatting verification and the Release no-restore build exited 0 with 0 warnings/errors, EF reported no pending model changes, and the focused real-SQL race plus full no-build run passed 439 tests (Unit 313, Security 42, SQL Server 42, Worker 37, Integration 3, PowerShell boundary 2); renewal and execution start committed concurrently without a false job rowversion conflict.
+
+## Runtime validation
+
+- A GUID-scoped disposable SQL Server LocalDB database was migrated through both migrations with startup migration disabled.
+- Web ran in Production on `http://127.0.0.1:5097`. `/`, `/Scripts`, `/Jobs`, `/Workers`, `/Audit`, `/Administration`, `/health`, `/health/live`, and `/health/ready` returned HTTP 200.
+- Migration history remained two. With the exact disposable database offline, readiness returned 503 while liveness remained 200; readiness recovered to 200 after SQL returned.
+- Worker ran in Production with stable ID `44444444-4444-4444-8444-444444444444`, test name, and OS capability. Registration persisted once, the heartbeat advanced, the queue logged zero supported work kinds, the pre-seeded `DryRunQueued` job remained unchanged, and `JobLeases` remained empty.
+- Web and Worker each had zero child processes and zero PowerShell children. Provider logs parameterized values as `?`; no parameter, credential, connection string, or authentication value appeared.
+- A focused test-hosted Worker run passed four fake-handler scenarios proving zero-handler/no-claim, acquisition/fencing, renewal with the same token, fake invocation, explicit lifecycle completion, and safe invariant release. No production executor participated.
+- The command backend could not deliver Ctrl+C to non-interactive runtime processes. Their exact executable paths/PIDs were verified and stopped, producing wrapper exit 1 as a harness artifact. Unit/Worker hosted-service tests validate clean cancellation and drain where cancellation delivery is controllable.
+- Port 5097 had no listener, no validation Web/Worker process remained, and the exact disposable database was dropped.
+
+## Security inspection
+
+- Production source scan found no `Process.Start`, `System.Diagnostics.Process`, or `System.Management.Automation`.
+- Production source contains no `IJobWorkHandler` implementation or registration.
+- `SaveChangesAsync` occurs only in `SqlUnitOfWork`; README mentions are documentation only.
+- Security tests prove candidate and claimed descriptors contain no parameter/credential fields; lease state contains no secret material; all worker-controlled commands carry fenced credentials; DbContext/provider APIs remain Infrastructure-only; repositories do not save; and lease audits do not read job parameters.
+- `git diff --check` passed. No connection string, raw credential, fake executor, generated SQL artifact, or runtime log is committed.
+
+## Corrected, failed, blocked, and NotRun work
+
+- Corrected: EF's composable raw-query shape could not wrap `NEXT VALUE FOR`; fencing was changed to a fixed scalar command on the context connection.
+- Corrected: migration metadata tests initially exposed SQL collation and `sql_variant` conversion assumptions; queries were made explicit and then passed.
+- Corrected: a four-worker SQL stress run exposed deadlock victim 1205. It is now translated as bounded persistence unavailability, and queue acquisition uses the dedicated persistence backoff; the full SQL suite passed.
+- Corrected: initial `System.Diagnostics.Metrics` tag calls were overload-ambiguous; explicit key/value tags compile with 0 warnings.
+- Corrected: one adapted legacy test briefly expected the wrong exception boundary; the exact Domain/Application expectations were restored and all 312 Unit tests passed.
+- Failed required final items: none.
+- Blocked required items: none.
+- Blocked harness capabilities: hidden `Start-Process` launch and Ctrl+C delivery for non-interactive runtime processes. Foreground sessions, exact PID verification, endpoint/database evidence, forced cleanup, and hosted-service cancellation tests covered the required outcomes without changing product behavior.
+- NotRun: production SQL Server deployment/rollback, production authentication/authorization, external secret retrieval, PowerShell execution, script process isolation, paid telemetry, deployment automation, containers, and Phase 5. No production execution evidence is claimed.

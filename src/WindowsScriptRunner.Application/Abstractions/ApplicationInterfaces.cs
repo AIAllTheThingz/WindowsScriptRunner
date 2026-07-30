@@ -1,3 +1,5 @@
+using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -13,6 +15,11 @@ public interface IClock
     DateTimeOffset UtcNow { get; }
 }
 
+public interface IWorkerCoordinationClock
+{
+    Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken);
+}
+
 public interface ICurrentUser
 {
     UserIdentity User { get; }
@@ -24,6 +31,7 @@ public interface IJobRepository
     Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken);
     Task AddAsync(Job job, CancellationToken cancellationToken);
     Task UpdateAsync(Job job, CancellationToken cancellationToken);
+    Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken);
 }
 
 public interface IScriptDefinitionRepository
@@ -64,4 +72,25 @@ public interface IUnitOfWork
 public interface IJobFingerprintService
 {
     Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken);
+}
+
+public interface IJobQueueCandidateSource
+{
+    Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
+        IReadOnlySet<JobWorkKind> supportedWorkKinds,
+        int maximumCount,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+}
+
+public interface IExpiredJobLeaseCandidateSource
+{
+    Task<IReadOnlyList<ExpiredJobLeaseCandidate>> FindExpiredAsync(
+        int maximumCount,
+        CancellationToken cancellationToken);
+}
+
+public interface IFencingTokenSource
+{
+    Task<long> GetNextAsync(CancellationToken cancellationToken);
 }

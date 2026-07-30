@@ -20,6 +20,7 @@ public sealed class WindowsScriptRunnerDbContext(DbContextOptions<WindowsScriptR
     internal DbSet<JobParameterEntity> JobParameters => Set<JobParameterEntity>();
     internal DbSet<JobExecutionEntity> JobExecutions => Set<JobExecutionEntity>();
     internal DbSet<JobApprovalEntity> JobApprovals => Set<JobApprovalEntity>();
+    internal DbSet<JobLeaseEntity> JobLeases => Set<JobLeaseEntity>();
     internal DbSet<WorkerNodeEntity> WorkerNodes => Set<WorkerNodeEntity>();
     internal DbSet<WorkerCapabilityEntity> WorkerCapabilities => Set<WorkerCapabilityEntity>();
     internal DbSet<CredentialReferenceEntity> CredentialReferences => Set<CredentialReferenceEntity>();
@@ -30,6 +31,10 @@ public sealed class WindowsScriptRunnerDbContext(DbContextOptions<WindowsScriptR
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
         modelBuilder.HasDefaultSchema("wsr");
+        modelBuilder.HasSequence<long>("JobLeaseFencingSequence", "wsr")
+            .StartsAt(1)
+            .HasMin(1)
+            .IncrementsBy(1);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WindowsScriptRunnerDbContext).Assembly);
     }
 }

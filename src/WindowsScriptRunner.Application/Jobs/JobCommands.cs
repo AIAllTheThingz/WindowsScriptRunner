@@ -1,5 +1,6 @@
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
+using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.ValueObjects;
 
 namespace WindowsScriptRunner.Application.Jobs;
@@ -50,11 +51,12 @@ public sealed record CompleteDryRunJobCommand(JobId JobId, UserIdentity ActingUs
 
 public sealed record StartExecutionAttemptCommand(
     JobId JobId,
-    WorkerNodeId? WorkerNodeId,
+    JobLeaseCredentials LeaseCredentials,
     UserIdentity ActingUser);
 
 public sealed record RecordExecutionOutcomeCommand(
     JobId JobId,
+    JobLeaseCredentials LeaseCredentials,
     ExecutionOutcome Outcome,
     int? ExitCode,
     string? Summary,

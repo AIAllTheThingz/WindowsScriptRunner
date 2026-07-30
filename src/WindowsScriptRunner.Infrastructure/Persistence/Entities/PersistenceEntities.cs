@@ -99,6 +99,7 @@ internal sealed class JobEntity
     public List<JobParameterEntity> Parameters { get; } = [];
     public List<JobExecutionEntity> Executions { get; } = [];
     public List<JobApprovalEntity> Approvals { get; } = [];
+    public JobLeaseEntity? Lease { get; set; }
 }
 
 internal sealed class JobTargetEntity
@@ -144,6 +145,20 @@ internal sealed class JobApprovalEntity
     public DateTimeOffset DecisionUtc { get; set; }
     public string? Comment { get; set; }
     public string ApprovalFingerprint { get; set; } = string.Empty;
+    public JobEntity Job { get; set; } = null!;
+}
+
+internal sealed class JobLeaseEntity
+{
+    public Guid JobId { get; set; }
+    public Guid LeaseId { get; set; }
+    public Guid WorkerNodeId { get; set; }
+    public string WorkKind { get; set; } = string.Empty;
+    public long FencingToken { get; set; }
+    public DateTimeOffset AcquiredUtc { get; set; }
+    public DateTimeOffset LastRenewedUtc { get; set; }
+    public DateTimeOffset ExpiresUtc { get; set; }
+    public byte[] RowVersion { get; set; } = [];
     public JobEntity Job { get; set; } = null!;
 }
 

@@ -1,17 +1,17 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application foundation for future controlled automation. **Phase 3: SQL Server Persistence is implemented on this branch and pending review.**
+Windows Script Runner is a Windows-hosted .NET application foundation for future controlled automation. **Phase 3: SQL Server Persistence is complete and merged. Phase 4: Worker Foundation and Queue Processing is implemented by this pull request and pending review.**
 
 ## Status
 
-The solution contains the validated Phase 2 domain/application model plus an EF Core SQL Server persistence layer. Infrastructure owns explicit persistence entities, mappings, repositories, append-only audit staging, a single unit-of-work commit boundary, optimistic concurrency, migrations, SQL readiness checks, and bounded exception translation. Real SQL Server tests exercise schema creation and rollback, idempotent deployment SQL, repository round trips, constraints, transactions, concurrency, cancellation, health checks, and query shape.
+The solution contains the validated Domain, Application, and SQL Server persistence foundation. Phase 4 adds durable worker coordination and a lease-backed queue without executing scripts. Phase 5 PowerShell execution remains future work.
 
 Production startup does not apply migrations by default. Operators must deploy the reviewed migration artifact or explicitly opt into startup migration for a controlled environment.
 
 ## Solution structure
 
 - `src/WindowsScriptRunner.Web` — Razor Pages UI and health endpoint
-- `src/WindowsScriptRunner.Worker` — cancellation-aware worker heartbeat
+- `src/WindowsScriptRunner.Worker` — durable registration, heartbeat, lease recovery, and handler-gated queue coordination
 - `src/WindowsScriptRunner.Application` — use-case handlers and persistence/audit abstractions
 - `src/WindowsScriptRunner.Domain` — independent aggregates, lifecycle rules, and value objects
 - `src/WindowsScriptRunner.Infrastructure` — EF Core SQL Server persistence, repositories, migrations, health checks, and composition
@@ -44,7 +44,7 @@ dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker
 ## Current limitations
 
 - No PowerShell scripts are executed.
-- No production job processing exists.
+- No production work handler or script executor exists. Queue coordination can lease only work kinds supplied by registered handlers; the Phase 4 production registry supplies none.
 - No authentication or authorization model is complete.
 - Approval fingerprints are supplied and validated structurally, but trusted fingerprint calculation is future work.
 - Windows identities compare case-insensitively in Phase 2; future authentication should map users to stable SIDs or equivalent principal identifiers.
@@ -56,4 +56,4 @@ dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker
 - Deployment documentation is planning-only.
 - The project is not production-ready.
 
-See [SQL Server persistence](docs/sql-server-persistence.md), [database schema](docs/database-schema.md), and [database migrations](docs/database-migrations.md) for Phase 3 operational details.
+See [worker queue](docs/worker-queue.md), [worker leases](docs/worker-leases.md), [SQL Server persistence](docs/sql-server-persistence.md), [database schema](docs/database-schema.md), and [database migrations](docs/database-migrations.md).

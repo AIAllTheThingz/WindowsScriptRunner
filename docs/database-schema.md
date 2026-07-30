@@ -19,3 +19,11 @@ Operational indexes cover job status/update time, job creation time, requester/c
 Mutable aggregate roots use SQL Server `rowversion` columns. Check constraints enforce defined enum ranges, bounded temporal ordering, policy consistency, execution completion consistency, and other invariants that can be represented declaratively. Triggers enforce cross-table publication rules: a published Execute-capable script version must also support DryRun, and parameter allowed values are restricted to Enum definitions.
 
 Database constraints are defense in depth. Domain rules remain authoritative for valid lifecycle operations.
+
+## Phase 4 lease schema
+
+`wsr.JobLeases` is a one-to-one owned child of `wsr.Jobs`; `JobId` is its primary key. `LeaseId` is independently unique. The row stores `WorkerNodeId`, `WorkKind`, `FencingToken`, `AcquiredUtc`, `LastRenewedUtc`, `ExpiresUtc`, and a SQL `rowversion`.
+
+The Job foreign key cascades so aggregate deletion cannot orphan a lease. The Worker foreign key uses `NO ACTION`, preventing deletion of a worker that owns leases. Checks require non-empty IDs, `DryRun` or `Execute`, a positive fencing token, `LastRenewedUtc >= AcquiredUtc`, and `ExpiresUtc > LastRenewedUtc`. Indexes cover `ExpiresUtc`, `(WorkerNodeId, ExpiresUtc)`, `(WorkKind, ExpiresUtc)`, and unique `LeaseId`.
+
+`wsr.JobLeaseFencingSequence` starts at 1 and increments globally. Gaps are expected because sequence allocation is not rolled back; monotonic uniqueness, not density, is the safety property. Candidate discovery uses the existing Jobs status/update index plus lease absence and returns a bounded projection ordered by `UpdatedUtc`, `CreatedUtc`, then `JobId`.

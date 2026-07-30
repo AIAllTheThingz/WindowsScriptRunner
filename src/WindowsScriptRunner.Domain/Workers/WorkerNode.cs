@@ -78,6 +78,38 @@ public sealed class WorkerNode
         _capabilities.Add(capability);
     }
 
+    public bool SynchronizeCapabilities(IEnumerable<WorkerCapability> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+        var proposed = capabilities.ToArray();
+        if (proposed.Any(capability => capability is null))
+        {
+            throw new DomainValidationException("Worker capabilities cannot contain null entries.");
+        }
+
+        var duplicate = proposed
+            .GroupBy(capability => capability.Name, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new DomainValidationException(
+                $"Worker capability '{duplicate.Key}' is duplicated.");
+        }
+
+        var unchanged = _capabilities.Count == proposed.Length &&
+            _capabilities.All(existing => proposed.Any(candidate =>
+                string.Equals(existing.Name, candidate.Name, StringComparison.OrdinalIgnoreCase) &&
+                existing == candidate));
+        if (unchanged)
+        {
+            return false;
+        }
+
+        _capabilities.Clear();
+        _capabilities.AddRange(proposed);
+        return true;
+    }
+
     public void Enable() => IsEnabled = true;
     public void Disable() => IsEnabled = false;
 
@@ -90,5 +122,17 @@ public sealed class WorkerNode
         }
 
         LastHeartbeatUtc = heartbeatUtc;
+    }
+
+    public bool IsLive(DateTimeOffset now, TimeSpan staleAfter)
+    {
+        if (staleAfter <= TimeSpan.Zero)
+        {
+            throw new DomainValidationException("Worker staleness duration must be positive.");
+        }
+
+        return IsEnabled &&
+            LastHeartbeatUtc is not null &&
+            LastHeartbeatUtc >= now - staleAfter;
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
+using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -226,12 +227,12 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
-    public async Task ExecutionStartRevalidatesWorkerAfterConcurrentDisable()
+    public async Task LeaseAcquisitionRevalidatesWorkerAfterConcurrentDisable()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
         var version = SqlServerTestData.Version();
         var script = SqlServerTestData.Script(version);
-        var job = CreateClaimedJob(script, version);
+        var job = CreateExecutionQueuedJob(script, version);
         var worker = SqlServerTestData.Worker();
         await using (var seed = new PersistenceTestScope(database))
         {
@@ -241,38 +242,42 @@ public sealed class TransactionAndConcurrencyTests
             await seed.UnitOfWork.CommitAsync(CancellationToken.None);
         }
 
-        await using (var execution = new PersistenceTestScope(database))
+        await using (var acquisition = new PersistenceTestScope(database))
         {
-            var handler = new StartExecutionAttemptHandler(
-                execution.Jobs,
-                execution.Workers,
-                execution.Audits,
+            var handler = new AcquireJobLeaseHandler(
+                acquisition.Jobs,
+                acquisition.Workers,
+                acquisition.FencingTokens,
+                acquisition.Audits,
                 new ConcurrentWorkerDisableUnitOfWork(
                     database,
-                    execution.UnitOfWork,
+                    acquisition.UnitOfWork,
                     worker.Id),
                 new FixedClock(job.UpdatedUtc.AddMinutes(1)));
 
             await Assert.ThrowsAsync<ApplicationConflictException>(
                 () => handler.HandleAsync(
-                    new StartExecutionAttemptCommand(
+                    new AcquireJobLeaseCommand(
                         job.Id,
+                        JobWorkKind.Execute,
                         worker.Id,
-                        SqlServerTestData.Approver),
+                        TimeSpan.FromMinutes(2),
+                        TimeSpan.FromHours(1)),
                     CancellationToken.None));
         }
 
         await using var verification = new PersistenceTestScope(database);
         var persistedJob = Assert.IsType<Job>(
             await verification.Jobs.GetByIdAsync(job.Id, CancellationToken.None));
-        Assert.Equal(JobStatus.Claimed, persistedJob.Status);
+        Assert.Equal(JobStatus.ExecutionQueued, persistedJob.Status);
+        Assert.Null(persistedJob.Lease);
         Assert.Empty(persistedJob.Executions);
         Assert.False(
             Assert.IsType<WorkerNode>(
                 await verification.Workers.GetByIdAsync(worker.Id, CancellationToken.None))
                 .IsEnabled);
         Assert.False(await verification.Context.AuditEvents.AnyAsync(
-            item => item.EventType == "ExecutionAttemptStarted" &&
+            item => item.EventType == "JobLeaseAcquired" &&
                 item.EntityId == job.Id.ToString()));
     }
 
@@ -394,13 +399,13 @@ public sealed class TransactionAndConcurrencyTests
     }
 
     [Fact]
-    public async Task ConcurrentExecutionStartsCanShareEnabledWorker()
+    public async Task ConcurrentLeaseAcquisitionsCanShareEnabledWorker()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
         var version = SqlServerTestData.Version();
         var script = SqlServerTestData.Script(version);
-        var firstJob = CreateClaimedJob(script, version);
-        var secondJob = CreateClaimedJob(script, version);
+        var firstJob = CreateExecutionQueuedJob(script, version);
+        var secondJob = CreateExecutionQueuedJob(script, version);
         var worker = SqlServerTestData.Worker();
         await using (var seed = new PersistenceTestScope(database))
         {
@@ -414,43 +419,49 @@ public sealed class TransactionAndConcurrencyTests
         await using var first = new PersistenceTestScope(database);
         await using var second = new PersistenceTestScope(database);
         var commitBarrier = new CommitBarrier(2);
-        var firstHandler = new StartExecutionAttemptHandler(
+        var firstHandler = new AcquireJobLeaseHandler(
             first.Jobs,
             first.Workers,
+            first.FencingTokens,
             first.Audits,
             new CoordinatedUnitOfWork(first.UnitOfWork, commitBarrier),
             new FixedClock(firstJob.UpdatedUtc.AddMinutes(1)));
-        var secondHandler = new StartExecutionAttemptHandler(
+        var secondHandler = new AcquireJobLeaseHandler(
             second.Jobs,
             second.Workers,
+            second.FencingTokens,
             second.Audits,
             new CoordinatedUnitOfWork(second.UnitOfWork, commitBarrier),
             new FixedClock(secondJob.UpdatedUtc.AddMinutes(1)));
 
         await Task.WhenAll(
             firstHandler.HandleAsync(
-                new StartExecutionAttemptCommand(
+                new AcquireJobLeaseCommand(
                     firstJob.Id,
+                    JobWorkKind.Execute,
                     worker.Id,
-                    SqlServerTestData.Approver),
+                    TimeSpan.FromMinutes(2),
+                    TimeSpan.FromHours(1)),
                 CancellationToken.None),
             secondHandler.HandleAsync(
-                new StartExecutionAttemptCommand(
+                new AcquireJobLeaseCommand(
                     secondJob.Id,
+                    JobWorkKind.Execute,
                     worker.Id,
-                    SqlServerTestData.Approver),
+                    TimeSpan.FromMinutes(2),
+                    TimeSpan.FromHours(1)),
                 CancellationToken.None));
 
         await using var verification = new PersistenceTestScope(database);
         Assert.Equal(
-            JobStatus.Executing,
+            JobStatus.Claimed,
             Assert.IsType<Job>(
                 await verification.Jobs.GetByIdAsync(
                     firstJob.Id,
                     CancellationToken.None))
                 .Status);
         Assert.Equal(
-            JobStatus.Executing,
+            JobStatus.Claimed,
             Assert.IsType<Job>(
                 await verification.Jobs.GetByIdAsync(
                     secondJob.Id,
@@ -583,7 +594,7 @@ public sealed class TransactionAndConcurrencyTests
         await seed.UnitOfWork.CommitAsync(CancellationToken.None);
     }
 
-    private static Job CreateClaimedJob(
+    private static Job CreateExecutionQueuedJob(
         ScriptDefinition script,
         ScriptVersion version)
     {
@@ -599,7 +610,6 @@ public sealed class TransactionAndConcurrencyTests
             null,
             job.UpdatedUtc.AddMinutes(1));
         job.QueueExecution(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
-        job.Claim(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
         return job;
     }
 
@@ -625,9 +635,17 @@ public sealed class TransactionAndConcurrencyTests
             SqlServerTestData.Time.AddMinutes(10),
             eventType);
 
-    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    private sealed class FixedClock(DateTimeOffset utcNow) :
+        IClock,
+        IWorkerCoordinationClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+
+        public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(UtcNow);
+        }
     }
 
     private sealed class ConcurrentScriptDisableUnitOfWork(

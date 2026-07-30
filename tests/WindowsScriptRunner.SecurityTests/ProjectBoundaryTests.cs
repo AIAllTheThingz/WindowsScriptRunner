@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Xml.Linq;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Jobs;
+using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Exceptions;
@@ -331,6 +332,121 @@ public sealed class ProjectBoundaryTests
 
         Assert.Contains(typeof(IJobRepository), parameterTypes);
         Assert.Contains(typeof(IScriptDefinitionRepository), parameterTypes);
+    }
+
+    [Fact]
+    public void WorkerContainsNoPowerShellOrProcessExecutionSurface()
+    {
+        var source = ReadProjectSource("WindowsScriptRunner.Worker");
+
+        Assert.DoesNotContain("Process.Start", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("System.Diagnostics.Process", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("System.Management.Automation", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("WindowsScriptRunner.PowerShell", source, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(typeof(JobQueueCandidate))]
+    [InlineData(typeof(ClaimedJobWork))]
+    public void QueueDescriptorsExposeNoParametersOrCredentials(Type descriptorType)
+    {
+        string[] prohibitedFragments =
+        [
+            "Parameter",
+            "SerializedValue",
+            "CredentialReference",
+            "CredentialId",
+        ];
+        var properties = descriptorType.GetProperties();
+
+        Assert.DoesNotContain(
+            properties,
+            property => prohibitedFragments.Any(fragment =>
+                property.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void JobLeaseContainsCoordinationMetadataButNoSecretMaterial()
+    {
+        var properties = typeof(JobLease).GetProperties();
+        string[] expected =
+        [
+            nameof(JobLease.Id),
+            nameof(JobLease.WorkerNodeId),
+            nameof(JobLease.WorkKind),
+            nameof(JobLease.FencingToken),
+            nameof(JobLease.AcquiredUtc),
+            nameof(JobLease.LastRenewedUtc),
+            nameof(JobLease.ExpiresUtc),
+        ];
+        string[] prohibited = ["Password", "Secret", "CredentialValue", "Parameter"];
+
+        Assert.All(
+            expected,
+            name => Assert.Contains(properties, property => property.Name == name));
+        Assert.DoesNotContain(
+            properties,
+            property => prohibited.Any(fragment =>
+                property.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void WorkerControlledLeaseCommandsRequireFencedCredentials()
+    {
+        Type[] commandTypes =
+        [
+            typeof(RenewJobLeaseCommand),
+            typeof(ReleaseUnstartedJobLeaseCommand),
+            typeof(InspectJobLeaseQuery),
+            typeof(StartLeasedDryRunCommand),
+            typeof(CompleteLeasedDryRunCommand),
+            typeof(StartLeasedExecutionCommand),
+            typeof(BeginLeasedPostValidationCommand),
+            typeof(RecordLeasedExecutionOutcomeCommand),
+        ];
+
+        Assert.All(
+            commandTypes,
+            type => Assert.Contains(
+                Assert.Single(type.GetConstructors()).GetParameters(),
+                parameter => parameter.ParameterType == typeof(JobLeaseCredentials)));
+    }
+
+    [Fact]
+    public void ProductionWorkerRegistersNoFakeOrExecutableHandler()
+    {
+        var source = ReadProjectSource("WindowsScriptRunner.Worker");
+
+        Assert.DoesNotContain(": IJobWorkHandler", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AddSingleton<IJobWorkHandler",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AddTransient<IJobWorkHandler",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AddScoped<IJobWorkHandler",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LeaseAuditSourceDoesNotReadJobParameters()
+    {
+        var root = FindRepositoryRoot();
+        var queueHandlers = File.ReadAllText(
+            Path.Combine(
+                root,
+                "src",
+                "WindowsScriptRunner.Application",
+                "Queue",
+                "QueueHandlers.cs"));
+
+        Assert.DoesNotContain("SerializedValue", queueHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("JobParameter", queueHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("CredentialReference", queueHandlers, StringComparison.Ordinal);
     }
 
     [Fact]

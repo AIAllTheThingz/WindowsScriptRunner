@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Infrastructure.Persistence;
 using WindowsScriptRunner.Infrastructure.Persistence.Health;
+using WindowsScriptRunner.Infrastructure.Persistence.Queue;
 using WindowsScriptRunner.Infrastructure.Persistence.Repositories;
 
 namespace WindowsScriptRunner.Infrastructure;
@@ -55,6 +56,10 @@ public static class DependencyInjection
         services.AddScoped<ICredentialReferenceRepository, SqlCredentialReferenceRepository>();
         services.AddScoped<IAuditWriter, SqlAuditWriter>();
         services.AddScoped<IUnitOfWork, SqlUnitOfWork>();
+        services.AddScoped<IJobQueueCandidateSource, SqlJobQueueCandidateSource>();
+        services.AddScoped<IExpiredJobLeaseCandidateSource, SqlExpiredJobLeaseCandidateSource>();
+        services.AddScoped<IFencingTokenSource, SqlFencingTokenSource>();
+        services.AddScoped<IWorkerCoordinationClock, SqlWorkerCoordinationClock>();
         services.AddHostedService<SqlServerMigrationHostedService>();
         services.AddHealthChecks()
             .AddCheck(

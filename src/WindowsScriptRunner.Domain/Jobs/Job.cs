@@ -11,6 +11,7 @@ public sealed class Job
     private readonly List<JobParameter> _parameters = [];
     private readonly List<JobExecution> _executions = [];
     private readonly List<JobApproval> _approvals = [];
+    private JobLease? _lease;
 
     private Job(
         JobId id,
@@ -52,6 +53,7 @@ public sealed class Job
     public IReadOnlyCollection<JobParameter> Parameters => _parameters.AsReadOnly();
     public IReadOnlyCollection<JobExecution> Executions => _executions.AsReadOnly();
     public IReadOnlyCollection<JobApproval> Approvals => _approvals.AsReadOnly();
+    public JobLease? Lease => _lease;
 
     public static Job CreateDraft(
         JobId id,
@@ -89,7 +91,8 @@ public sealed class Job
         IEnumerable<JobTarget> targets,
         IEnumerable<JobParameter> parameters,
         IEnumerable<JobExecution> executions,
-        IEnumerable<JobApproval> approvals)
+        IEnumerable<JobApproval> approvals,
+        JobLease? lease = null)
     {
         status = EnumGuard.RequireDefined(status, nameof(JobStatus));
         if (updatedUtc < createdUtc)
@@ -150,7 +153,9 @@ public sealed class Job
         job.RestoreParameters(parameters);
         job.RestoreExecutions(executions);
         job.RestoreApprovals(approvals);
+        job._lease = lease;
         job.ValidateRehydratedExecutionState();
+        job.ValidateRehydratedLeaseState();
         if (status != JobStatus.Draft && job._targets.Count == 0)
         {
             throw new DomainValidationException(
@@ -158,6 +163,46 @@ public sealed class Job
         }
 
         return job;
+    }
+
+    private void ValidateRehydratedLeaseState()
+    {
+        if (_lease is null)
+        {
+            if (Status is JobStatus.Claimed or
+                JobStatus.DryRunRunning or
+                JobStatus.Executing or
+                JobStatus.PostValidation)
+            {
+                throw new DomainValidationException(
+                    "Persisted worker-controlled job state requires an active lease.");
+            }
+
+            return;
+        }
+
+        var validState = _lease.WorkKind switch
+        {
+            JobWorkKind.DryRun => Status is JobStatus.DryRunQueued or JobStatus.DryRunRunning,
+            JobWorkKind.Execute => Status is JobStatus.Claimed or JobStatus.Executing or JobStatus.PostValidation,
+            _ => false,
+        };
+        if (!validState)
+        {
+            throw new DomainValidationException(
+                "Persisted job lease is inconsistent with the job status.");
+        }
+
+        if (HasActiveExecutionAttempt)
+        {
+            var execution = RequireSingleActiveExecutionAttempt();
+            if (_lease.WorkKind != JobWorkKind.Execute ||
+                execution.WorkerNodeId != _lease.WorkerNodeId)
+            {
+                throw new DomainValidationException(
+                    "Persisted active execution must be owned by the current Execute lease worker.");
+            }
+        }
     }
 
     private void RestoreTargets(IEnumerable<JobTarget> targets)
@@ -532,11 +577,31 @@ public sealed class Job
         ApplyTransition(JobStatus.DryRunQueued, actingUser, updatedUtc);
     }
 
-    public void StartDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    internal void StartDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.DryRunRunning, actingUser, updatedUtc);
 
-    public void CompleteDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
+    internal void CompleteDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+
+    public void StartDryRun(
+        JobLeaseCredentials credentials,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        ValidateWorkLease(credentials, JobWorkKind.DryRun, updatedUtc);
+        ApplyTransition(JobStatus.DryRunRunning, actingUser, updatedUtc);
+    }
+
+    public void CompleteDryRun(
+        JobLeaseCredentials credentials,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        ValidateWorkLease(credentials, JobWorkKind.DryRun, updatedUtc);
+        ValidateTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+        ApplyValidatedTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+        _lease = null;
+    }
 
     public void CompleteRequestedValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
@@ -566,14 +631,30 @@ public sealed class Job
         ApplyTransition(JobStatus.ExecutionQueued, actingUser, updatedUtc);
     }
 
-    public void Claim(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    internal void Claim(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can be claimed for execution.");
         ApplyTransition(JobStatus.Claimed, actingUser, updatedUtc);
     }
 
-    public void BeginPostValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    internal void BeginPostValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
+        EnsureExecuteRequested("Only Execute requests can enter post-validation.");
+        if (PolicySnapshot?.SupportsPostValidationPhase != true)
+        {
+            throw new DomainValidationException(
+                "The pinned script version does not support post-validation.");
+        }
+
+        ApplyTransition(JobStatus.PostValidation, actingUser, updatedUtc);
+    }
+
+    public void BeginPostValidation(
+        JobLeaseCredentials credentials,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        ValidateWorkLease(credentials, JobWorkKind.Execute, updatedUtc);
         EnsureExecuteRequested("Only Execute requests can enter post-validation.");
         if (PolicySnapshot?.SupportsPostValidationPhase != true)
         {
@@ -672,7 +753,167 @@ public sealed class Job
         ApplyValidatedTransition(JobStatus.Rejected, approver, decisionUtc);
     }
 
-    public JobExecution StartExecutionAttempt(
+    public JobLease AcquireWorkLease(
+        JobLeaseId leaseId,
+        WorkerNodeId workerNodeId,
+        JobWorkKind workKind,
+        long fencingToken,
+        UserIdentity actingUser,
+        DateTimeOffset acquiredUtc,
+        DateTimeOffset expiresUtc)
+    {
+        if (_lease is not null)
+        {
+            throw new DomainValidationException("A job cannot acquire a second active lease.");
+        }
+
+        var lease = new JobLease(
+            leaseId,
+            workerNodeId,
+            workKind,
+            fencingToken,
+            acquiredUtc,
+            acquiredUtc,
+            expiresUtc);
+        ValidateMutation(actingUser, acquiredUtc);
+        switch (workKind)
+        {
+            case JobWorkKind.DryRun when Status == JobStatus.DryRunQueued:
+                break;
+            case JobWorkKind.Execute when Status == JobStatus.ExecutionQueued:
+                EnsureExecuteRequested("Only Execute requests can be leased for execution.");
+                JobStatusPolicy.EnsureAllowed(Status, JobStatus.Claimed);
+                break;
+            default:
+                throw new DomainValidationException(
+                    $"Job status {Status} is not eligible for {workKind} work.");
+        }
+
+        _lease = lease;
+        if (workKind == JobWorkKind.Execute)
+        {
+            Status = JobStatus.Claimed;
+        }
+
+        ApplyTouch(actingUser, acquiredUtc);
+        return lease;
+    }
+
+    public void RenewWorkLease(
+        JobLeaseCredentials credentials,
+        DateTimeOffset renewedUtc,
+        DateTimeOffset expiresUtc)
+    {
+        var lease = RequireLease();
+        lease.ValidateCredentials(credentials);
+        lease.Renew(renewedUtc, expiresUtc);
+    }
+
+    public void ValidateWorkLease(
+        JobLeaseCredentials credentials,
+        JobWorkKind workKind,
+        DateTimeOffset now)
+    {
+        workKind = EnumGuard.RequireDefined(workKind, nameof(workKind));
+        var lease = RequireLease();
+        lease.ValidateCredentials(credentials);
+        if (lease.WorkKind != workKind)
+        {
+            throw new DomainValidationException("Job lease work kind does not match the requested operation.");
+        }
+
+        if (now >= lease.ExpiresUtc)
+        {
+            throw new DomainValidationException("The job lease has expired.");
+        }
+    }
+
+    public void ReleaseUnstartedWorkLease(
+        JobLeaseCredentials credentials,
+        UserIdentity actingUser,
+        DateTimeOffset releasedUtc)
+    {
+        var lease = RequireLease();
+        lease.ValidateCredentials(credentials);
+        ValidateMutation(actingUser, releasedUtc);
+        if (releasedUtc >= lease.ExpiresUtc)
+        {
+            throw new DomainValidationException(
+                "Expired job leases must be handled through recovery.");
+        }
+
+        switch (lease.WorkKind)
+        {
+            case JobWorkKind.DryRun when Status == JobStatus.DryRunQueued:
+                break;
+            case JobWorkKind.Execute when
+                Status == JobStatus.Claimed &&
+                !HasActiveExecutionAttempt:
+                break;
+            default:
+                throw new DomainValidationException(
+                    "Only unstarted queued or claimed work can release its lease.");
+        }
+
+        if (lease.WorkKind == JobWorkKind.Execute)
+        {
+            Status = JobStatus.ExecutionQueued;
+        }
+
+        _lease = null;
+        ApplyTouch(actingUser, releasedUtc);
+    }
+
+    public JobLeaseRecoveryDisposition RecoverExpiredWorkLease(
+        JobLeaseCredentials credentials,
+        UserIdentity actingUser,
+        DateTimeOffset recoveredUtc)
+    {
+        var lease = RequireLease();
+        lease.ValidateCredentials(credentials);
+        ValidateMutation(actingUser, recoveredUtc);
+        if (recoveredUtc < lease.ExpiresUtc)
+        {
+            throw new DomainValidationException("A job lease cannot be recovered before expiration.");
+        }
+
+        JobLeaseRecoveryDisposition disposition;
+        switch (lease.WorkKind, Status)
+        {
+            case (JobWorkKind.DryRun, JobStatus.DryRunQueued):
+                disposition = JobLeaseRecoveryDisposition.ReleasedQueuedDryRun;
+                ApplyTouch(actingUser, recoveredUtc);
+                break;
+            case (JobWorkKind.Execute, JobStatus.Claimed) when !HasActiveExecutionAttempt:
+                Status = JobStatus.ExecutionQueued;
+                disposition = JobLeaseRecoveryDisposition.RequeuedUnstartedExecution;
+                ApplyTouch(actingUser, recoveredUtc);
+                break;
+            case (JobWorkKind.DryRun, JobStatus.DryRunRunning):
+                ValidateTransition(JobStatus.TimedOut, actingUser, recoveredUtc);
+                ApplyValidatedTransition(JobStatus.TimedOut, actingUser, recoveredUtc);
+                disposition = JobLeaseRecoveryDisposition.TimedOutDryRun;
+                break;
+            case (JobWorkKind.Execute, JobStatus.Executing):
+            case (JobWorkKind.Execute, JobStatus.PostValidation):
+                _ = RecordTerminalExecutionOutcome(
+                    ExecutionOutcome.TimedOut,
+                    null,
+                    "The active execution lease expired.",
+                    actingUser,
+                    recoveredUtc);
+                disposition = JobLeaseRecoveryDisposition.TimedOutExecution;
+                break;
+            default:
+                throw new DomainValidationException(
+                    "The current job state does not support expired-lease recovery.");
+        }
+
+        _lease = null;
+        return disposition;
+    }
+
+    internal JobExecution StartExecutionAttempt(
         WorkerNodeId? workerNodeId,
         UserIdentity actingUser,
         DateTimeOffset startedUtc)
@@ -695,7 +936,16 @@ public sealed class Job
         return execution;
     }
 
-    public JobExecution RecordTerminalExecutionOutcome(
+    public JobExecution StartLeasedExecutionAttempt(
+        JobLeaseCredentials credentials,
+        UserIdentity actingUser,
+        DateTimeOffset startedUtc)
+    {
+        ValidateWorkLease(credentials, JobWorkKind.Execute, startedUtc);
+        return StartExecutionAttempt(credentials.WorkerNodeId, actingUser, startedUtc);
+    }
+
+    internal JobExecution RecordTerminalExecutionOutcome(
         ExecutionOutcome outcome,
         int? exitCode,
         string? summary,
@@ -728,6 +978,25 @@ public sealed class Job
         return execution;
     }
 
+    public JobExecution RecordTerminalExecutionOutcome(
+        JobLeaseCredentials credentials,
+        ExecutionOutcome outcome,
+        int? exitCode,
+        string? summary,
+        UserIdentity actingUser,
+        DateTimeOffset completedUtc)
+    {
+        ValidateWorkLease(credentials, JobWorkKind.Execute, completedUtc);
+        var execution = RecordTerminalExecutionOutcome(
+            outcome,
+            exitCode,
+            summary,
+            actingUser,
+            completedUtc);
+        _lease = null;
+        return execution;
+    }
+
     private void EnsureDraft()
     {
         if (Status != JobStatus.Draft)
@@ -739,6 +1008,9 @@ public sealed class Job
     private JobPolicySnapshot RequirePolicySnapshot() =>
         PolicySnapshot ?? throw new DomainValidationException(
             "A trusted script policy snapshot is required after submission.");
+
+    private JobLease RequireLease() =>
+        _lease ?? throw new DomainValidationException("The job does not have an active lease.");
 
     public bool HasActiveExecutionAttempt => _executions.Any(execution => execution.IsActive);
 
@@ -755,10 +1027,12 @@ public sealed class Job
 
     private void EnsureNoActiveExecutionOutcomeRequired()
     {
-        if (Status is JobStatus.Executing or JobStatus.PostValidation || HasActiveExecutionAttempt)
+        if (_lease is not null ||
+            Status is JobStatus.Executing or JobStatus.PostValidation ||
+            HasActiveExecutionAttempt)
         {
             throw new DomainValidationException(
-                "An active execution attempt must be completed through the execution-outcome operation.");
+                "Leased or active work must be completed through a lease-aware operation.");
         }
     }
 

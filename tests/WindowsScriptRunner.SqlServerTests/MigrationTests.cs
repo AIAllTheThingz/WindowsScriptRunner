@@ -13,6 +13,7 @@ public sealed class MigrationTests
         "CredentialReferences",
         "JobApprovals",
         "JobExecutions",
+        "JobLeases",
         "JobParameters",
         "Jobs",
         "JobTargets",
@@ -58,6 +59,7 @@ public sealed class MigrationTests
             (
                 OBJECT_ID(N'[wsr].[JobExecutions]'),
                 OBJECT_ID(N'[wsr].[Jobs]'),
+                OBJECT_ID(N'[wsr].[JobLeases]'),
                 OBJECT_ID(N'[wsr].[ScriptDefinitions]'),
                 OBJECT_ID(N'[wsr].[WorkerNodes]')
             )
@@ -77,6 +79,7 @@ public sealed class MigrationTests
             WHERE [object_id] IN
             (
                 OBJECT_ID(N'[wsr].[Jobs]'),
+                OBJECT_ID(N'[wsr].[JobLeases]'),
                 OBJECT_ID(N'[wsr].[ScriptDefinitions]'),
                 OBJECT_ID(N'[wsr].[WorkerNodes]'),
                 OBJECT_ID(N'[wsr].[CredentialReferences]')
@@ -121,7 +124,7 @@ public sealed class MigrationTests
             ORDER BY [name]
             """).ToListAsync();
 
-        Assert.Single(appliedBefore);
+        Assert.Equal(2, appliedBefore.Count());
         Assert.Equal(appliedBefore, appliedAfter);
         Assert.Equal(ExpectedTables, tables);
         Assert.Equal("wsr", historySchema);
@@ -133,7 +136,7 @@ public sealed class MigrationTests
             "([StartedUtc] IS NOT NULL AND [CompletedUtc] IS NULL)",
             filteredIndex);
         Assert.Equal(
-            ["CredentialReferences", "Jobs", "ScriptDefinitions", "WorkerNodes"],
+            ["CredentialReferences", "JobLeases", "Jobs", "ScriptDefinitions", "WorkerNodes"],
             rowVersionTables);
         Assert.Equal(1, ownedCascadeCount);
         Assert.Equal(1, scriptNoActionCount);
@@ -170,7 +173,7 @@ public sealed class MigrationTests
         await database.ApplySqlScriptAsync(script);
 
         await using var restoredContext = database.CreateContext();
-        Assert.Single(await restoredContext.Database.GetAppliedMigrationsAsync());
+        Assert.Equal(2, (await restoredContext.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(
             ExpectedTables,
             await restoredContext.Database.SqlQueryRaw<string>(
@@ -192,5 +195,133 @@ public sealed class MigrationTests
                   AND [name] = N'UX_WorkerNodes_NormalizedName'
                   AND [is_unique] = 1
                 """).SingleAsync());
+    }
+
+    [Fact]
+    public async Task Phase4MigrationCreatesLeaseSchemaAndRollsBackToPhase3()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        await using (var context = database.CreateContext())
+        {
+            var sequence = await context.Database.SqlQueryRaw<string>(
+                """
+                SELECT CONCAT(
+                    SCHEMA_NAME([schema_id]),
+                    N'.',
+                    [name],
+                    N'|',
+                    CONVERT(nvarchar(30), [start_value]),
+                    N'|',
+                    CONVERT(nvarchar(30), [increment]),
+                    N'|',
+                    CONVERT(nvarchar(30), [minimum_value])) AS [Value]
+                FROM [sys].[sequences]
+                WHERE [name] = N'JobLeaseFencingSequence'
+                  AND [schema_id] = SCHEMA_ID(N'wsr')
+                """).SingleAsync();
+            var indexes = await context.Database.SqlQueryRaw<string>(
+                """
+                SELECT [name] AS [Value]
+                FROM [sys].[indexes]
+                WHERE [object_id] = OBJECT_ID(N'[wsr].[JobLeases]')
+                  AND [name] IS NOT NULL
+                ORDER BY [name]
+                """).ToListAsync();
+            var checks = await context.Database.SqlQueryRaw<string>(
+                """
+                SELECT [name] AS [Value]
+                FROM [sys].[check_constraints]
+                WHERE [parent_object_id] = OBJECT_ID(N'[wsr].[JobLeases]')
+                ORDER BY [name]
+                """).ToListAsync();
+            var foreignKeys = await context.Database.SqlQueryRaw<string>(
+                """
+                SELECT CONCAT(
+                    [name] COLLATE DATABASE_DEFAULT,
+                    N'|',
+                    [delete_referential_action_desc] COLLATE DATABASE_DEFAULT) AS [Value]
+                FROM [sys].[foreign_keys]
+                WHERE [parent_object_id] = OBJECT_ID(N'[wsr].[JobLeases]')
+                ORDER BY [name]
+                """).ToListAsync();
+            var rowVersionCount = await context.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS [Value]
+                FROM [sys].[columns]
+                WHERE [object_id] = OBJECT_ID(N'[wsr].[JobLeases]')
+                  AND [name] = N'RowVersion'
+                  AND [system_type_id] = 189
+                """).SingleAsync();
+
+            Assert.Equal("wsr.JobLeaseFencingSequence|1|1|1", sequence);
+            Assert.Contains("PK_JobLeases", indexes);
+            Assert.Contains("UX_JobLeases_LeaseId", indexes);
+            Assert.Contains("IX_JobLeases_ExpiresUtc", indexes);
+            Assert.Contains("IX_JobLeases_WorkerNodeId_ExpiresUtc", indexes);
+            Assert.Contains("IX_JobLeases_WorkKind_ExpiresUtc", indexes);
+            Assert.Contains("CK_JobLeases_WorkKind", checks);
+            Assert.Contains("CK_JobLeases_FencingToken", checks);
+            Assert.Contains("CK_JobLeases_Timestamps", checks);
+            Assert.Contains("FK_JobLeases_Jobs_JobId|CASCADE", foreignKeys);
+            Assert.Contains("FK_JobLeases_WorkerNodes_WorkerNodeId|NO_ACTION", foreignKeys);
+            Assert.Equal(1, rowVersionCount);
+
+            var auditEventId = Guid.NewGuid();
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO [wsr].[AuditEvents]
+                    ([Id], [EventType], [EntityType], [EntityId], [Actor], [OccurredUtc], [Summary])
+                VALUES
+                    ({auditEventId}, N'JobLeaseAcquired', N'Job', N'rollback-test', N'worker:test',
+                     {DateTimeOffset.UtcNow}, N'Phase 4 rollback fencing-token test.');
+
+                INSERT INTO [wsr].[AuditEventProperties]
+                    ([AuditEventId], [NormalizedKey], [Key], [Value])
+                VALUES
+                    ({auditEventId}, N'FENCINGTOKEN', N'FencingToken', N'42');
+                """);
+
+            var migrator = context.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260729175606_InitialSqlServerPersistence");
+            Assert.Single(await context.Database.GetAppliedMigrationsAsync());
+            Assert.Equal(
+                0,
+                await context.Database.SqlQueryRaw<int>(
+                    """
+                    SELECT COUNT(*) AS [Value]
+                    FROM [sys].[tables]
+                    WHERE [object_id] = OBJECT_ID(N'[wsr].[JobLeases]')
+                    """).SingleAsync());
+            Assert.Equal(
+                0,
+                await context.Database.SqlQueryRaw<int>(
+                    """
+                    SELECT COUNT(*) AS [Value]
+                    FROM [sys].[sequences]
+                    WHERE [name] = N'JobLeaseFencingSequence'
+                      AND [schema_id] = SCHEMA_ID(N'wsr')
+                    """).SingleAsync());
+            Assert.Equal(
+                1,
+                await context.Database.SqlQueryRaw<int>(
+                    """
+                    SELECT COUNT(*) AS [Value]
+                    FROM [wsr].[AuditEvents]
+                    WHERE [Id] = {0}
+                    """,
+                    auditEventId).SingleAsync());
+            Assert.Equal(
+                0,
+                await context.Database.SqlQueryRaw<int>(
+                    """
+                    SELECT COUNT(*) AS [Value]
+                    FROM [wsr].[AuditEventProperties]
+                    WHERE [AuditEventId] = {0}
+                    """,
+                    auditEventId).SingleAsync());
+
+            await migrator.MigrateAsync();
+            Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        }
     }
 }
