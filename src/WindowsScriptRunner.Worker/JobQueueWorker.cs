@@ -209,7 +209,18 @@ public sealed class JobQueueWorker(
         }
         finally
         {
-            await DrainAsync(configured);
+            try
+            {
+                await DrainAsync(configured);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Worker {WorkerNodeId} shutdown drain failed.",
+                    identity.NodeId);
+            }
+
             if (!failedUnexpectedly)
             {
                 logger.LogInformation(
@@ -473,9 +484,28 @@ public sealed class JobQueueWorker(
             .Where(pair => pair.Value.Task.IsCompleted)
             .ToArray())
         {
-            await completed.Value.Task;
-            _active.Remove(completed.Key);
-            completed.Value.Dispose();
+            try
+            {
+                await completed.Value.Task;
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogDebug(
+                    "Dispatch task for lease {LeaseId} was canceled.",
+                    completed.Key);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Dispatch task for lease {LeaseId} faulted.",
+                    completed.Key);
+            }
+            finally
+            {
+                _active.Remove(completed.Key);
+                completed.Value.Dispose();
+            }
         }
 
         state.SetActiveDispatchCount(_active.Count);
@@ -502,14 +532,7 @@ public sealed class JobQueueWorker(
             CancellationToken.None);
         if (await Task.WhenAny(allDispatches, timeout) == allDispatches)
         {
-            await allDispatches;
-            foreach (var dispatch in _active.Values)
-            {
-                dispatch.Dispose();
-            }
-
-            _active.Clear();
-            state.SetActiveDispatchCount(0);
+            await RemoveCompletedDispatchesAsync();
             logger.LogInformation("Worker queue shutdown drain completed.");
             return;
         }

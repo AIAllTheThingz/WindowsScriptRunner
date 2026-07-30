@@ -6,6 +6,7 @@ using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.UnitTests;
@@ -207,7 +208,9 @@ public sealed class QueueApplicationTests
     [Fact]
     public async Task ReleaseRequeuesExecutionAndWritesBoundedAudit()
     {
-        var fixture = QueueFixture.WithExecutionQueuedJob();
+        const string parameterValue = "audit-parameter-sentinel";
+        var parameter = TestDomainFactory.Parameter();
+        var fixture = QueueFixture.WithExecutionQueuedJob([(parameter, parameterValue)]);
         var credentials = fixture.AcquireDirect(JobWorkKind.Execute, 10);
         fixture.Clock.UtcNow = fixture.Jobs.Job!.UpdatedUtc.AddSeconds(1);
 
@@ -219,6 +222,8 @@ public sealed class QueueApplicationTests
         Assert.Null(fixture.Jobs.Job.Lease);
         var audit = Assert.Single(fixture.Audits.Events);
         Assert.Equal("JobLeaseReleased", audit.EventType);
+        Assert.Single(fixture.Jobs.Job.Parameters);
+        Assert.DoesNotContain(parameterValue, audit.Properties.Values);
         Assert.DoesNotContain(
             fixture.Jobs.Job.Parameters.Select(parameter => parameter.SerializedValue),
             value => audit.Properties.Values.Contains(value));
@@ -316,14 +321,17 @@ public sealed class QueueApplicationTests
         public ReleaseUnstartedJobLeaseHandler Release { get; }
         public RecoverExpiredJobLeaseHandler Recover { get; }
 
-        public static QueueFixture WithExecutionQueuedJob()
+        public static QueueFixture WithExecutionQueuedJob(
+            IReadOnlyCollection<(ScriptParameterDefinition Definition, string? Value)>? parameters = null)
         {
             var fixture = new QueueFixture();
-            var version = TestDomainFactory.Version();
+            var version = TestDomainFactory.Version(
+                parameters?.Select(parameter => parameter.Definition));
             var script = TestDomainFactory.Script(version);
             var job = TestDomainFactory.SubmittedJob(
                 script,
                 version,
+                parameters,
                 requestedPhase: ExecutionPhase.Execute);
             TestDomainFactory.AdvanceToAwaitingApproval(job);
             job.RecordApproval(

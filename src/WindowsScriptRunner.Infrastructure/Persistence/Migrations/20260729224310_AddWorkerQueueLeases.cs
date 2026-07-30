@@ -178,6 +178,12 @@ public partial class AddWorkerQueueLeases : Migration
             schema: "wsr",
             table: "AuditEventProperties");
 
+        migrationBuilder.Sql(
+            """
+            DELETE FROM [wsr].[AuditEventProperties]
+            WHERE [NormalizedKey] = N'FENCINGTOKEN';
+            """);
+
         migrationBuilder.DropSequence(
             name: "JobLeaseFencingSequence",
             schema: "wsr");

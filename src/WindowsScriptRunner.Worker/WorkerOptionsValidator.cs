@@ -2,15 +2,18 @@ using Microsoft.Extensions.Options;
 
 namespace WindowsScriptRunner.Worker;
 
-public sealed class WorkerOptionsValidator : IValidateOptions<WorkerOptions>
+public sealed class WorkerOptionsValidator(IHostEnvironment environment) :
+    IValidateOptions<WorkerOptions>
 {
     public ValidateOptionsResult Validate(string? name, WorkerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
-        if (options.NodeId == Guid.Empty && !options.AllowEphemeralNodeId)
+        if (options.NodeId == Guid.Empty &&
+            (!options.AllowEphemeralNodeId || !environment.IsDevelopment()))
         {
-            failures.Add("NodeId must be a non-empty GUID unless AllowEphemeralNodeId is true.");
+            failures.Add(
+                "NodeId must be a non-empty GUID unless AllowEphemeralNodeId is true in Development.");
         }
 
         if (string.IsNullOrWhiteSpace(options.Name) || options.Name.Trim().Length > 200)
@@ -130,7 +133,9 @@ public sealed class WorkerOptionsValidator : IValidateOptions<WorkerOptions>
         }
 
         var duplicate = options.Capabilities
-            .Where(capability => capability is not null)
+            .Where(capability =>
+                capability is not null &&
+                !string.IsNullOrWhiteSpace(capability.Name))
             .GroupBy(capability => capability.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)

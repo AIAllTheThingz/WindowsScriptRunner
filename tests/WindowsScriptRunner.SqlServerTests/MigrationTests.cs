@@ -266,6 +266,21 @@ public sealed class MigrationTests
             Assert.Contains("FK_JobLeases_WorkerNodes_WorkerNodeId|NO_ACTION", foreignKeys);
             Assert.Equal(1, rowVersionCount);
 
+            var auditEventId = Guid.NewGuid();
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO [wsr].[AuditEvents]
+                    ([Id], [EventType], [EntityType], [EntityId], [Actor], [OccurredUtc], [Summary])
+                VALUES
+                    ({auditEventId}, N'JobLeaseAcquired', N'Job', N'rollback-test', N'worker:test',
+                     {DateTimeOffset.UtcNow}, N'Phase 4 rollback fencing-token test.');
+
+                INSERT INTO [wsr].[AuditEventProperties]
+                    ([AuditEventId], [NormalizedKey], [Key], [Value])
+                VALUES
+                    ({auditEventId}, N'FENCINGTOKEN', N'FencingToken', N'42');
+                """);
+
             var migrator = context.GetService<IMigrator>();
             await migrator.MigrateAsync("20260729175606_InitialSqlServerPersistence");
             Assert.Single(await context.Database.GetAppliedMigrationsAsync());
@@ -286,6 +301,24 @@ public sealed class MigrationTests
                     WHERE [name] = N'JobLeaseFencingSequence'
                       AND [schema_id] = SCHEMA_ID(N'wsr')
                     """).SingleAsync());
+            Assert.Equal(
+                1,
+                await context.Database.SqlQueryRaw<int>(
+                    """
+                    SELECT COUNT(*) AS [Value]
+                    FROM [wsr].[AuditEvents]
+                    WHERE [Id] = {0}
+                    """,
+                    auditEventId).SingleAsync());
+            Assert.Equal(
+                0,
+                await context.Database.SqlQueryRaw<int>(
+                    """
+                    SELECT COUNT(*) AS [Value]
+                    FROM [wsr].[AuditEventProperties]
+                    WHERE [AuditEventId] = {0}
+                    """,
+                    auditEventId).SingleAsync());
 
             await migrator.MigrateAsync();
             Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());

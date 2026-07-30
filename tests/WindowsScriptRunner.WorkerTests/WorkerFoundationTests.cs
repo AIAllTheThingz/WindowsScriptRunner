@@ -1,5 +1,8 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application;
@@ -35,21 +38,37 @@ public sealed class WorkerFoundationTests
         Assert.Equal(10, options.ClaimCandidateBatchSize);
         Assert.True(options.QueueProcessingEnabled);
         Assert.False(options.AllowEphemeralNodeId);
-        Assert.False(new WorkerOptionsValidator().Validate(null, options).Succeeded);
+        Assert.False(Validator(Environments.Production).Validate(null, options).Succeeded);
     }
 
     [Fact]
     public void ValidOptionsAndExplicitEphemeralDevelopmentIdentityAreAccepted()
     {
         var valid = WorkerTestSupport.Options();
-        Assert.True(new WorkerOptionsValidator().Validate(null, valid).Succeeded);
+        Assert.True(Validator(Environments.Production).Validate(null, valid).Succeeded);
 
         valid.NodeId = Guid.Empty;
         valid.AllowEphemeralNodeId = true;
-        Assert.True(new WorkerOptionsValidator().Validate(null, valid).Succeeded);
+        Assert.True(Validator(Environments.Development).Validate(null, valid).Succeeded);
         var first = new WorkerIdentity(Options.Create(valid));
         var second = new WorkerIdentity(Options.Create(valid));
         Assert.NotEqual(first.NodeId, second.NodeId);
+    }
+
+    [Fact]
+    public void EphemeralIdentityIsRejectedOutsideDevelopment()
+    {
+        var options = WorkerTestSupport.Options();
+        options.NodeId = Guid.Empty;
+        options.AllowEphemeralNodeId = true;
+
+        var result = Validator(Environments.Production).Validate(null, options);
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Failures);
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains("Development", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -74,7 +93,7 @@ public sealed class WorkerFoundationTests
         options.MaxConcurrentJobs = concurrency;
         options.ClaimCandidateBatchSize = batch;
 
-        Assert.False(new WorkerOptionsValidator().Validate(null, options).Succeeded);
+        Assert.False(Validator().Validate(null, options).Succeeded);
     }
 
     [Fact]
@@ -87,7 +106,25 @@ public sealed class WorkerFoundationTests
             new WorkerCapabilityOptions { Name = "os", Value = "Server" },
         ];
 
-        Assert.False(new WorkerOptionsValidator().Validate(null, options).Succeeded);
+        Assert.False(Validator().Validate(null, options).Succeeded);
+    }
+
+    [Fact]
+    public void MissingCapabilityNameReturnsValidationFailure()
+    {
+        var options = WorkerTestSupport.Options();
+        options.Capabilities =
+        [
+            new WorkerCapabilityOptions { Name = null!, Value = "Windows" },
+        ];
+
+        var result = Validator().Validate(null, options);
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Failures);
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains("Capabilities[0]", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -98,7 +135,7 @@ public sealed class WorkerFoundationTests
         options.EmptyQueueBackoffMaximumSeconds = 30;
         options.PersistenceFailureBackoffMaximumSeconds = 30;
 
-        Assert.False(new WorkerOptionsValidator().Validate(null, options).Succeeded);
+        Assert.False(Validator().Validate(null, options).Succeeded);
     }
 
     [Fact]
@@ -126,6 +163,10 @@ public sealed class WorkerFoundationTests
             services,
             descriptor => descriptor.ServiceType == typeof(IJobWorkHandler));
     }
+
+    private static WorkerOptionsValidator Validator(
+        string environmentName = "Production") =>
+        new(new TestHostEnvironment(environmentName));
 
     [Fact]
     public void BackoffIncreasesResetsAndKeepsJitterBounded()
@@ -532,7 +573,7 @@ internal sealed class FakeWorkerRepository : IWorkerNodeRepository
 
 internal sealed class FakeJobRepository : IJobRepository
 {
-    public Dictionary<JobId, Job> Jobs { get; } = [];
+    public ConcurrentDictionary<JobId, Job> Jobs { get; } = new();
 
     public Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken)
     {
@@ -540,17 +581,26 @@ internal sealed class FakeJobRepository : IJobRepository
         return Task.FromResult(Jobs.GetValueOrDefault(id));
     }
 
-    public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken) =>
-        Task.FromResult(Jobs.ContainsKey(id));
+    public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Jobs.ContainsKey(id));
+    }
 
     public Task AddAsync(Job job, CancellationToken cancellationToken)
     {
-        Jobs.Add(job.Id, job);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!Jobs.TryAdd(job.Id, job))
+        {
+            throw new InvalidOperationException($"Job {job.Id} already exists.");
+        }
+
         return Task.CompletedTask;
     }
 
     public Task UpdateAsync(Job job, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Jobs[job.Id] = job;
         return Task.CompletedTask;
     }
@@ -658,6 +708,7 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
             }
 
             var candidates = jobs.Jobs.Values
+                .ToArray()
                 .Where(job =>
                     job.Lease is null &&
                     job.Status == JobStatus.DryRunQueued &&
@@ -675,6 +726,14 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
             return Task.FromResult<IReadOnlyList<JobQueueCandidate>>(candidates);
         }
     }
+}
+
+internal sealed class TestHostEnvironment(string environmentName) : IHostEnvironment
+{
+    public string EnvironmentName { get; set; } = environmentName;
+    public string ApplicationName { get; set; } = "WindowsScriptRunner.WorkerTests";
+    public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+    public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
 }
 
 internal sealed class RecordingLogger<T> : ILogger<T>

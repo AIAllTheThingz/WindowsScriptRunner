@@ -187,6 +187,34 @@ public sealed class JobQueueWorkerTests
     }
 
     [Fact]
+    public async Task FaultedDispatchIsObservedAndDoesNotStopQueuePolling()
+    {
+        using var fixture = await RegisteredFixtureAsync();
+        fixture.Options.LeaseRenewalIntervalSeconds = 1;
+        AddJobs(fixture, 1);
+        var delay = new FaultingRenewalDelay();
+        var handler = new RenewalFaultAwaitingHandler(delay);
+        var worker = fixture.QueueService(delay, handler);
+
+        await worker.StartAsync(CancellationToken.None);
+        await delay.FaultInjected.WaitAsync(TimeSpan.FromSeconds(1));
+        await WaitUntilAsync(() => fixture.State.ActiveDispatchCount == 0);
+        await worker.StopAsync(CancellationToken.None);
+
+        Assert.True(fixture.State.QueuePollingHealthy);
+        Assert.Contains(
+            fixture.QueueLogger.Messages,
+            message =>
+                message.Contains("Dispatch task for lease", StringComparison.Ordinal) &&
+                message.Contains("faulted", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            fixture.QueueLogger.Messages,
+            message => message.Contains(
+                "queue loop failed unexpectedly",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LostLeaseCancelsHandlerAndStaleWorkDoesNotComplete()
     {
         using var fixture = await RegisteredFixtureAsync();
@@ -305,7 +333,7 @@ public sealed class JobQueueWorkerTests
         {
             var job = WorkerTestSupport.DryRunQueuedJob(
                 fixture.Clock.UtcNow.AddMinutes(-10).AddSeconds(offset));
-            fixture.Jobs.Jobs.Add(job.Id, job);
+            Assert.True(fixture.Jobs.Jobs.TryAdd(job.Id, job));
         }
     }
 
@@ -424,6 +452,19 @@ public sealed class JobQueueWorkerTests
         }
     }
 
+    private sealed class RenewalFaultAwaitingHandler(FaultingRenewalDelay delay) :
+        IJobWorkHandler
+    {
+        public JobWorkKind WorkKind => JobWorkKind.DryRun;
+
+        public async Task HandleAsync(
+            ClaimedJobWork work,
+            CancellationToken cancellationToken)
+        {
+            await delay.FaultInjected.WaitAsync(cancellationToken);
+        }
+    }
+
     private sealed class RenewingCompletingHandler(WorkerServiceFixture fixture) :
         IJobWorkHandler
     {
@@ -479,6 +520,25 @@ public sealed class JobQueueWorkerTests
             await _release.Task;
             cancellationToken.ThrowIfCancellationRequested();
         }
+    }
+}
+
+internal sealed class FaultingRenewalDelay : IWorkerDelay
+{
+    private readonly TaskCompletionSource _faultInjected =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task FaultInjected => _faultInjected.Task;
+
+    public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        if (delay == TimeSpan.FromSeconds(1))
+        {
+            _faultInjected.TrySetResult();
+            return Task.FromException(
+                new InvalidOperationException("Deterministic renewal delay failure."));
+        }
+
+        return Task.Delay(TimeSpan.FromMilliseconds(1), cancellationToken);
     }
 }
 
