@@ -242,6 +242,9 @@ public sealed class Phase7ReportingTests
         Assert.Equal(
             JobReport.CreateDeterministicId(jobId),
             JobReport.CreateDeterministicId(jobId));
+        Assert.Equal(
+            '8',
+            JobReport.CreateDeterministicId(jobId).Value.ToString("D")[14]);
         Assert.NotEqual(
             report.Id,
             JobReport.CreateDeterministicId(JobId.New()));

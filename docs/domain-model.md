@@ -37,6 +37,6 @@ The Domain project owns no persistence, ASP.NET, SQL, PowerShell, file-system, G
 
 Dry-run acquisition leaves the job in `DryRunQueued`; a handler must explicitly enter `DryRunRunning`. Execute acquisition changes `ExecutionQueued` to `Claimed`. Safe release leaves DryRun queued or returns unstarted Execute work to `ExecutionQueued`. Completion removes the lease. Expiration recovery releases queued DryRun, requeues unstarted Execute, or moves active DryRun/Execute work to `TimedOut`; active execution recovery records a `TimedOut` execution outcome before removing the lease.
 
-The reviewed local-host inventory path completes only when the typed `JobReport`, `DryRunCompleted` job state, removed lease, and audit event can be committed together. An existing report for the job blocks duplicate or replayed completion.
+The reviewed local-host inventory path completes only when the typed `JobReport`, `DryRunCompleted` job state, removed lease, and audit event can be committed together. An existing report for the job blocks conflicting duplicate completion; an exact replay succeeds idempotently after full provenance and content comparison.
 
 `WorkerNode.SynchronizeCapabilities` validates the entire proposed set before mutation, compares names case-insensitively, adds and updates configured values, removes stale values, and returns whether anything changed. `WorkerNode.IsLive` requires an enabled node and a heartbeat within the configured staleness window.

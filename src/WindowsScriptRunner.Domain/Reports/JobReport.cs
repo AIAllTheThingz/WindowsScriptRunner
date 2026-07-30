@@ -328,7 +328,7 @@ public sealed class JobReport
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
         Span<byte> guidBytes = stackalloc byte[16];
         hash.AsSpan(0, guidBytes.Length).CopyTo(guidBytes);
-        guidBytes[6] = (byte)((guidBytes[6] & 0x0f) | 0x50);
+        guidBytes[7] = (byte)((guidBytes[7] & 0x0f) | 0x80);
         guidBytes[8] = (byte)((guidBytes[8] & 0x3f) | 0x80);
         return new JobReportId(new Guid(guidBytes));
     }
