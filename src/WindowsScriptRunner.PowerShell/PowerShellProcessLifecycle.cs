@@ -17,14 +17,26 @@ internal static class PowerShellProcessLifecycle
             .ConfigureAwait(false);
         if (completed != exitTask)
         {
+            ObserveFault(exitTask);
             return completed;
         }
 
+        await exitTask.ConfigureAwait(false);
         return await Task.WhenAny(
                 outputPumpsTask,
                 timeoutTask,
                 outputLimitTask,
                 cancellationTask)
             .ConfigureAwait(false);
+    }
+
+    private static void ObserveFault(Task task)
+    {
+        _ = task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted |
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 }

@@ -117,11 +117,9 @@ internal sealed class PowerShellExecutableLocator(
                         await runtimeProbe.ProbeAsync(candidate, cancellationToken)
                             .ConfigureAwait(false));
                 }
-                catch (PowerShellExecutionException)
+                catch (PowerShellRuntimeValidationException)
                 {
-                    logger.LogDebug(
-                        "Rejected PowerShell runtime candidate {ExecutablePath}.",
-                        candidate);
+                    logger.LogDebug("Rejected incompatible PowerShell runtime candidate.");
                 }
             }
 
@@ -138,9 +136,8 @@ internal sealed class PowerShellExecutableLocator(
 
             Volatile.Write(ref _cachedRuntime, selectedRuntime);
             logger.LogInformation(
-                "Selected PowerShell {PowerShellVersion} at {ExecutablePath}.",
-                selectedRuntime.Version,
-                selectedRuntime.ExecutablePath);
+                "Selected PowerShell {PowerShellVersion}.",
+                selectedRuntime.Version);
             return selectedRuntime;
         }
         finally
@@ -163,9 +160,8 @@ internal sealed class PowerShellExecutableLocator(
             .ProbeAsync(Path.GetFullPath(candidate), cancellationToken)
             .ConfigureAwait(false);
         logger.LogInformation(
-            "Selected PowerShell {PowerShellVersion} at {ExecutablePath}.",
-            runtime.Version,
-            runtime.ExecutablePath);
+            "Selected PowerShell {PowerShellVersion}.",
+            runtime.Version);
         return runtime;
     }
 

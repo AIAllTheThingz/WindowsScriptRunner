@@ -7,6 +7,14 @@ namespace WindowsScriptRunner.PowerShellTests;
 public sealed class ExecutionWorkingDirectoryTests
 {
     [Fact]
+    public void NativeWorkingDirectoryPathUsesExtendedLengthPrefix()
+    {
+        Assert.Equal(
+            @"\\?\C:\wsr\working",
+            ExecutionWorkingDirectory.ToNativePath(@"C:\wsr\working"));
+    }
+
+    [Fact]
     public async Task ExecutionIdRemainsExclusivelyReservedUntilCleanup()
     {
         var root = Path.Combine(

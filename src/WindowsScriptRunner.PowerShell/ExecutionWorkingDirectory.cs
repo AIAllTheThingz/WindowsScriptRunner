@@ -82,7 +82,18 @@ internal sealed class ExecutionWorkingDirectory(
     {
         if (_directoryClaims.TryRemove(path, out var directoryClaim))
         {
-            directoryClaim.Dispose();
+            try
+            {
+                directoryClaim.Dispose();
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                logger.LogError(
+                    "PowerShell working-directory claim disposal failed for " +
+                    "{WorkingDirectoryName}.",
+                    Path.GetFileName(path));
+            }
         }
 
         var reservationPath = GetReservationPath(path);
@@ -128,7 +139,9 @@ internal sealed class ExecutionWorkingDirectory(
                 "The PowerShell execution working directory requires Windows.");
         }
 
-        if (!WorkingDirectoryNativeMethods.CreateDirectory(path, nint.Zero))
+        if (!WorkingDirectoryNativeMethods.CreateDirectory(
+                ToNativePath(path),
+                nint.Zero))
         {
             throw new PowerShellExecutionException(
                 "The PowerShell execution working directory could not be claimed.",
@@ -139,7 +152,7 @@ internal sealed class ExecutionWorkingDirectory(
     private static WorkingDirectoryClaim OpenDirectoryClaim(string path)
     {
         var rawHandle = WorkingDirectoryNativeMethods.CreateFile(
-            path,
+            ToNativePath(path),
             WorkingDirectoryNativeMethods.FileReadAttributes,
             WorkingDirectoryNativeMethods.FileShareRead |
             WorkingDirectoryNativeMethods.FileShareWrite,
@@ -194,6 +207,11 @@ internal sealed class ExecutionWorkingDirectory(
             throw;
         }
     }
+
+    internal static string ToNativePath(string path) =>
+        path.StartsWith(@"\\?\", StringComparison.Ordinal)
+            ? path
+            : @"\\?\" + path;
 
     private void DeleteDirectoryAfterFailedCreate(string path, bool directoryCreated)
     {

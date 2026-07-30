@@ -93,6 +93,59 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
     }
 
     [Fact]
+    public async Task ProbeTreeTerminationFailureAbortsDiscovery()
+    {
+        var failingCandidate = CreateExecutable("failing");
+        var compatibleCandidate = CreateExecutable("compatible");
+        var probe = new FakeRuntimeProbe(
+            failures: new Dictionary<string, Exception>(StringComparer.OrdinalIgnoreCase)
+            {
+                [failingCandidate] = new PowerShellProcessTerminationException(
+                    "Injected probe termination failure."),
+            });
+        var locator = CreateLocator(
+            new PowerShellExecutionOptions(),
+            probe,
+            new PowerShellCandidateSet(
+                null,
+                [failingCandidate, compatibleCandidate],
+                []));
+
+        await Assert.ThrowsAsync<PowerShellProcessTerminationException>(
+            () => locator.LocateAsync(CancellationToken.None));
+        Assert.Equal([failingCandidate], probe.ProbedPaths);
+    }
+
+    [Fact]
+    public async Task LocatorLogsOmitCandidateAndSelectedExecutablePaths()
+    {
+        var rejectedCandidate = CreateExecutable("rejected");
+        var selectedCandidate = CreateExecutable("selected");
+        var logger = new RecordingLogger<PowerShellExecutableLocator>();
+        var probe = new FakeRuntimeProbe(
+            failures: new Dictionary<string, Exception>(StringComparer.OrdinalIgnoreCase)
+            {
+                [rejectedCandidate] = new PowerShellRuntimeValidationException(
+                    "Injected incompatible runtime."),
+            });
+        var locator = CreateLocator(
+            new PowerShellExecutionOptions(),
+            probe,
+            new PowerShellCandidateSet(
+                null,
+                [rejectedCandidate, selectedCandidate],
+                []),
+            logger);
+
+        await locator.LocateAsync(CancellationToken.None);
+        var logs = string.Join(Environment.NewLine, logger.Messages);
+
+        Assert.Contains("7.4.0", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain(rejectedCandidate, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(selectedCandidate, logs, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task StandardLocationWorksWithoutPathCandidate()
     {
         var standardCandidate = CreateExecutable("standard");
@@ -200,12 +253,13 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
     private PowerShellExecutableLocator CreateLocator(
         PowerShellExecutionOptions options,
         IPowerShellRuntimeProbe probe,
-        PowerShellCandidateSet candidates) =>
+        PowerShellCandidateSet candidates,
+        Microsoft.Extensions.Logging.ILogger<PowerShellExecutableLocator>? logger = null) =>
         new(
             Options.Create(options),
             probe,
             new FakeCandidateSource(candidates),
-            NullLogger<PowerShellExecutableLocator>.Instance);
+            logger ?? NullLogger<PowerShellExecutableLocator>.Instance);
 
     private PowerShellRuntimeProbe CreateParser(PowerShellExecutionOptions options) =>
         new(
@@ -235,7 +289,8 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
     private sealed class FakeRuntimeProbe(
         IReadOnlyDictionary<string, Version>? versions = null,
         string? previewPath = null,
-        TimeSpan? delay = null) : IPowerShellRuntimeProbe
+        TimeSpan? delay = null,
+        IReadOnlyDictionary<string, Exception>? failures = null) : IPowerShellRuntimeProbe
     {
         private readonly List<string> _probedPaths = [];
 
@@ -247,6 +302,12 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             _probedPaths.Add(executablePath);
+            if (failures is not null &&
+                failures.TryGetValue(executablePath, out var failure))
+            {
+                throw failure;
+            }
+
             if (delay is not null)
             {
                 await Task.Delay(delay.Value, cancellationToken);

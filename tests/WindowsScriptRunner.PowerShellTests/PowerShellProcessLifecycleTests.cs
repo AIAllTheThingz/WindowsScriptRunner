@@ -5,6 +5,22 @@ namespace WindowsScriptRunner.PowerShellTests;
 public sealed class PowerShellProcessLifecycleTests
 {
     [Fact]
+    public async Task FaultedRootExitIsPropagatedBeforePumpCompletionWins()
+    {
+        var expected = new InvalidOperationException("Injected exit failure.");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => PowerShellProcessLifecycle.WaitAsync(
+                Task.FromException(expected),
+                Task.CompletedTask,
+                Task.Delay(Timeout.InfiniteTimeSpan),
+                Task.Delay(Timeout.InfiniteTimeSpan),
+                Task.Delay(Timeout.InfiniteTimeSpan)));
+
+        Assert.Same(expected, exception);
+    }
+
+    [Fact]
     public async Task RootExitDoesNotCompleteLifecycleWhileOutputPumpsRemainOpen()
     {
         var outputPumps = new TaskCompletionSource(

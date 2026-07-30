@@ -1429,3 +1429,25 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T10:57:48.2977774-05:00` to `10:58:23.3479140-05:00`, exit 0, the same 544 tests passed.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-30T10:58:29.0385313-05:00` to `10:58:33.9105859-05:00`, exit 0, no pending model changes.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 probe, logging, long-path, and lifecycle corrections
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Automatic discovery skips only incompatible runtime-validation results; a probe process-tree termination failure now aborts discovery and is propagated.
+- Runtime-selection and candidate-rejection logs omit executable paths while retaining validated PowerShell version metadata.
+- Working-directory claim disposal is best-effort and cannot prevent the existing cleanup retries. Native directory creation and claim opening use extended-length paths.
+- The shared process lifecycle observes the root-exit task on every race path and propagates its fault when root exit wins.
+- Focused regressions: 4 passed, 0 failed, 0 skipped.
+- PowerShell focused suite: 99 passed, 0 failed, 0 skipped against the actual runtime.
+- Security focused suite: 48 passed, 0 failed, 0 skipped.
+- `dotnet tool restore`: `2026-07-30T12:44:03.7595842-05:00` to `12:44:04.3005272-05:00`, exit 0, dotnet-ef 10.0.10.
+- `dotnet restore`: `2026-07-30T12:44:04.3149604-05:00` to `12:44:07.0372272-05:00`, exit 0.
+- `dotnet build --configuration Release`: `2026-07-30T12:44:07.0385145-05:00` to `12:44:16.6527702-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release`: `2026-07-30T12:44:22.1570100-05:00` to `12:45:01.0026232-05:00`, exit 0, 548 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 99.
+- `dotnet format`: `2026-07-30T12:45:09.2550200-05:00` to `12:45:36.4228063-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-30T12:45:36.4360604-05:00` to `12:46:03.7845414-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T12:46:12.7211928-05:00` to `12:46:16.1054957-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T12:46:16.1223301-05:00` to `12:46:51.6731019-05:00`, exit 0, the same 548 tests passed.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-30T12:46:57.2981838-05:00` to `12:47:02.3138508-05:00`, exit 0, no pending model changes.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
