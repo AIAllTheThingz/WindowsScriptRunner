@@ -4,6 +4,5 @@
     <ProjectReference Include="..\WindowsScriptRunner.Application\WindowsScriptRunner.Application.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj" />
-    <ProjectReference Include="..\WindowsScriptRunner.Reporting\WindowsScriptRunner.Reporting.csproj" />
   </ItemGroup>
 </Project>

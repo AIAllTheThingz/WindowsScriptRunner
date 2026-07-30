@@ -1,8 +1,3 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\WindowsScriptRunner.Application\WindowsScriptRunner.Application.csproj" />
-    <ProjectReference Include="..\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
-    <ProjectReference Include="..\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
-  </ItemGroup>
 </Project>

@@ -6,5 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="..\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
+    <ProjectReference Include="..\WindowsScriptRunner.Reporting\WindowsScriptRunner.Reporting.csproj" />
   </ItemGroup>
 </Project>

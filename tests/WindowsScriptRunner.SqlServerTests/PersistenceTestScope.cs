@@ -20,6 +20,9 @@ internal sealed class PersistenceTestScope : IAsyncDisposable
         Credentials = new SqlCredentialReferenceRepository(
             Context,
             NullLogger<SqlCredentialReferenceRepository>.Instance);
+        Reports = new SqlJobReportRepository(
+            Context,
+            NullLogger<SqlJobReportRepository>.Instance);
         Audits = new SqlAuditWriter(Context, NullLogger<SqlAuditWriter>.Instance);
         UnitOfWork = new SqlUnitOfWork(Context, NullLogger<SqlUnitOfWork>.Instance);
         Candidates = new SqlJobQueueCandidateSource(
@@ -42,6 +45,7 @@ internal sealed class PersistenceTestScope : IAsyncDisposable
     public SqlScriptDefinitionRepository Scripts { get; }
     public SqlWorkerNodeRepository Workers { get; }
     public SqlCredentialReferenceRepository Credentials { get; }
+    public SqlJobReportRepository Reports { get; }
     public SqlAuditWriter Audits { get; }
     public SqlUnitOfWork UnitOfWork { get; }
     public SqlJobQueueCandidateSource Candidates { get; }

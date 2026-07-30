@@ -21,6 +21,9 @@ public sealed class WindowsScriptRunnerDbContext(DbContextOptions<WindowsScriptR
     internal DbSet<JobExecutionEntity> JobExecutions => Set<JobExecutionEntity>();
     internal DbSet<JobApprovalEntity> JobApprovals => Set<JobApprovalEntity>();
     internal DbSet<JobLeaseEntity> JobLeases => Set<JobLeaseEntity>();
+    internal DbSet<JobReportEntity> JobReports => Set<JobReportEntity>();
+    internal DbSet<LocalHostInventoryReportEntity> LocalHostInventoryReports =>
+        Set<LocalHostInventoryReportEntity>();
     internal DbSet<WorkerNodeEntity> WorkerNodes => Set<WorkerNodeEntity>();
     internal DbSet<WorkerCapabilityEntity> WorkerCapabilities => Set<WorkerCapabilityEntity>();
     internal DbSet<CredentialReferenceEntity> CredentialReferences => Set<CredentialReferenceEntity>();

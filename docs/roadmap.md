@@ -5,8 +5,10 @@
 3. SQL Server persistence — complete.
 4. Worker foundation and queue processing — complete and merged.
 5. Isolated PowerShell execution — complete and merged.
-6. First automation package — implemented by this branch.
-7. Reporting and durable inventory-result persistence — next.
-8. Production hardening and deployment — not started.
+6. First automation package — complete on `origin/codex/phase-6-first-automation-package`.
+7. Reporting and durable inventory-result persistence — complete on this branch.
+8. Identity, authentication, authorization, and approval workflow — next.
 
-Phase 6 adds only `windows.local-host-inventory` version `1.0.0`. It is hash-pinned, parameterless, local-only, ReadOnly, and DryRun-only. It connects only its pinned `ScriptVersionId` to the leased Worker queue. Output is bounded and discarded after outcome mapping; report persistence, authentication, authorization, secrets, arbitrary scripts, remoting, deployment, and general package discovery remain out of scope.
+Phase 7 remains deliberately narrow. Only successful output from `windows.local-host-inventory` version `1.0.0` is accepted. The focused Reporting parser validates the exact schema and execution envelope, converts it to immutable typed values, and computes a deterministic digest. Application persists one report and completes the fenced job and lease atomically. SQL stores typed fields only; raw stdout, stderr, arbitrary JSON, CSV, HTML, report uploads, new packages, public report pages, and generic schema registration remain out of scope.
+
+This branch depends on the unmerged Phase 6 branch because Phase 6 was not in `origin/main` when Phase 7 began.

@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<IScriptDefinitionRepository, SqlScriptDefinitionRepository>();
         services.AddScoped<IWorkerNodeRepository, SqlWorkerNodeRepository>();
         services.AddScoped<ICredentialReferenceRepository, SqlCredentialReferenceRepository>();
+        services.AddScoped<IJobReportRepository, SqlJobReportRepository>();
         services.AddScoped<IAuditWriter, SqlAuditWriter>();
         services.AddScoped<IUnitOfWork, SqlUnitOfWork>();
         services.AddScoped<IJobQueueCandidateSource, SqlJobQueueCandidateSource>();

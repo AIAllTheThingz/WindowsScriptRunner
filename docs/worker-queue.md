@@ -46,7 +46,9 @@ The handler receives `ClaimedJobWork`: job ID, work kind, pinned script-version 
 
 A successful handler must have removed its lease through an explicit lifecycle completion or safe release. If it returns with the lease still current, the Worker logs an invariant violation and attempts release only if work remains unstarted. Active work is left for expiration recovery.
 
-The Phase 6 handler independently revalidates the current fenced lease, loads the pinned job and script aggregate only after ownership is established, and uses fresh scopes for every lifecycle mutation. DryRun success atomically reaches `Completed` and removes the lease. Controlled failure outcomes also remove the lease. Caller cancellation terminalizes only while the same lease is current; lease loss or uncertain persistence leaves recovery to expiration.
+The production handler independently revalidates the current fenced lease, loads the pinned job and script aggregate only after ownership is established, and uses fresh scopes for every lifecycle mutation. Controlled failure outcomes remove the lease. Caller cancellation terminalizes only while the same lease is current; lease loss leaves recovery authoritative.
+
+For a code-zero inventory execution, Automation first sends the complete bounded result to the strict Reporting parser. Malformed, truncated, stderr-producing, wrong-schema, or otherwise untrusted success output becomes a controlled failed DryRun and creates no report. A valid typed result goes to the package-specific Application completion command. That command atomically inserts the deterministic typed report, moves the ReadOnly job to `Completed`, deletes the lease, and writes the bounded audit event. An uncertain or concurrent commit is retried through fresh scopes; an already committed exact report is idempotent success, while any content or provenance mismatch remains a conflict. Worker itself never parses inventory JSON or owns report persistence rules.
 
 ## Shutdown
 

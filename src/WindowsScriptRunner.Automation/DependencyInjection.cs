@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.PowerShell;
+using WindowsScriptRunner.Reporting;
 
 namespace WindowsScriptRunner.Automation;
 
@@ -40,6 +41,7 @@ public static class DependencyInjection
         EnsureCompatibleMinimumPowerShellVersion(configuration);
         services.AddPowerShellExecutionBoundary(configuration);
         services.AddSingleton<LocalHostInventoryArtifactCatalog>();
+        services.AddSingleton<LocalHostInventoryReportParser>();
         services.AddTransient<LocalHostInventoryPackageRegistrar>();
         services.AddSingleton<IJobWorkHandler, LocalHostInventoryJobWorkHandler>();
         services.AddHostedService<LocalHostInventoryPackageStartupService>();

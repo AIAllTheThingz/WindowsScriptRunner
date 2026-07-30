@@ -11,6 +11,7 @@
     <ProjectReference Include="..\WindowsScriptRunner.Application\WindowsScriptRunner.Application.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.PowerShell\WindowsScriptRunner.PowerShell.csproj" />
+    <ProjectReference Include="..\WindowsScriptRunner.Reporting\WindowsScriptRunner.Reporting.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Artifacts\windows.local-host-inventory\1.0.0\Collect-LocalHostInventory.ps1"

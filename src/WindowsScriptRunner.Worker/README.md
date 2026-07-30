@@ -14,3 +14,5 @@ Hosted services:
 Apply the reviewed database migrations before startup. `Persistence:ApplyMigrationsOnStartup` remains false by default. Production handlers must resolve leases explicitly and must not receive raw parameter or credential material through queue descriptors.
 
 To enable the reviewed `windows.local-host-inventory` `1.0.0` package, set `Automation:LocalHostInventory:Enabled=true`, optionally set `RegisterOnStartup=true`, and configure absolute, non-overlapping `PowerShellExecution:AllowedScriptRoot` and `WorkingRoot` directories. The allowed root contains the deterministically copied `windows.local-host-inventory\1.0.0\Collect-LocalHostInventory.ps1`. The SQL candidate query advertises only its pinned DryRun/script-version route; unknown versions are never claimed.
+
+In Phase 7, the Automation handler—not Worker—passes code-zero output to Reporting. Valid typed inventory goes to the atomic Application report completion handler; malformed or untrusted success output becomes a controlled failure with no report. Worker contains no inventory JSON parser and no report persistence policy.

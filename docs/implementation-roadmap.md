@@ -5,9 +5,10 @@
 3. **SQL Server persistence — Complete**
 4. **Worker foundation and queue processing — Complete and merged**
 5. **PowerShell execution boundary — Complete and merged**
-6. **First automation package — Implemented**
-7. **Durable reporting — Next**
-8. Approval workflow
-9. Production hardening and deployment
+6. **First automation package — Complete on the Phase 6 branch**
+7. **Typed durable Local Host Inventory reporting — Complete**
+8. **Identity, authentication, authorization, and approval workflow — Next**
 
-Phase 6 adds one reviewed path from a pinned SQL queue route through the existing lease boundary to the PowerShell child process. It does not create a general automation platform: `windows.local-host-inventory` `1.0.0` is the only production package, accepts no parameters or credentials, supports only DryRun, and does not persist its JSON output.
+Phase 7 adds the smallest trusted completion path for the only production package. Reporting strictly parses the complete bounded process result. Application revalidates the current fenced lease and pinned package, derives deterministic report identity, stages the immutable typed report, completes the ReadOnly DryRun, removes the lease, appends bounded audit metadata, and commits all changes through the existing unit of work. Infrastructure adds only the `JobReports` envelope and one-to-one `LocalHostInventoryReports` detail table.
+
+No public report UI or endpoint is implemented because no authenticated principal or authorization policy exists. Phase 8 owns that boundary together with the approval workflow.

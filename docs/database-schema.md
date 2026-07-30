@@ -27,3 +27,13 @@ Database constraints are defense in depth. Domain rules remain authoritative for
 The Job foreign key cascades so aggregate deletion cannot orphan a lease. The Worker foreign key uses `NO ACTION`, preventing deletion of a worker that owns leases. Checks require non-empty IDs, `DryRun` or `Execute`, a positive fencing token, `LastRenewedUtc >= AcquiredUtc`, and `ExpiresUtc > LastRenewedUtc`. Indexes cover `ExpiresUtc`, `(WorkerNodeId, ExpiresUtc)`, `(WorkKind, ExpiresUtc)`, and unique `LeaseId`.
 
 `wsr.JobLeaseFencingSequence` starts at 1 and increments globally. Gaps are expected because sequence allocation is not rolled back; monotonic uniqueness, not density, is the safety property. Candidate discovery uses the existing Jobs status/update index plus lease absence and returns a bounded projection ordered by `UpdatedUtc`, `CreatedUtc`, then `JobId`.
+
+## Phase 7 report schema
+
+`wsr.JobReports` is the immutable report envelope. It stores deterministic `Id`, `JobId`, pinned `ScriptDefinitionId` and `ScriptVersionId`, exact package/version/report/schema/format values, `WorkerNodeId`, immutable `LeaseId` and fencing token provenance, PowerShell execution ID, SQL-created UTC, collected UTC, and a lowercase SHA-256 digest. It has restrictive `NO ACTION` foreign keys to Job, ScriptDefinition, the composite pinned ScriptVersion, and WorkerNode. The lease provenance intentionally has no foreign key because successful atomic completion deletes the live lease row.
+
+`wsr.LocalHostInventoryReports` is the required one-to-one typed detail keyed by `ReportId`. It contains only `ComputerName`, `OsDescription`, `OsVersion`, `OsArchitecture`, and `PowerShellVersion`. Deleting an envelope cascades to its detail; cross-aggregate deletion remains restrictive. No table or column stores stdout, stderr, an unrestricted JSON document, or a generic payload.
+
+Database checks independently require non-empty identifiers, positive fencing tokens, the exact `windows.local-host-inventory` `1.0.0` / `LocalHostInventory` / schema `1.0` / `Json` tuple, bounded timestamps, lowercase 64-character digests, bounded computer-name grammar, supported architectures, and bounded numeric-dot version representations.
+
+The primary key is deterministic. Unique indexes on `(JobId, PackageId, SchemaVersion)`, `LeaseId`, and `PowerShellExecutionId` independently constrain duplicate attempts. Application permits an exact replay only after full provenance and content comparison; SQL uniqueness alone never authorizes a replay.

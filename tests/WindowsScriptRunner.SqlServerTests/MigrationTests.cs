@@ -15,8 +15,10 @@ public sealed class MigrationTests
         "JobExecutions",
         "JobLeases",
         "JobParameters",
+        "JobReports",
         "Jobs",
         "JobTargets",
+        "LocalHostInventoryReports",
         "ScriptDefinitions",
         "ScriptParameterAllowedValues",
         "ScriptParameterDefinitions",
@@ -124,7 +126,7 @@ public sealed class MigrationTests
             ORDER BY [name]
             """).ToListAsync();
 
-        Assert.Equal(2, appliedBefore.Count());
+        Assert.Equal(3, appliedBefore.Count());
         Assert.Equal(appliedBefore, appliedAfter);
         Assert.Equal(ExpectedTables, tables);
         Assert.Equal("wsr", historySchema);
@@ -173,7 +175,7 @@ public sealed class MigrationTests
         await database.ApplySqlScriptAsync(script);
 
         await using var restoredContext = database.CreateContext();
-        Assert.Equal(2, (await restoredContext.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(3, (await restoredContext.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(
             ExpectedTables,
             await restoredContext.Database.SqlQueryRaw<string>(
@@ -321,7 +323,7 @@ public sealed class MigrationTests
                     auditEventId).SingleAsync());
 
             await migrator.MigrateAsync();
-            Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
         }
     }
 }

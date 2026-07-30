@@ -37,7 +37,7 @@
 - Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
 - Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
-Authentication, authorization, executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, production approval controls, and durable report persistence are not implemented.
+Authentication, authorization, executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, and production approval controls are not implemented.
 
 ## Queue security (Phase 4 foundation, Phase 6 routing)
 
@@ -85,5 +85,19 @@ Authentication, authorization, executable signing, external credential retrieval
 - The execution ID is deterministically derived from immutable `JobId`. The handler invokes only `IPowerShellExecutionBoundary`; process creation remains confined to PowerShell.
 - Success, nonzero exit, timeout, output overflow, trust failure, runtime/startup failure, and caller cancellation map to controlled lease-aware outcomes. Lease loss prevents stale terminal mutation, and uncertain persistence is left to expiration recovery.
 - The script performs only local, bounded inventory collection. It has no remoting, network, credential, installation, registry-write, or file-write behavior and does not enumerate software, users, environment variables, certificates, or network configuration.
-- Raw stdout, stderr, inventory JSON, argument values, script contents, roots, hashes, executable paths, connection strings, and environment values are not written to application logs or audit properties. Inventory JSON is not persisted in Phase 6.
+- Raw stdout, stderr, inventory JSON, argument values, script contents, roots, hashes, executable paths, connection strings, and environment values are not written to application logs or audit properties.
 - This read-only operation is externally safe to retry under at-least-once coordination. The system does not claim exactly-once execution.
+
+## Phase 7 report security
+
+- Reporting is independent of PowerShell, Infrastructure, EF Core, and SQL client packages. Automation adapts the complete bounded result into a narrow Reporting input; Worker never parses JSON or owns persistence policy.
+- Successful exit code alone is insufficient. The parser also requires untruncated streams, whitespace-only stderr, a valid execution window, strict UTF-8, an 8 KiB maximum document, strict JSON without comments/trailing commas/trailing content, exact case-sensitive properties, no duplicate properties at any level, bounded strings without controls or malformed Unicode, conservative computer-name grammar, supported architecture, invariant versions, PowerShell `>= 7.4.0`, and a round-trip offset timestamp within five seconds of the execution window.
+- Parser exceptions contain bounded policy messages and never echo rejected JSON, property values, computer names, stdout, or stderr. The parser has no logger.
+- The write command accepts only `ValidatedLocalHostInventoryReport`; it has no arbitrary JSON, package, schema policy, report type, sensitivity, risk, format, or terminal-status parameter.
+- Application revalidates the exact pinned package and fenced DryRun lease with SQL time before staging. Lease loss, expiration, wrong work kind, wrong worker, wrong script version, or wrong PowerShell execution ID creates no report and causes no stale terminal mutation.
+- Report identity is deterministic from job/package/schema. Canonical SHA-256 covers immutable provenance and typed content. Exact replays require every persisted value to match; conflicting identity, content, worker, lease, fencing token, execution, job, version, schema, or digest fails closed and never overwrites.
+- `JobReports` and `LocalHostInventoryReports` store typed data only. There is no raw stdout, stderr, JSON blob, update repository, generic schema table, upload, or report mutation path.
+- Report, completed job, lease deletion, and bounded audit event share the existing SQL unit-of-work transaction. Uniqueness and concurrency failures become bounded Application exceptions.
+- Audit properties contain report ID/type/schema/format, script version ID, worker ID, and created status only. They exclude computer name, OS data, PowerShell version, collected values, JSON, hash inputs, secrets, and credential references.
+- The typed read path is bounded to one report by Job ID or Report ID and fails closed on missing or inconsistent typed detail. It returns an immutable DTO and never returns EF entities, Domain entities, raw output, audit internals, or JSON.
+- Web has no report project reference, endpoint, Razor Page, download, or anonymous inventory exposure. Identity, authentication, authorization, and approval workflow are Phase 8.

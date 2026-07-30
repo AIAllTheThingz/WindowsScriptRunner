@@ -57,6 +57,7 @@ public sealed class DependencyInjectionTests
         Assert.NotNull(firstScope.ServiceProvider.GetRequiredService<IScriptDefinitionRepository>());
         Assert.NotNull(firstScope.ServiceProvider.GetRequiredService<IWorkerNodeRepository>());
         Assert.NotNull(firstScope.ServiceProvider.GetRequiredService<ICredentialReferenceRepository>());
+        Assert.NotNull(firstScope.ServiceProvider.GetRequiredService<IJobReportRepository>());
         Assert.NotNull(firstScope.ServiceProvider.GetRequiredService<IAuditWriter>());
         Assert.NotNull(firstScope.ServiceProvider.GetRequiredService<IUnitOfWork>());
         Assert.False(

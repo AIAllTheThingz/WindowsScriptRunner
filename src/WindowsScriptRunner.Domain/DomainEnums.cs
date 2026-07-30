@@ -80,6 +80,19 @@ public enum ReportFormat
     Html,
 }
 
+public enum JobReportType
+{
+    LocalHostInventory,
+}
+
+public enum InventoryOsArchitecture
+{
+    X86,
+    X64,
+    Arm,
+    Arm64,
+}
+
 public enum ApprovalDecision
 {
     Pending,
