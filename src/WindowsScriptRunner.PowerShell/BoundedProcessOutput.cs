@@ -107,31 +107,35 @@ internal sealed class BoundedProcessOutput : IDisposable
                 _standardErrorBytes += count;
             }
 
+            var storeCount = 0;
             if (_storeOutput && !_disposed)
             {
                 var target = isStandardOutput ? _standardOutput : _standardError;
                 var streamRemaining = Math.Max(0, streamLimit - (int)target.Length);
                 var combinedStored = checked((int)(_standardOutput.Length + _standardError.Length));
                 var combinedRemaining = Math.Max(0, _combinedLimit - combinedStored);
-                var storeCount = Math.Min(count, Math.Min(streamRemaining, combinedRemaining));
+                storeCount = Math.Min(count, Math.Min(streamRemaining, combinedRemaining));
                 if (storeCount > 0)
                 {
                     target.Write(buffer, 0, storeCount);
                 }
             }
 
+            if (storeCount < count)
+            {
+                if (isStandardOutput)
+                {
+                    _standardOutputTruncated = true;
+                }
+                else
+                {
+                    _standardErrorTruncated = true;
+                }
+            }
+
             if (!streamExceeded && !combinedExceeded)
             {
                 return;
-            }
-
-            if (isStandardOutput)
-            {
-                _standardOutputTruncated = true;
-            }
-            else
-            {
-                _standardErrorTruncated = true;
             }
 
             _storeOutput = false;

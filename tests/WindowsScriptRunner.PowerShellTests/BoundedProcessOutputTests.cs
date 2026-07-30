@@ -6,6 +6,23 @@ namespace WindowsScriptRunner.PowerShellTests;
 public sealed class BoundedProcessOutputTests
 {
     [Fact]
+    public async Task DiscardedBytesMarkEachAffectedStreamAsTruncated()
+    {
+        using var standardOutput = new MemoryStream(Encoding.UTF8.GetBytes("ab"));
+        using var standardError = new MemoryStream(Encoding.UTF8.GetBytes("discarded"));
+        using var capture = new BoundedProcessOutput(1, 1024, 2048);
+
+        await capture.PumpStandardOutputAsync(standardOutput);
+        await capture.PumpStandardErrorAsync(standardError);
+        var output = capture.Snapshot();
+
+        Assert.True(output.StandardOutputTruncated);
+        Assert.True(output.StandardErrorTruncated);
+        Assert.Equal(string.Empty, output.StandardError);
+        Assert.Equal(Encoding.UTF8.GetByteCount("discarded"), output.StandardErrorBytes);
+    }
+
+    [Fact]
     public async Task DisposeDoesNotRaceWithInFlightPumpStorage()
     {
         using var stream = new DelayedSingleReadStream("captured");

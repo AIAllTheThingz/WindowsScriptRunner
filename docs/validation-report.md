@@ -1451,3 +1451,14 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T12:46:16.1223301-05:00` to `12:46:51.6731019-05:00`, exit 0, the same 548 tests passed.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-30T12:46:57.2981838-05:00` to `12:47:02.3138508-05:00`, exit 0, no pending model changes.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 output-truncation correction
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- When either captured stream disables global output storage, every stream with subsequently discarded bytes is now marked truncated.
+- Focused discarded-stream regression: 1 passed, 0 failed, 0 skipped.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T13:00:22.0050222-05:00` to `13:00:29.5955870-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T13:00:29.6125477-05:00` to `13:01:05.2572006-05:00`, exit 0, 549 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 100.
+- `dotnet format --verify-no-changes --no-restore`: `2026-07-30T13:01:20.9470457-05:00` to `13:01:46.0395025-05:00`, exit 0.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
