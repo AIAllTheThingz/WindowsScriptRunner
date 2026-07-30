@@ -1087,6 +1087,40 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
+    public async Task LeasedExecutionHandlersUseCoordinationClockWhenLocalClockIsSkewed()
+    {
+        var fixture = HandlerFixture.WithClaimedJob();
+        var lease = fixture.Jobs.Job!.Lease!;
+        var executionStartedUtc = lease.AcquiredUtc.AddMinutes(5);
+        var executionCompletedUtc = executionStartedUtc.AddMinutes(1);
+        fixture.Clock.UtcNow = lease.ExpiresUtc.AddHours(1);
+        fixture.Clock.CoordinationUtcNow = executionStartedUtc;
+
+        await fixture.StartExecutionAttemptHandler.HandleAsync(
+            new StartExecutionAttemptCommand(
+                fixture.Jobs.Job.Id,
+                lease.Credentials,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        fixture.Clock.CoordinationUtcNow = executionCompletedUtc;
+        await fixture.RecordExecutionOutcomeHandler.HandleAsync(
+            new RecordExecutionOutcomeCommand(
+                fixture.Jobs.Job.Id,
+                lease.Credentials,
+                ExecutionOutcome.Succeeded,
+                0,
+                null,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        var execution = Assert.Single(fixture.Jobs.Job.Executions);
+        Assert.Equal(executionStartedUtc, execution.StartedUtc);
+        Assert.Equal(executionCompletedUtc, execution.CompletedUtc);
+        Assert.Equal(2, fixture.Clock.CoordinationReadCount);
+    }
+
+    [Fact]
     public async Task StartExecutionAttemptHandlerRejectsWrongLeaseWorkerWithoutMutation()
     {
         var fixture = HandlerFixture.WithClaimedJob();
@@ -1381,7 +1415,8 @@ public sealed class ApplicationHandlerTests
                 .Concat(Credentials.ObservedTokens)
                 .Concat(Workers.ObservedTokens)
                 .Concat(Audits.ObservedTokens)
-                .Concat(UnitOfWork.ObservedTokens);
+                .Concat(UnitOfWork.ObservedTokens)
+                .Concat(Clock.ObservedTokens);
 
         public static HandlerFixture WithDraftJob(ScriptParameterDefinition? parameter = null)
         {
@@ -1480,9 +1515,22 @@ public sealed class ApplicationHandlerTests
         }
     }
 
-    private sealed class TestClock(DateTimeOffset utcNow) : IClock
+    private sealed class TestClock(DateTimeOffset utcNow) :
+        IClock,
+        IWorkerCoordinationClock
     {
         public DateTimeOffset UtcNow { get; set; } = utcNow;
+        public DateTimeOffset CoordinationUtcNow { get; set; } = utcNow;
+        public int CoordinationReadCount { get; private set; }
+        public List<CancellationToken> ObservedTokens { get; } = [];
+
+        public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CoordinationReadCount++;
+            ObservedTokens.Add(cancellationToken);
+            return Task.FromResult(CoordinationUtcNow);
+        }
     }
 
     private sealed class FakeJobRepository : IJobRepository

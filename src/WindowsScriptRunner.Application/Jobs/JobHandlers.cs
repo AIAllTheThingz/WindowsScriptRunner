@@ -574,7 +574,7 @@ public sealed class StartExecutionAttemptHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         StartExecutionAttemptCommand command,
@@ -585,7 +585,7 @@ public sealed class StartExecutionAttemptHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var execution = job.StartLeasedExecutionAttempt(
             command.LeaseCredentials,
             command.ActingUser,
@@ -613,7 +613,7 @@ public sealed class RecordExecutionOutcomeHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         RecordExecutionOutcomeCommand command,
@@ -624,7 +624,7 @@ public sealed class RecordExecutionOutcomeHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var execution = job.RecordTerminalExecutionOutcome(
             command.LeaseCredentials,
             command.Outcome,
