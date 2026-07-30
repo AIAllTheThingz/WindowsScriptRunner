@@ -15,10 +15,23 @@ internal interface IPowerShellCandidateSource
 
 internal sealed class PowerShellCandidateSource : IPowerShellCandidateSource
 {
-    public PowerShellCandidateSet GetCandidates()
+    public PowerShellCandidateSet GetCandidates() =>
+        CreateCandidates(
+            Environment.GetEnvironmentVariable("WINDOWSSCRIPTRUNNER_PWSH_PATH"),
+            Environment.GetEnvironmentVariable("PATH"),
+            Environment.GetEnvironmentVariable("ProgramFiles"));
+
+    internal static PowerShellCandidateSet CreateCandidates(
+        string? environmentOverride,
+        string? path,
+        string? programFiles)
     {
+        if (!string.IsNullOrWhiteSpace(environmentOverride))
+        {
+            return new PowerShellCandidateSet(environmentOverride, [], []);
+        }
+
         var pathCandidates = new List<string>();
-        var path = Environment.GetEnvironmentVariable("PATH");
         if (!string.IsNullOrWhiteSpace(path))
         {
             foreach (var entry in path.Split(
@@ -34,7 +47,6 @@ internal sealed class PowerShellCandidateSource : IPowerShellCandidateSource
         }
 
         var standardCandidates = new List<string>();
-        var programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
         if (!string.IsNullOrWhiteSpace(programFiles))
         {
             var powerShellRoot = Path.Combine(programFiles, "PowerShell");
@@ -47,7 +59,7 @@ internal sealed class PowerShellCandidateSource : IPowerShellCandidateSource
         }
 
         return new PowerShellCandidateSet(
-            Environment.GetEnvironmentVariable("WINDOWSSCRIPTRUNNER_PWSH_PATH"),
+            null,
             pathCandidates,
             standardCandidates);
     }

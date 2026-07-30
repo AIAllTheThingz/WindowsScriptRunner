@@ -1486,3 +1486,14 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T14:17:49.3045448-05:00` to `14:18:29.1442555-05:00`, exit 0, 552 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 103.
 - `dotnet format --verify-no-changes --no-restore`: `2026-07-30T14:18:57.2315636-05:00` to `14:19:24.9578560-05:00`, exit 0.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 authoritative override correction
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- A present `WINDOWSSCRIPTRUNNER_PWSH_PATH` override now returns before lower-priority PATH or `%ProgramFiles%\PowerShell` candidate construction, so unavailable standard-install directories cannot block the authoritative probe.
+- Focused authoritative-override short-circuit regression: 1 passed, 0 failed, 0 skipped.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T14:29:17.1231055-05:00` to `14:29:25.3805442-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T14:29:25.3983295-05:00` to `14:30:06.0307342-05:00`, exit 0, 553 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 104.
+- `dotnet format --verify-no-changes --no-restore`: `2026-07-30T14:30:25.4108148-05:00` to `14:30:54.3266631-05:00`, exit 0.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.

@@ -68,6 +68,21 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
     }
 
     [Fact]
+    public void EnvironmentOverrideSkipsLowerPriorityCandidateEnumeration()
+    {
+        var environmentPath = CreateExecutable("environment");
+
+        var candidates = PowerShellCandidateSource.CreateCandidates(
+            environmentPath,
+            null,
+            "invalid\0program-files");
+
+        Assert.Equal(environmentPath, candidates.EnvironmentOverride);
+        Assert.Empty(candidates.PathCandidates);
+        Assert.Empty(candidates.StandardLocationCandidates);
+    }
+
+    [Fact]
     public async Task PathAndStandardLocationsAreSearchedAndDeduplicated()
     {
         var pathCandidate = CreateExecutable("path");
