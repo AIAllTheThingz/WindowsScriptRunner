@@ -6,7 +6,7 @@ Phase 4 provides durable coordination without executing scripts. The production 
 
 The configured `NodeId` is the durable `WorkerNodeId`. Production requires a non-empty GUID and never generates or persists an arbitrary identity file. `AllowEphemeralNodeId` defaults to false and exists only for explicit development use. Startup creates or loads the node, requires the configured name to match, rejects a disabled row, atomically synchronizes capabilities, records a heartbeat, and commits once.
 
-Normal heartbeat uses a fresh scope and creates no audit event. A persistence failure marks heartbeat unhealthy immediately, stopping new acquisitions. Transient failures use bounded persistence backoff. If no successful heartbeat can be stored within `WorkerStaleAfterSeconds`, the heartbeat service fails rather than allowing an invisible worker to continue claiming.
+Normal heartbeat uses a fresh scope, records SQL Server UTC, and creates no audit event. A persistence failure marks heartbeat unhealthy immediately, stopping new acquisitions. Transient failures use bounded persistence backoff capped by the remaining liveness window, with no extra heartbeat-interval wait before retry. If no successful heartbeat can be stored within `WorkerStaleAfterSeconds`, the heartbeat service fails rather than allowing an invisible worker to continue claiming.
 
 ## Handler registry and polling
 
@@ -42,7 +42,7 @@ Empty queue and persistence failure each keep independent exponential state. Bot
 
 ## Dispatch, renewal, and return invariant
 
-The handler receives `ClaimedJobWork`: job ID, work kind, lease ID, worker ID, fencing token, and expiration only. Renewal uses the same fenced credentials and a fresh scope. A lost/missing/recovered lease cancels the handler. SQL failure retries only while renewal can still be assured before the current expiration; otherwise the handler is cancelled.
+The handler receives `ClaimedJobWork`: job ID, work kind, lease ID, worker ID, fencing token, and expiration only. Renewal uses the same fenced credentials, SQL Server UTC, and a fresh scope. After a persistence backoff it retries immediately rather than waiting another scheduled renewal interval. A lost/missing/recovered lease cancels the handler. SQL failure retries only while renewal can still be assured before the current expiration; otherwise the handler is cancelled.
 
 A successful handler must have removed its lease through an explicit lifecycle completion or safe release. If it returns with the lease still current, the Worker logs an invariant violation and attempts release only if work remains unstarted. Active work is left for expiration recovery.
 

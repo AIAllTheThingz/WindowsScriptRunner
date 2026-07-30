@@ -20,7 +20,7 @@ Accepted clears write `JobParameterCleared` rather than misleading set semantics
 
 ## Boundaries
 
-`IJobRepository`, `IScriptDefinitionRepository`, `IWorkerNodeRepository`, and `ICredentialReferenceRepository` are domain-specific async interfaces. `ICredentialReferenceRepository` is used only to verify that a supplied secure parameter references an existing enabled credential reference; it does not return or store raw credential values. `IAuditWriter` records audit events, `IUnitOfWork` defines the commit boundary, `IClock` supplies UTC time, `ICurrentUser` represents an actor, and `IJobFingerprintService` defines future approval fingerprint creation.
+`IJobRepository`, `IScriptDefinitionRepository`, `IWorkerNodeRepository`, and `ICredentialReferenceRepository` are domain-specific async interfaces. `ICredentialReferenceRepository` is used only to verify that a supplied secure parameter references an existing enabled credential reference; it does not return or store raw credential values. `IAuditWriter` records audit events, `IUnitOfWork` defines the commit boundary, `IClock` supplies process-local UTC time, `IWorkerCoordinationClock` supplies shared authoritative time for distributed worker state, `ICurrentUser` represents an actor, and `IJobFingerprintService` defines future approval fingerprint creation.
 
 No generic repository or SQL terminology is exposed through Application. Phase 3 provides SQL Server implementations entirely in Infrastructure. Repository methods load or stage tracked aggregate graphs and propagate cancellation; they do not commit. The scoped `IUnitOfWork` performs the one atomic commit for both aggregate and audit changes.
 
@@ -37,6 +37,8 @@ Domain and application boundaries reject undefined enum values before they can b
 ## Worker and queue contracts
 
 `RegisterWorkerHandler` creates or loads the configured `WorkerNode`, requires an exact persisted name match, rejects disabled nodes, atomically synchronizes the complete capability set, records a heartbeat, audits only creation or capability changes, and commits once. `RecordWorkerHeartbeatHandler` loads and validates the node, records a monotonic heartbeat, and commits without audit noise.
+
+Worker registration, heartbeat, lease mutation, leased lifecycle validation, and expiration discovery obtain their timestamps through `IWorkerCoordinationClock`. Infrastructure implements it with SQL Server UTC so ownership decisions do not compare timestamps produced by different worker-host clocks.
 
 `IJobQueueCandidateSource` accepts the supported work-kind set, a bounded count, and the current time. It returns only `JobId`, `JobWorkKind`, `CreatedUtc`, and `UpdatedUtc`. `IExpiredJobLeaseCandidateSource` returns bounded expired lease identifiers and fenced credentials. `IFencingTokenSource` supplies a positive monotonic token from SQL Server.
 

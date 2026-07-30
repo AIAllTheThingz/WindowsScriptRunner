@@ -12,7 +12,7 @@ public sealed class RegisterWorkerHandler(
     IWorkerNodeRepository workerRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<WorkerRegistrationResult> HandleAsync(
         RegisterWorkerCommand command,
@@ -21,7 +21,7 @@ public sealed class RegisterWorkerHandler(
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(command.WorkerNodeId);
         ArgumentNullException.ThrowIfNull(command.Capabilities);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var worker = await workerRepository.GetByIdAsync(
             command.WorkerNodeId,
             cancellationToken);
@@ -106,7 +106,7 @@ public sealed class RegisterWorkerHandler(
 public sealed class RecordWorkerHeartbeatHandler(
     IWorkerNodeRepository workerRepository,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<DateTimeOffset> HandleAsync(
         RecordWorkerHeartbeatCommand command,
@@ -126,7 +126,7 @@ public sealed class RecordWorkerHeartbeatHandler(
                 "A disabled worker node cannot record a heartbeat.");
         }
 
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         worker.RecordHeartbeat(now);
         await workerRepository.UpdateAsync(worker, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);

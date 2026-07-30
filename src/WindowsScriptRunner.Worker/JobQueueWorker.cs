@@ -121,6 +121,7 @@ public sealed class JobQueueWorker(
                     try
                     {
                         await using var acquisition = scopeFactory.CreateAsyncScope();
+                        var localLeaseWindowStartedUtc = clock.UtcNow;
                         var claimed = await acquisition.ServiceProvider
                             .GetRequiredService<AcquireJobLeaseHandler>()
                             .HandleAsync(
@@ -143,7 +144,8 @@ public sealed class JobQueueWorker(
                             claimed,
                             handler,
                             control,
-                            configured);
+                            configured,
+                            localLeaseWindowStartedUtc);
                         _active.Add(claimed.LeaseId.Value, control);
                         state.SetActiveDispatchCount(_active.Count);
                         metrics.Claim(claimed.WorkKind);
@@ -235,7 +237,8 @@ public sealed class JobQueueWorker(
         ClaimedJobWork work,
         IJobWorkHandler handler,
         DispatchControl control,
-        WorkerOptions configured)
+        WorkerOptions configured,
+        DateTimeOffset localLeaseWindowStartedUtc)
     {
         metrics.DispatchStarted(work.WorkKind);
         var handlerTask = Task.CompletedTask;
@@ -248,7 +251,8 @@ public sealed class JobQueueWorker(
                 work,
                 handlerTask,
                 control,
-                configured);
+                configured,
+                localLeaseWindowStartedUtc);
             await handlerTask;
             handlerSucceeded = true;
         }
@@ -306,21 +310,30 @@ public sealed class JobQueueWorker(
         ClaimedJobWork work,
         Task handlerTask,
         DispatchControl control,
-        WorkerOptions configured)
+        WorkerOptions configured,
+        DateTimeOffset localLeaseWindowStartedUtc)
     {
         var renewalInterval = TimeSpan.FromSeconds(
             configured.LeaseRenewalIntervalSeconds);
+        var leaseDuration = TimeSpan.FromSeconds(configured.LeaseDurationSeconds);
         var expiration = work.LeaseExpiresUtc;
+        var localRenewalDeadline = localLeaseWindowStartedUtc + leaseDuration;
         var failureBackoff = new WorkerBackoff(
             TimeSpan.FromMilliseconds(configured.QueuePollingIntervalMilliseconds),
             TimeSpan.FromSeconds(configured.PersistenceFailureBackoffMaximumSeconds),
             random);
+        var waitForRenewalInterval = true;
         while (!handlerTask.IsCompleted &&
             !control.RenewalCancellation.IsCancellationRequested)
         {
-            await delay.DelayAsync(
-                renewalInterval,
-                control.RenewalCancellation.Token);
+            if (waitForRenewalInterval)
+            {
+                await delay.DelayAsync(
+                    renewalInterval,
+                    control.RenewalCancellation.Token);
+            }
+
+            waitForRenewalInterval = true;
             if (handlerTask.IsCompleted ||
                 control.RenewalCancellation.IsCancellationRequested)
             {
@@ -330,14 +343,16 @@ public sealed class JobQueueWorker(
             try
             {
                 await using var renewal = scopeFactory.CreateAsyncScope();
+                var localRenewalStartedUtc = clock.UtcNow;
                 expiration = await renewal.ServiceProvider
                     .GetRequiredService<RenewJobLeaseHandler>()
                     .HandleAsync(
                         new RenewJobLeaseCommand(
                             work.JobId,
                             work.Credentials,
-                            TimeSpan.FromSeconds(configured.LeaseDurationSeconds)),
+                            leaseDuration),
                         control.RenewalCancellation.Token);
+                localRenewalDeadline = localRenewalStartedUtc + leaseDuration;
                 failureBackoff.Reset();
                 metrics.LeaseRenewed(work.WorkKind);
                 logger.LogDebug(
@@ -365,7 +380,7 @@ public sealed class JobQueueWorker(
             catch (PersistenceUnavailableException exception)
             {
                 var retryDelay = failureBackoff.Next();
-                if (clock.UtcNow + retryDelay >= expiration)
+                if (clock.UtcNow + retryDelay >= localRenewalDeadline)
                 {
                     metrics.LeaseLost(work.WorkKind);
                     control.LeaseLost = true;
@@ -385,6 +400,7 @@ public sealed class JobQueueWorker(
                 await delay.DelayAsync(
                     retryDelay,
                     control.RenewalCancellation.Token);
+                waitForRenewalInterval = false;
             }
             catch (OperationCanceledException)
                 when (control.RenewalCancellation.IsCancellationRequested)

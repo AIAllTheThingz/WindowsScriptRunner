@@ -15,6 +15,11 @@ public interface IClock
     DateTimeOffset UtcNow { get; }
 }
 
+public interface IWorkerCoordinationClock
+{
+    Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken);
+}
+
 public interface ICurrentUser
 {
     UserIdentity User { get; }
@@ -80,7 +85,6 @@ public interface IJobQueueCandidateSource
 public interface IExpiredJobLeaseCandidateSource
 {
     Task<IReadOnlyList<ExpiredJobLeaseCandidate>> FindExpiredAsync(
-        DateTimeOffset now,
         int maximumCount,
         CancellationToken cancellationToken);
 }

@@ -18,7 +18,7 @@ public sealed class AcquireJobLeaseHandler(
     IFencingTokenSource fencingTokenSource,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<ClaimedJobWork> HandleAsync(
         AcquireJobLeaseCommand command,
@@ -50,7 +50,7 @@ public sealed class AcquireJobLeaseHandler(
             ?? throw new EntityNotFoundException(
                 nameof(WorkerNode),
                 command.WorkerNodeId.ToString());
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         if (!worker.IsLive(now, command.WorkerStaleAfter))
         {
             throw new ApplicationValidationException(
@@ -94,7 +94,7 @@ public sealed class AcquireJobLeaseHandler(
 public sealed class RenewJobLeaseHandler(
     IJobRepository jobRepository,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<DateTimeOffset> HandleAsync(
         RenewJobLeaseCommand command,
@@ -110,7 +110,7 @@ public sealed class RenewJobLeaseHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var expiration = now + command.LeaseDuration;
         try
         {
@@ -132,7 +132,7 @@ public sealed class ReleaseUnstartedJobLeaseHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         ReleaseUnstartedJobLeaseCommand command,
@@ -145,7 +145,7 @@ public sealed class ReleaseUnstartedJobLeaseHandler(
             cancellationToken);
         var lease = job.Lease ??
             throw new ApplicationConflictException("The job no longer has an active lease.");
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var actor = RegisterWorkerHandler.WorkerActor(command.Credentials.WorkerNodeId);
         try
         {
@@ -175,7 +175,7 @@ public sealed class RecoverExpiredJobLeaseHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<JobLeaseRecoveryDisposition> HandleAsync(
         RecoverExpiredJobLeaseCommand command,
@@ -189,7 +189,7 @@ public sealed class RecoverExpiredJobLeaseHandler(
             cancellationToken);
         var lease = job.Lease ??
             throw new ApplicationConflictException("The job lease was already recovered.");
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var actor = QueueHandlerSupport.LeaseRecoveryActor;
         JobLeaseRecoveryDisposition disposition;
         try
@@ -254,7 +254,7 @@ public sealed class StartLeasedDryRunHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         StartLeasedDryRunCommand command,
@@ -265,7 +265,7 @@ public sealed class StartLeasedDryRunHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.StartDryRun(command.Credentials, command.ActingUser, now);
         await QueueHandlerSupport.CommitJobAuditAsync(
             jobRepository,
@@ -284,7 +284,7 @@ public sealed class CompleteLeasedDryRunHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         CompleteLeasedDryRunCommand command,
@@ -295,7 +295,7 @@ public sealed class CompleteLeasedDryRunHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.CompleteDryRun(command.Credentials, command.ActingUser, now);
         await QueueHandlerSupport.CommitJobAuditAsync(
             jobRepository,
@@ -314,7 +314,7 @@ public sealed class StartLeasedExecutionHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<JobExecution> HandleAsync(
         StartLeasedExecutionCommand command,
@@ -325,7 +325,7 @@ public sealed class StartLeasedExecutionHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var execution = job.StartLeasedExecutionAttempt(
             command.Credentials,
             command.ActingUser,
@@ -348,7 +348,7 @@ public sealed class BeginLeasedPostValidationHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         BeginLeasedPostValidationCommand command,
@@ -359,7 +359,7 @@ public sealed class BeginLeasedPostValidationHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.BeginPostValidation(command.Credentials, command.ActingUser, now);
         await QueueHandlerSupport.CommitJobAuditAsync(
             jobRepository,
@@ -378,7 +378,7 @@ public sealed class RecordLeasedExecutionOutcomeHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<JobExecution> HandleAsync(
         RecordLeasedExecutionOutcomeCommand command,
@@ -389,7 +389,7 @@ public sealed class RecordLeasedExecutionOutcomeHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var execution = job.RecordTerminalExecutionOutcome(
             command.Credentials,
             command.Outcome,

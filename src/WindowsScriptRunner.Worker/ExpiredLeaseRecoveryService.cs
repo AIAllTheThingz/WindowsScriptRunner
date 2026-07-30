@@ -12,7 +12,6 @@ public sealed class ExpiredLeaseRecoveryService(
     WorkerMetrics metrics,
     IWorkerDelay delay,
     IWorkerRandom random,
-    IClock clock,
     IOptions<WorkerOptions> options,
     ILogger<ExpiredLeaseRecoveryService> logger) : BackgroundService
 {
@@ -42,7 +41,6 @@ public sealed class ExpiredLeaseRecoveryService(
                         candidates = await discovery.ServiceProvider
                             .GetRequiredService<IExpiredJobLeaseCandidateSource>()
                             .FindExpiredAsync(
-                                clock.UtcNow,
                                 configured.ClaimCandidateBatchSize,
                                 stoppingToken);
                     }

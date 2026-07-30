@@ -14,6 +14,48 @@ namespace WindowsScriptRunner.SqlServerTests;
 public sealed class QueuePersistenceTests
 {
     [Fact]
+    public async Task SqlCoordinationClockDrivesExpiredLeaseDiscovery()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        DateTimeOffset databaseUtc;
+        await using (var timing = new PersistenceTestScope(database))
+        {
+            var before = await timing.Context.Database.SqlQueryRaw<DateTimeOffset>(
+                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]")
+                .SingleAsync();
+            databaseUtc = await timing.CoordinationClock.GetUtcNowAsync(
+                CancellationToken.None);
+            var after = await timing.Context.Database.SqlQueryRaw<DateTimeOffset>(
+                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]")
+                .SingleAsync();
+            Assert.InRange(databaseUtc, before, after);
+        }
+
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var job = SqlServerTestData.DryRunQueuedJob(script, version);
+        var worker = Worker("worker-sql-clock", databaseUtc);
+        var acquiredUtc = databaseUtc.AddMinutes(-2);
+        var lease = job.AcquireWorkLease(
+            JobLeaseId.New(),
+            worker.Id,
+            JobWorkKind.DryRun,
+            1,
+            new UserIdentity("worker:sql-clock"),
+            acquiredUtc,
+            acquiredUtc.AddMinutes(1));
+        await SeedAsync(database, script, [job], [worker]);
+
+        await using var discovery = new PersistenceTestScope(database);
+        var candidate = Assert.Single(await discovery.ExpiredLeases.FindExpiredAsync(
+            10,
+            CancellationToken.None));
+
+        Assert.Equal(job.Id, candidate.JobId);
+        Assert.Equal(lease.Credentials, candidate.Credentials);
+    }
+
+    [Fact]
     public async Task FencingSequenceIncreasesAndCandidateDiscoveryIsBoundedFilteredAndDeterministic()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
@@ -509,7 +551,6 @@ public sealed class QueuePersistenceTests
         await using (var recovery = new PersistenceTestScope(database))
         {
             var candidate = Assert.Single(await recovery.ExpiredLeases.FindExpiredAsync(
-                claimed.LeaseExpiresUtc,
                 10,
                 CancellationToken.None));
             var disposition = await new RecoverExpiredJobLeaseHandler(
@@ -667,9 +708,17 @@ public sealed class QueuePersistenceTests
         }
     }
 
-    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    private sealed class FixedClock(DateTimeOffset utcNow) :
+        IClock,
+        IWorkerCoordinationClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+
+        public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(UtcNow);
+        }
     }
 
     private sealed class CoordinatedUnitOfWork(

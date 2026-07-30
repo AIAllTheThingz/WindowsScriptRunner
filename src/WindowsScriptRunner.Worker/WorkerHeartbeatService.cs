@@ -26,12 +26,22 @@ public sealed class WorkerHeartbeatService(
             TimeSpan.FromSeconds(configured.PersistenceFailureBackoffMaximumSeconds),
             random);
         var lastSuccess = clock.UtcNow;
+        var nextDelay = interval;
+        PersistenceUnavailableException? lastPersistenceFailure = null;
 
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await delay.DelayAsync(interval, stoppingToken);
+                await delay.DelayAsync(nextDelay, stoppingToken);
+                if (lastPersistenceFailure is not null &&
+                    clock.UtcNow - lastSuccess >= staleAfter)
+                {
+                    throw new InvalidOperationException(
+                        "Worker heartbeat could not be persisted within the configured liveness window.",
+                        lastPersistenceFailure);
+                }
+
                 try
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
@@ -40,7 +50,9 @@ public sealed class WorkerHeartbeatService(
                         .HandleAsync(
                             new RecordWorkerHeartbeatCommand(identity.NodeId),
                             stoppingToken);
-                    lastSuccess = heartbeatUtc;
+                    lastSuccess = clock.UtcNow;
+                    lastPersistenceFailure = null;
+                    nextDelay = interval;
                     state.MarkHeartbeat(true);
                     metrics.HeartbeatSuccess();
                     failureBackoff.Reset();
@@ -51,20 +63,25 @@ public sealed class WorkerHeartbeatService(
                 }
                 catch (PersistenceUnavailableException exception)
                 {
+                    lastPersistenceFailure = exception;
                     state.MarkHeartbeat(false);
                     metrics.HeartbeatFailure();
                     logger.LogWarning(
                         exception,
                         "Worker {WorkerNodeId} heartbeat persistence is unavailable.",
                         identity.NodeId);
-                    if (clock.UtcNow - lastSuccess >= staleAfter)
+                    var remaining = staleAfter - (clock.UtcNow - lastSuccess);
+                    if (remaining <= TimeSpan.Zero)
                     {
                         throw new InvalidOperationException(
                             "Worker heartbeat could not be persisted within the configured liveness window.",
                             exception);
                     }
 
-                    await delay.DelayAsync(failureBackoff.Next(), stoppingToken);
+                    var retryDelay = failureBackoff.Next();
+                    nextDelay = retryDelay < remaining
+                        ? retryDelay
+                        : remaining;
                 }
             }
         }

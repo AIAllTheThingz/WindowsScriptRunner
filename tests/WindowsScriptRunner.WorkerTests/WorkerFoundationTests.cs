@@ -291,12 +291,15 @@ public sealed class WorkerFoundationTests
         var fixture = new WorkerServiceFixture();
         await fixture.RegistrationService().StartAsync(CancellationToken.None);
         fixture.UnitOfWork.AlwaysFail = true;
-        var service = fixture.HeartbeatService(
-            new AdvancingDelay(fixture.Clock, maximumCompletions: 20));
+        var delay = new AdvancingDelay(fixture.Clock, maximumCompletions: 20);
+        var service = fixture.HeartbeatService(delay);
 
         await service.StartAsync(CancellationToken.None);
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.ExecuteTask!);
 
+        Assert.Equal(
+            TimeSpan.FromSeconds(fixture.Options.WorkerStaleAfterSeconds),
+            delay.CompletedDuration);
         Assert.False(fixture.State.HeartbeatHealthy);
         Assert.Contains(fixture.HeartbeatLogger.Levels, level => level == LogLevel.Error);
         Assert.DoesNotContain(
@@ -328,6 +331,7 @@ internal sealed class WorkerServiceFixture : IDisposable
         var services = new ServiceCollection();
         services.AddApplication();
         services.AddSingleton<IClock>(Clock);
+        services.AddSingleton<IWorkerCoordinationClock>(Clock);
         services.AddSingleton<IWorkerNodeRepository>(Workers);
         services.AddSingleton<IJobRepository>(Jobs);
         services.AddSingleton<IAuditWriter>(Audits);
@@ -459,13 +463,21 @@ internal static class WorkerTestSupport
     }
 }
 
-internal sealed class MutableClock(DateTimeOffset utcNow) : IClock
+internal sealed class MutableClock(DateTimeOffset utcNow) :
+    IClock,
+    IWorkerCoordinationClock
 {
     private readonly object _sync = new();
     private DateTimeOffset _utcNow = utcNow;
 
     public DateTimeOffset InitialUtc { get; } = utcNow;
     public DateTimeOffset UtcNow { get { lock (_sync) { return _utcNow; } } }
+
+    public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(UtcNow);
+    }
 
     public void Advance(TimeSpan amount)
     {
@@ -479,12 +491,16 @@ internal sealed class MutableClock(DateTimeOffset utcNow) : IClock
 internal sealed class AdvancingDelay(MutableClock clock, int maximumCompletions) : IWorkerDelay
 {
     private int _completionCount;
+    private long _completedTicks;
+    public TimeSpan CompletedDuration =>
+        TimeSpan.FromTicks(Interlocked.Read(ref _completedTicks));
 
     public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (Interlocked.Increment(ref _completionCount) <= maximumCompletions)
         {
+            Interlocked.Add(ref _completedTicks, delay.Ticks);
             clock.Advance(delay);
             return Task.CompletedTask;
         }
@@ -677,8 +693,12 @@ internal sealed class FakeFencingTokenSource : IFencingTokenSource
 internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCandidateSource
 {
     private readonly object _sync = new();
+    private readonly TaskCompletionSource _blocked =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _callCount;
     public int CallCount => Volatile.Read(ref _callCount);
+    public int BlockStartingAtCall { get; set; } = int.MaxValue;
+    public Task Blocked => _blocked.Task;
     public int FailuresRemaining { get; set; }
     public Queue<bool> ResponsePlan { get; } = new();
     public List<IReadOnlySet<JobWorkKind>> RequestedKinds { get; } = [];
@@ -690,7 +710,12 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Interlocked.Increment(ref _callCount);
+        var call = Interlocked.Increment(ref _callCount);
+        if (call >= BlockStartingAtCall)
+        {
+            return BlockAsync(cancellationToken);
+        }
+
         lock (_sync)
         {
             RequestedKinds.Add(supportedWorkKinds.ToHashSet());
@@ -725,6 +750,14 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
                 .ToArray();
             return Task.FromResult<IReadOnlyList<JobQueueCandidate>>(candidates);
         }
+    }
+
+    private async Task<IReadOnlyList<JobQueueCandidate>> BlockAsync(
+        CancellationToken cancellationToken)
+    {
+        _blocked.TrySetResult();
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        return [];
     }
 }
 

@@ -10,7 +10,7 @@ Infrastructure implements the Application persistence contracts with EF Core and
 - `SqlUnitOfWork` owns the single atomic `SaveChangesAsync` boundary.
 - `Persistence/Migrations` contains the reviewed SQL Server migration history.
 - `Persistence/Health` provides SQL readiness checks.
-- `Persistence/Queue` provides bounded queue/expired-lease projections and the SQL fencing-sequence source.
+- `Persistence/Queue` provides bounded queue/expired-lease projections, the SQL fencing-sequence source, and the SQL Server UTC worker-coordination clock.
 
 Call `services.AddInfrastructure(configuration)` from a composition root. Configure `ConnectionStrings:WindowsScriptRunner`. `Persistence:ApplyMigrationsOnStartup` defaults to `false`; prefer applying reviewed migration artifacts before production startup.
 

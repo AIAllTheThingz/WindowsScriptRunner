@@ -59,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IJobQueueCandidateSource, SqlJobQueueCandidateSource>();
         services.AddScoped<IExpiredJobLeaseCandidateSource, SqlExpiredJobLeaseCandidateSource>();
         services.AddScoped<IFencingTokenSource, SqlFencingTokenSource>();
+        services.AddScoped<IWorkerCoordinationClock, SqlWorkerCoordinationClock>();
         services.AddHostedService<SqlServerMigrationHostedService>();
         services.AddHealthChecks()
             .AddCheck(

@@ -2,6 +2,8 @@
 
 Phase 4 uses an aggregate-owned lease and SQL fencing sequence to coordinate multiple workers. The guarantee is at-least-once processing with stale-writer rejection, not exactly-once external side effects.
 
+SQL Server UTC is the authoritative clock for worker registration, heartbeats, lease acquisition and renewal, leased lifecycle checks, and expiration discovery/recovery. Process-local clocks are used only for local scheduling and bounded service-failure durations, so host clock skew cannot prematurely expire another worker's lease.
+
 ## Lease identity and fencing
 
 A lease contains:
@@ -28,7 +30,7 @@ The lease, aggregate change, and `JobLeaseAcquired` audit commit atomically. Opt
 
 ## Renewal and release
 
-Renewal requires current credentials, occurs before half the lease duration, and must extend expiration. It changes no job status, generates no fencing token, and writes no normal audit event.
+Renewal requires current credentials, occurs before half the lease duration, and must extend expiration. Persistence retries run immediately after their bounded backoff instead of waiting another renewal interval. Renewal changes no job status, generates no fencing token, and writes no normal audit event.
 
 Safe release is restricted to unstarted work:
 

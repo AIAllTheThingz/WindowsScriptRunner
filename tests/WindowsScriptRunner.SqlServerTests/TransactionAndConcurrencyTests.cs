@@ -635,9 +635,17 @@ public sealed class TransactionAndConcurrencyTests
             SqlServerTestData.Time.AddMinutes(10),
             eventType);
 
-    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    private sealed class FixedClock(DateTimeOffset utcNow) :
+        IClock,
+        IWorkerCoordinationClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+
+        public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(UtcNow);
+        }
     }
 
     private sealed class ConcurrentScriptDisableUnitOfWork(

@@ -361,9 +361,17 @@ public sealed class QueueApplicationTests
         }
     }
 
-    private sealed class TestClock(DateTimeOffset utcNow) : IClock
+    private sealed class TestClock(DateTimeOffset utcNow) :
+        IClock,
+        IWorkerCoordinationClock
     {
         public DateTimeOffset UtcNow { get; set; } = utcNow;
+
+        public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(UtcNow);
+        }
     }
 
     private sealed class FakeJobRepository : IJobRepository

@@ -269,6 +269,33 @@ public sealed class JobQueueWorkerTests
     }
 
     [Fact]
+    public async Task PersistenceRenewalRetriesSkipTheNextScheduledInterval()
+    {
+        using var fixture = await RegisteredFixtureAsync();
+        fixture.Options.MaxConcurrentJobs = 2;
+        fixture.Options.LeaseRenewalIntervalSeconds = 2;
+        fixture.Candidates.BlockStartingAtCall = 2;
+        AddJobs(fixture, 1);
+        var handler = new BlockingHandler(JobWorkKind.DryRun, expectedStarts: 1);
+        var delay = new RenewalRetryTrackingDelay(
+            fixture.Clock,
+            TimeSpan.FromSeconds(fixture.Options.LeaseRenewalIntervalSeconds));
+        var worker = fixture.QueueService(delay, handler);
+
+        await worker.StartAsync(CancellationToken.None);
+        await handler.ExpectedStartsReached.WaitAsync(TimeSpan.FromSeconds(1));
+        await delay.ScheduledRenewalReached.WaitAsync(TimeSpan.FromSeconds(1));
+        await fixture.Candidates.Blocked.WaitAsync(TimeSpan.FromSeconds(1));
+        fixture.UnitOfWork.AlwaysFail = true;
+        delay.ReleaseScheduledRenewal();
+
+        await fixture.UnitOfWork.WaitForFailuresAsync(2);
+
+        Assert.Equal(1, delay.ScheduledRenewalCount);
+        await worker.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task ShutdownSignalsCancellationAndWaitsForDrainCompletion()
     {
         using var fixture = await RegisteredFixtureAsync();
@@ -539,6 +566,42 @@ internal sealed class FaultingRenewalDelay : IWorkerDelay
         }
 
         return Task.Delay(TimeSpan.FromMilliseconds(1), cancellationToken);
+    }
+}
+
+internal sealed class RenewalRetryTrackingDelay(
+    MutableClock clock,
+    TimeSpan renewalInterval) : IWorkerDelay
+{
+    private readonly TaskCompletionSource _scheduledRenewalReached =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _releaseScheduledRenewal =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _scheduledRenewalCount;
+    private int _retryDelayCount;
+
+    public int ScheduledRenewalCount => Volatile.Read(ref _scheduledRenewalCount);
+    public Task ScheduledRenewalReached => _scheduledRenewalReached.Task;
+    public void ReleaseScheduledRenewal() => _releaseScheduledRenewal.TrySetResult();
+
+    public async Task DelayAsync(
+        TimeSpan delay,
+        CancellationToken cancellationToken)
+    {
+        if (delay == renewalInterval)
+        {
+            Interlocked.Increment(ref _scheduledRenewalCount);
+            _scheduledRenewalReached.TrySetResult();
+            await _releaseScheduledRenewal.Task.WaitAsync(cancellationToken);
+            clock.Advance(delay);
+            return;
+        }
+
+        clock.Advance(delay);
+        if (Interlocked.Increment(ref _retryDelayCount) >= 2)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
     }
 }
 

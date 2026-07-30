@@ -25,8 +25,12 @@ internal sealed class PersistenceTestScope : IAsyncDisposable
         Candidates = new SqlJobQueueCandidateSource(
             Context,
             NullLogger<SqlJobQueueCandidateSource>.Instance);
+        CoordinationClock = new SqlWorkerCoordinationClock(
+            Context,
+            NullLogger<SqlWorkerCoordinationClock>.Instance);
         ExpiredLeases = new SqlExpiredJobLeaseCandidateSource(
             Context,
+            CoordinationClock,
             NullLogger<SqlExpiredJobLeaseCandidateSource>.Instance);
         FencingTokens = new SqlFencingTokenSource(
             Context,
@@ -41,6 +45,7 @@ internal sealed class PersistenceTestScope : IAsyncDisposable
     public SqlAuditWriter Audits { get; }
     public SqlUnitOfWork UnitOfWork { get; }
     public SqlJobQueueCandidateSource Candidates { get; }
+    public SqlWorkerCoordinationClock CoordinationClock { get; }
     public SqlExpiredJobLeaseCandidateSource ExpiredLeases { get; }
     public SqlFencingTokenSource FencingTokens { get; }
 

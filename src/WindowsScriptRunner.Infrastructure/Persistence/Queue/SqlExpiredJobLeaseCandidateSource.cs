@@ -10,12 +10,12 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Queue;
 
 public sealed class SqlExpiredJobLeaseCandidateSource(
     WindowsScriptRunnerDbContext dbContext,
+    IWorkerCoordinationClock coordinationClock,
     ILogger<SqlExpiredJobLeaseCandidateSource> logger) : IExpiredJobLeaseCandidateSource
 {
     private const int MaximumCandidateCount = 100;
 
     public async Task<IReadOnlyList<ExpiredJobLeaseCandidate>> FindExpiredAsync(
-        DateTimeOffset now,
         int maximumCount,
         CancellationToken cancellationToken)
     {
@@ -25,6 +25,7 @@ public sealed class SqlExpiredJobLeaseCandidateSource(
                 $"Expired lease candidate count must be between 1 and {MaximumCandidateCount}.");
         }
 
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var candidates = await SqlExceptionTranslator.ExecuteAsync(
             () => dbContext.JobLeases
                 .AsNoTracking()
