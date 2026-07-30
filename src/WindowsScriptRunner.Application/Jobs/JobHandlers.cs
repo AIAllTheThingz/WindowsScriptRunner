@@ -1,5 +1,6 @@
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -16,7 +17,7 @@ public sealed class CreateDraftJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task<JobId> HandleAsync(
         CreateDraftJobCommand command,
@@ -32,7 +33,7 @@ public sealed class CreateDraftJobHandler(
         var version = script.GetVersion(command.ScriptVersionId);
         ValidateRequestedPhase(version, command.RequestedPhase);
 
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         var job = Job.CreateDraft(
             JobId.New(),
             command.ScriptDefinitionId,
@@ -115,13 +116,13 @@ public sealed class AddJobTargetHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(AddJobTargetCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
         var job = await GetJobAsync(jobRepository, command.JobId, cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.AddTarget(command.TargetName, command.ActingUser, now);
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
@@ -150,7 +151,7 @@ public sealed class SetJobParameterHandler(
     ICredentialReferenceRepository credentialRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         SetJobParameterCommand command,
@@ -170,7 +171,7 @@ public sealed class SetJobParameterHandler(
         var suppliedValue = command.SerializedValue;
         var isAbsent = string.IsNullOrWhiteSpace(suppliedValue);
         definition.ValidateSerializedValue(suppliedValue);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
 
         AuditEvent audit;
         if (isAbsent)
@@ -288,7 +289,7 @@ public sealed class SubmitJobHandler(
     IScriptDefinitionRepository scriptRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(SubmitJobCommand command, CancellationToken cancellationToken)
     {
@@ -301,7 +302,7 @@ public sealed class SubmitJobHandler(
             scriptRepository,
             job.ScriptDefinitionId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.Submit(script, command.ActingUser, now);
 
         await jobRepository.UpdateAsync(job, cancellationToken);
@@ -321,7 +322,7 @@ public sealed class TransitionJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         TransitionJobCommand command,
@@ -333,7 +334,7 @@ public sealed class TransitionJobHandler(
             command.JobId,
             cancellationToken);
         var previous = job.Status;
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         ApplyOperationalTransition(job, command, now);
 
         await jobRepository.UpdateAsync(job, cancellationToken);
@@ -420,7 +421,7 @@ public sealed class ApproveJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(ApproveJobCommand command, CancellationToken cancellationToken)
     {
@@ -429,7 +430,7 @@ public sealed class ApproveJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.RecordApproval(
             command.ActingUser,
             command.ApprovalFingerprint,
@@ -452,7 +453,7 @@ public sealed class RejectJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(RejectJobCommand command, CancellationToken cancellationToken)
     {
@@ -461,7 +462,7 @@ public sealed class RejectJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.RecordRejection(
             command.ActingUser,
             command.ApprovalFingerprint,
@@ -484,7 +485,7 @@ public sealed class CompleteReadOnlyJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         CompleteReadOnlyJobCommand command,
@@ -495,7 +496,7 @@ public sealed class CompleteReadOnlyJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.CompleteReadOnlyAfterDryRun(command.ActingUser, now);
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
@@ -514,7 +515,7 @@ public sealed class CompleteValidationJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         CompleteValidationJobCommand command,
@@ -525,7 +526,7 @@ public sealed class CompleteValidationJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.CompleteRequestedValidation(command.ActingUser, now);
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
@@ -544,7 +545,7 @@ public sealed class CompleteDryRunJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IWorkerCoordinationClock coordinationClock)
 {
     public async Task HandleAsync(
         CompleteDryRunJobCommand command,
@@ -555,7 +556,7 @@ public sealed class CompleteDryRunJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
-        var now = clock.UtcNow;
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.CompleteRequestedDryRun(command.ActingUser, now);
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
@@ -632,17 +633,18 @@ public sealed class RecordExecutionOutcomeHandler(
             command.Summary,
             command.ActingUser,
             now);
-        var audit = CreateDraftJobHandler.Audit(
-            "ExecutionOutcomeRecorded",
+        await QueueHandlerSupport.CommitTerminalJobAuditAsync(
+            jobRepository,
+            auditWriter,
+            unitOfWork,
             job,
+            command.LeaseCredentials,
+            "ExecutionOutcomeRecorded",
             command.ActingUser,
             now,
             "The active execution attempt was completed.",
-            CreateExecutionOutcomeAuditProperties(command, execution));
-
-        await jobRepository.UpdateAsync(job, cancellationToken);
-        await auditWriter.WriteAsync(audit, cancellationToken);
-        await unitOfWork.CommitAsync(cancellationToken);
+            CreateExecutionOutcomeAuditProperties(command, execution),
+            cancellationToken);
     }
 
     private static IReadOnlyDictionary<string, string> CreateExecutionOutcomeAuditProperties(

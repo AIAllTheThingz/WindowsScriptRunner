@@ -61,9 +61,17 @@ public sealed class ApplicationHandlerIntegrationTests
         Assert.True(unitOfWork.Committed);
     }
 
-    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    private sealed class FixedClock(DateTimeOffset utcNow) :
+        IClock,
+        IWorkerCoordinationClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+
+        public Task<DateTimeOffset> GetUtcNowAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(UtcNow);
+        }
     }
 
     private sealed class InMemoryJobRepository : IJobRepository
@@ -89,6 +97,12 @@ public sealed class ApplicationHandlerIntegrationTests
 
         public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken) =>
             UpdateAsync(job, cancellationToken);
+
+        public Task<bool> TryRefreshLeaseAsync(
+            JobId jobId,
+            JobLeaseCredentials credentials,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 
     private sealed class RecordingAuditWriter : IAuditWriter

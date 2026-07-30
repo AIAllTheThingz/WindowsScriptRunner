@@ -623,6 +623,12 @@ internal sealed class FakeJobRepository : IJobRepository
 
     public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken) =>
         UpdateAsync(job, cancellationToken);
+
+    public Task<bool> TryRefreshLeaseAsync(
+        JobId jobId,
+        JobLeaseCredentials credentials,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(false);
 }
 
 internal sealed class FakeAuditWriter : IAuditWriter

@@ -2,7 +2,7 @@
 
 Phase 4 uses an aggregate-owned lease and SQL fencing sequence to coordinate multiple workers. The guarantee is at-least-once processing with stale-writer rejection, not exactly-once external side effects.
 
-SQL Server UTC is the authoritative clock for worker registration, heartbeats, lease acquisition and renewal, leased lifecycle checks, and expiration discovery/recovery. Process-local clocks are used only for local scheduling and bounded service-failure durations, so host clock skew cannot prematurely expire another worker's lease.
+SQL Server UTC is the authoritative clock for persisted job mutations, worker registration, heartbeats, lease acquisition and renewal, leased lifecycle checks, and expiration discovery/recovery. Process-local clocks are used only for local scheduling and bounded service-failure durations, so application or worker host skew cannot block queue entry or prematurely expire another worker's lease.
 
 ## Lease identity and fencing
 
@@ -41,7 +41,7 @@ Release removes the lease and writes `JobLeaseReleased`. Running DryRun, Executi
 
 ## Completion
 
-Lease-aware lifecycle handlers validate current credentials and non-expiration before mutation. DryRun start/completion and Execute start/post-validation/outcome operations preserve the lease while active and remove it only at explicit terminal resolution. A stale handler cannot report success after a different owner or recovery changed the lease.
+Lease-aware lifecycle handlers validate current credentials and non-expiration before mutation. DryRun start/completion and Execute start/post-validation/outcome operations preserve the lease while active and remove it only at explicit terminal resolution. If renewal wins a race with terminal deletion, terminal resolution refreshes and retries the lease concurrency token only when the job row is unchanged and the same lease ID, worker ID, and fencing token still own the lease. The retry is bounded to three commit attempts. A stale handler cannot report success after a different owner or recovery changed the lease.
 
 ## Expiration recovery
 

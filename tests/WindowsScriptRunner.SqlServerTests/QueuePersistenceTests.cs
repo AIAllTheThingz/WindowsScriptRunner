@@ -504,6 +504,84 @@ public sealed class QueuePersistenceTests
     }
 
     [Fact]
+    public async Task TerminalOutcomeRetriesAfterConcurrentRenewalCommits()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var seeded = await SeedClaimedJobAsync(database);
+        var actor = new UserIdentity("worker:terminal-retry");
+        var executionStartedUtc = seeded.Work.LeaseExpiresUtc.AddMinutes(-1);
+        await using (var start = new PersistenceTestScope(database))
+        {
+            _ = await new StartLeasedExecutionHandler(
+                start.Jobs,
+                start.Audits,
+                start.UnitOfWork,
+                new FixedClock(executionStartedUtc))
+                .HandleAsync(
+                    new StartLeasedExecutionCommand(
+                        seeded.JobId,
+                        seeded.Work.Credentials,
+                        actor),
+                    CancellationToken.None);
+        }
+
+        var operationTime = executionStartedUtc.AddSeconds(1);
+        await using var renewal = new PersistenceTestScope(database);
+        await using var terminal = new PersistenceTestScope(database);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var commitOrder = new RenewalBeforeTerminalCommit();
+        var renewalHandler = new RenewJobLeaseHandler(
+            renewal.Jobs,
+            new DelegatingUnitOfWork(
+                cancellationToken => commitOrder.CommitRenewalAsync(
+                    renewal.UnitOfWork,
+                    cancellationToken)),
+            new FixedClock(operationTime));
+        var terminalHandler = new RecordLeasedExecutionOutcomeHandler(
+            terminal.Jobs,
+            terminal.Audits,
+            new DelegatingUnitOfWork(
+                cancellationToken => commitOrder.CommitTerminalAsync(
+                    terminal.UnitOfWork,
+                    cancellationToken)),
+            new FixedClock(operationTime));
+
+        var results = await Task.WhenAll(
+            CaptureExceptionAsync(
+                async () =>
+                {
+                    _ = await renewalHandler.HandleAsync(
+                        new RenewJobLeaseCommand(
+                            seeded.JobId,
+                            seeded.Work.Credentials,
+                            TimeSpan.FromMinutes(2)),
+                        timeout.Token);
+                }),
+            CaptureExceptionAsync(
+                async () =>
+                {
+                    _ = await terminalHandler.HandleAsync(
+                        new RecordLeasedExecutionOutcomeCommand(
+                            seeded.JobId,
+                            seeded.Work.Credentials,
+                            ExecutionOutcome.Succeeded,
+                            0,
+                            null,
+                            actor),
+                        timeout.Token);
+                }));
+
+        Assert.All(results, Assert.Null);
+        await using var verification = new PersistenceTestScope(database);
+        var job = Assert.IsType<Job>(
+            await verification.Jobs.GetByIdAsync(seeded.JobId, CancellationToken.None));
+        var attempt = Assert.Single(job.Executions);
+        Assert.Equal(JobStatus.Completed, job.Status);
+        Assert.Equal(ExecutionOutcome.Succeeded, attempt.Outcome);
+        Assert.Null(job.Lease);
+    }
+
+    [Fact]
     public async Task ConcurrentRecoveryAttemptsProduceOneWinner()
     {
         await using var database = await SqlServerDatabase.CreateAsync();
@@ -760,6 +838,19 @@ public sealed class QueuePersistenceTests
         }
     }
 
+    private static async Task<Exception?> CaptureExceptionAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+    }
+
     private sealed class FixedClock(DateTimeOffset utcNow) :
         IClock,
         IWorkerCoordinationClock
@@ -781,6 +872,47 @@ public sealed class QueuePersistenceTests
         {
             await barrier.SignalAndWaitAsync(cancellationToken);
             await inner.CommitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class DelegatingUnitOfWork(
+        Func<CancellationToken, Task> commit) : IUnitOfWork
+    {
+        public Task CommitAsync(CancellationToken cancellationToken) =>
+            commit(cancellationToken);
+    }
+
+    private sealed class RenewalBeforeTerminalCommit
+    {
+        private readonly TaskCompletionSource terminalReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource renewalCommitted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task CommitRenewalAsync(
+            IUnitOfWork unitOfWork,
+            CancellationToken cancellationToken)
+        {
+            await terminalReady.Task.WaitAsync(cancellationToken);
+            try
+            {
+                await unitOfWork.CommitAsync(cancellationToken);
+                renewalCommitted.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                renewalCommitted.TrySetException(exception);
+                throw;
+            }
+        }
+
+        public async Task CommitTerminalAsync(
+            IUnitOfWork unitOfWork,
+            CancellationToken cancellationToken)
+        {
+            terminalReady.TrySetResult();
+            await renewalCommitted.Task.WaitAsync(cancellationToken);
+            await unitOfWork.CommitAsync(cancellationToken);
         }
     }
 
