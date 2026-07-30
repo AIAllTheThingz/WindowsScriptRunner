@@ -5,6 +5,56 @@ namespace WindowsScriptRunner.PowerShellTests;
 
 public sealed class BoundedProcessOutputTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SnapshotTrimsIncompleteUtf8FromEitherStream(bool standardOutput)
+    {
+        var bytes = Encoding.UTF8.GetBytes("✓");
+        using var stream = new MemoryStream(bytes);
+        using var capture = new BoundedProcessOutput(1, 1, 2);
+
+        if (standardOutput)
+        {
+            await capture.PumpStandardOutputAsync(stream);
+        }
+        else
+        {
+            await capture.PumpStandardErrorAsync(stream);
+        }
+
+        var output = capture.Snapshot();
+        var capturedText = standardOutput
+            ? output.StandardOutput
+            : output.StandardError;
+        var capturedBytes = standardOutput
+            ? output.StandardOutputBytes
+            : output.StandardErrorBytes;
+
+        Assert.Equal(string.Empty, capturedText);
+        Assert.Equal(bytes.Length, capturedBytes);
+        Assert.DoesNotContain("\uFFFD", capturedText, StringComparison.Ordinal);
+        Assert.True(
+            standardOutput
+                ? output.StandardOutputTruncated
+                : output.StandardErrorTruncated);
+        Assert.True(Encoding.UTF8.GetByteCount(capturedText) <= 1);
+    }
+
+    [Fact]
+    public async Task SnapshotPreservesLastCompleteUtf8CharacterWithinLimit()
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("A✓B"));
+        using var capture = new BoundedProcessOutput(4, 4, 8);
+
+        await capture.PumpStandardOutputAsync(stream);
+        var output = capture.Snapshot();
+
+        Assert.Equal("A✓", output.StandardOutput);
+        Assert.Equal(4, Encoding.UTF8.GetByteCount(output.StandardOutput));
+        Assert.True(output.StandardOutputTruncated);
+    }
+
     [Fact]
     public async Task DiscardedBytesMarkEachAffectedStreamAsTruncated()
     {
