@@ -143,14 +143,16 @@ public sealed class WorkerFoundationTests
     {
         var dryRun = new ReturningHandler(JobWorkKind.DryRun);
         var registry = new JobWorkHandlerRegistry([dryRun]);
+        var dryRunRoute = WorkerTestSupport.Route(JobWorkKind.DryRun).Single();
 
-        Assert.Equal([JobWorkKind.DryRun], registry.SupportedWorkKinds);
-        Assert.Same(dryRun, registry.GetRequired(JobWorkKind.DryRun));
+        Assert.Equal([dryRunRoute], registry.SupportedRoutes);
+        Assert.Same(dryRun, registry.GetRequired(dryRunRoute));
         Assert.Throws<InvalidOperationException>(
             () => new JobWorkHandlerRegistry(
                 [dryRun, new ReturningHandler(JobWorkKind.DryRun)]));
         Assert.Throws<InvalidOperationException>(
-            () => registry.GetRequired(JobWorkKind.Execute));
+            () => registry.GetRequired(
+                WorkerTestSupport.Route(JobWorkKind.Execute).Single()));
     }
 
     [Fact]
@@ -314,7 +316,8 @@ public sealed class WorkerFoundationTests
 
     private sealed class ReturningHandler(JobWorkKind workKind) : IJobWorkHandler
     {
-        public JobWorkKind WorkKind { get; } = workKind;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes { get; } =
+            WorkerTestSupport.Route(workKind);
         public Task HandleAsync(ClaimedJobWork work, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
@@ -409,6 +412,15 @@ internal sealed class WorkerServiceFixture : IDisposable
 
 internal static class WorkerTestSupport
 {
+    internal static ScriptVersionId TestScriptVersionId { get; } =
+        new(Guid.Parse("e5b5202d-51f2-487a-bd66-70f00ce56804"));
+
+    internal static IReadOnlySet<JobWorkRoute> Route(JobWorkKind workKind) =>
+        new HashSet<JobWorkRoute>
+        {
+            new(workKind, TestScriptVersionId),
+        };
+
     internal static WorkerOptions Options() =>
         new()
         {
@@ -432,7 +444,7 @@ internal static class WorkerTestSupport
         var user = new UserIdentity("DOMAIN\\requester");
         var worker = new UserIdentity("worker:test");
         var version = new ScriptVersion(
-            ScriptVersionId.New(),
+            TestScriptVersionId,
             ScriptVersionNumber.Parse("1.0.0"),
             "scripts/Test.ps1",
             new string('a', 64),
@@ -715,10 +727,10 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
     public Task Blocked => _blocked.Task;
     public int FailuresRemaining { get; set; }
     public Queue<bool> ResponsePlan { get; } = new();
-    public List<IReadOnlySet<JobWorkKind>> RequestedKinds { get; } = [];
+    public List<IReadOnlySet<JobWorkRoute>> RequestedRoutes { get; } = [];
 
     public Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
-        IReadOnlySet<JobWorkKind> supportedWorkKinds,
+        IReadOnlySet<JobWorkRoute> supportedRoutes,
         int maximumCount,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -732,7 +744,7 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
 
         lock (_sync)
         {
-            RequestedKinds.Add(supportedWorkKinds.ToHashSet());
+            RequestedRoutes.Add(supportedRoutes.ToHashSet());
             if (FailuresRemaining > 0)
             {
                 FailuresRemaining--;
@@ -751,7 +763,10 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
                 .Where(job =>
                     job.Lease is null &&
                     job.Status == JobStatus.DryRunQueued &&
-                    supportedWorkKinds.Contains(JobWorkKind.DryRun))
+                    supportedRoutes.Contains(
+                        new JobWorkRoute(
+                            JobWorkKind.DryRun,
+                            job.ScriptVersionId)))
                 .OrderBy(job => job.UpdatedUtc)
                 .ThenBy(job => job.CreatedUtc)
                 .ThenBy(job => job.Id.Value)
@@ -759,6 +774,7 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
                 .Select(job => new JobQueueCandidate(
                     job.Id,
                     JobWorkKind.DryRun,
+                    job.ScriptVersionId,
                     job.CreatedUtc,
                     job.UpdatedUtc))
                 .ToArray();

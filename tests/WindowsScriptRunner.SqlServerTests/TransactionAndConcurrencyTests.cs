@@ -260,6 +260,7 @@ public sealed class TransactionAndConcurrencyTests
                     new AcquireJobLeaseCommand(
                         job.Id,
                         JobWorkKind.Execute,
+                        job.ScriptVersionId,
                         worker.Id,
                         TimeSpan.FromMinutes(2),
                         TimeSpan.FromHours(1)),
@@ -439,6 +440,7 @@ public sealed class TransactionAndConcurrencyTests
                 new AcquireJobLeaseCommand(
                     firstJob.Id,
                     JobWorkKind.Execute,
+                    firstJob.ScriptVersionId,
                     worker.Id,
                     TimeSpan.FromMinutes(2),
                     TimeSpan.FromHours(1)),
@@ -447,6 +449,7 @@ public sealed class TransactionAndConcurrencyTests
                 new AcquireJobLeaseCommand(
                     secondJob.Id,
                     JobWorkKind.Execute,
+                    secondJob.ScriptVersionId,
                     worker.Id,
                     TimeSpan.FromMinutes(2),
                     TimeSpan.FromHours(1)),

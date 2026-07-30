@@ -7,3 +7,4 @@
 *.json text eol=crlf
 *.md text eol=crlf
 *.ps1 text eol=crlf
+src/WindowsScriptRunner.Automation/Artifacts/**/*.ps1 text eol=lf

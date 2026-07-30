@@ -38,8 +38,10 @@ public sealed class JobQueueWorkerTests
         await worker.StopAsync(CancellationToken.None);
 
         Assert.All(
-            fixture.Candidates.RequestedKinds,
-            kinds => Assert.Equal([workKind], kinds));
+            fixture.Candidates.RequestedRoutes,
+            routes => Assert.Equal(
+                WorkerTestSupport.Route(workKind),
+                routes));
     }
 
     [Fact]
@@ -375,7 +377,8 @@ public sealed class JobQueueWorkerTests
 
     private sealed class ReturningHandler(JobWorkKind kind) : IJobWorkHandler
     {
-        public JobWorkKind WorkKind { get; } = kind;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes { get; } =
+            WorkerTestSupport.Route(kind);
         public Task HandleAsync(ClaimedJobWork work, CancellationToken cancellationToken) =>
             Task.CompletedTask;
     }
@@ -384,7 +387,8 @@ public sealed class JobQueueWorkerTests
     {
         private readonly TaskCompletionSource _returned =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public JobWorkKind WorkKind { get; } = kind;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes { get; } =
+            WorkerTestSupport.Route(kind);
         public Task Returned => _returned.Task;
 
         public Task HandleAsync(ClaimedJobWork work, CancellationToken cancellationToken)
@@ -404,7 +408,8 @@ public sealed class JobQueueWorkerTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _startCount;
 
-        public JobWorkKind WorkKind { get; } = kind;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes { get; } =
+            WorkerTestSupport.Route(kind);
         public int StartCount => Volatile.Read(ref _startCount);
         public Task ExpectedStartsReached => _expected.Task;
         public Task CancellationObserved => _cancelled.Task;
@@ -441,7 +446,8 @@ public sealed class JobQueueWorkerTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _count;
 
-        public JobWorkKind WorkKind => JobWorkKind.DryRun;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes =>
+            WorkerTestSupport.Route(JobWorkKind.DryRun);
         public int Count => Volatile.Read(ref _count);
         public Task Completed => _completed.Task;
 
@@ -469,7 +475,8 @@ public sealed class JobQueueWorkerTests
     {
         private readonly TaskCompletionSource _invoked =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public JobWorkKind WorkKind => JobWorkKind.DryRun;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes =>
+            WorkerTestSupport.Route(JobWorkKind.DryRun);
         public Task Invoked => _invoked.Task;
 
         public Task HandleAsync(ClaimedJobWork work, CancellationToken cancellationToken)
@@ -482,7 +489,8 @@ public sealed class JobQueueWorkerTests
     private sealed class RenewalFaultAwaitingHandler(FaultingRenewalDelay delay) :
         IJobWorkHandler
     {
-        public JobWorkKind WorkKind => JobWorkKind.DryRun;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes =>
+            WorkerTestSupport.Route(JobWorkKind.DryRun);
 
         public async Task HandleAsync(
             ClaimedJobWork work,
@@ -502,7 +510,8 @@ public sealed class JobQueueWorkerTests
         private readonly TaskCompletionSource _finished =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public JobWorkKind WorkKind => JobWorkKind.DryRun;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes =>
+            WorkerTestSupport.Route(JobWorkKind.DryRun);
         public Task<ClaimedJobWork> Started => _started.Task;
         public Task Finished => _finished.Task;
         public void Complete() => _complete.TrySetResult();
@@ -532,7 +541,8 @@ public sealed class JobQueueWorkerTests
         private readonly TaskCompletionSource _release =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public JobWorkKind WorkKind => JobWorkKind.DryRun;
+        public IReadOnlySet<JobWorkRoute> SupportedRoutes =>
+            WorkerTestSupport.Route(JobWorkKind.DryRun);
         public Task Started => _started.Task;
         public Task CancellationObserved => _cancelled.Task;
         public void Release() => _release.TrySetResult();

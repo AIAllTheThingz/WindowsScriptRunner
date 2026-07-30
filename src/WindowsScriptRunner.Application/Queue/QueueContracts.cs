@@ -4,9 +4,14 @@ using WindowsScriptRunner.Domain.Jobs;
 
 namespace WindowsScriptRunner.Application.Queue;
 
+public sealed record JobWorkRoute(
+    JobWorkKind WorkKind,
+    ScriptVersionId ScriptVersionId);
+
 public sealed record JobQueueCandidate(
     JobId JobId,
     JobWorkKind WorkKind,
+    ScriptVersionId ScriptVersionId,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);
 
@@ -18,6 +23,7 @@ public sealed record ExpiredJobLeaseCandidate(
 public sealed record ClaimedJobWork(
     JobId JobId,
     JobWorkKind WorkKind,
+    ScriptVersionId ScriptVersionId,
     JobLeaseId LeaseId,
     WorkerNodeId WorkerNodeId,
     long FencingToken,
@@ -33,7 +39,7 @@ public sealed record JobLeaseInspection(
 
 public interface IJobWorkHandler
 {
-    JobWorkKind WorkKind { get; }
+    IReadOnlySet<JobWorkRoute> SupportedRoutes { get; }
 
     Task HandleAsync(ClaimedJobWork work, CancellationToken cancellationToken);
 }

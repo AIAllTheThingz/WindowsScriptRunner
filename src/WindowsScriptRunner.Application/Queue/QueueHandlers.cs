@@ -44,6 +44,12 @@ public sealed class AcquireJobLeaseHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
+        if (job.ScriptVersionId != command.ScriptVersionId)
+        {
+            throw new ApplicationConflictException(
+                "The queue candidate script version no longer matches the requested route.");
+        }
+
         var worker = await workerRepository.GetByIdAsync(
             command.WorkerNodeId,
             cancellationToken)
@@ -312,6 +318,78 @@ public sealed class CompleteLeasedDryRunHandler(
     }
 }
 
+public sealed class CompleteLeasedReadOnlyDryRunHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IWorkerCoordinationClock coordinationClock)
+{
+    public async Task HandleAsync(
+        CompleteLeasedReadOnlyDryRunCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var job = await QueueHandlerSupport.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
+        job.CompleteDryRun(command.Credentials, command.ActingUser, now);
+        job.CompleteReadOnlyAfterDryRun(command.ActingUser, now);
+        await QueueHandlerSupport.CommitTerminalJobAuditAsync(
+            jobRepository,
+            auditWriter,
+            unitOfWork,
+            job,
+            command.Credentials,
+            "ReadOnlyDryRunCompleted",
+            command.ActingUser,
+            now,
+            "The leased read-only dry-run completed and resolved its lease.",
+            null,
+            cancellationToken);
+    }
+}
+
+public sealed class TerminateLeasedDryRunHandler(
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IWorkerCoordinationClock coordinationClock)
+{
+    public async Task HandleAsync(
+        TerminateLeasedDryRunCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var job = await QueueHandlerSupport.GetJobAsync(
+            jobRepository,
+            command.JobId,
+            cancellationToken);
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
+        job.TerminateDryRun(
+            command.Credentials,
+            command.Outcome,
+            command.ActingUser,
+            now);
+        await QueueHandlerSupport.CommitTerminalJobAuditAsync(
+            jobRepository,
+            auditWriter,
+            unitOfWork,
+            job,
+            command.Credentials,
+            "DryRunTerminated",
+            command.ActingUser,
+            now,
+            "The leased dry-run work reached a controlled terminal state and resolved its lease.",
+            new Dictionary<string, string>
+            {
+                ["Outcome"] = command.Outcome.ToString(),
+            },
+            cancellationToken);
+    }
+}
+
 public sealed class StartLeasedExecutionHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
@@ -431,6 +509,7 @@ internal static class QueueHandlerSupport
         new(
             job.Id,
             lease.WorkKind,
+            job.ScriptVersionId,
             lease.Id,
             lease.WorkerNodeId,
             lease.FencingToken,

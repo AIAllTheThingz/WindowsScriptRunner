@@ -5,37 +5,43 @@ namespace WindowsScriptRunner.Worker;
 
 public sealed class JobWorkHandlerRegistry
 {
-    private readonly IReadOnlyDictionary<JobWorkKind, IJobWorkHandler> _handlers;
+    private readonly IReadOnlyDictionary<JobWorkRoute, IJobWorkHandler> _handlers;
 
     public JobWorkHandlerRegistry(IEnumerable<IJobWorkHandler> handlers)
     {
         ArgumentNullException.ThrowIfNull(handlers);
-        var registry = new Dictionary<JobWorkKind, IJobWorkHandler>();
+        var registry = new Dictionary<JobWorkRoute, IJobWorkHandler>();
         foreach (var handler in handlers)
         {
             ArgumentNullException.ThrowIfNull(handler);
-            if (!Enum.IsDefined(handler.WorkKind))
+            ArgumentNullException.ThrowIfNull(handler.SupportedRoutes);
+            foreach (var route in handler.SupportedRoutes)
             {
-                throw new InvalidOperationException(
-                    $"Handler work kind '{handler.WorkKind}' is not defined.");
-            }
+                if (route is null ||
+                    route.ScriptVersionId is null ||
+                    !Enum.IsDefined(route.WorkKind))
+                {
+                    throw new InvalidOperationException(
+                        "Handler routes must contain a defined work kind and script version.");
+                }
 
-            if (!registry.TryAdd(handler.WorkKind, handler))
-            {
-                throw new InvalidOperationException(
-                    $"A handler is already registered for work kind '{handler.WorkKind}'.");
+                if (!registry.TryAdd(route, handler))
+                {
+                    throw new InvalidOperationException(
+                        $"A handler is already registered for route '{route}'.");
+                }
             }
         }
 
         _handlers = registry;
-        SupportedWorkKinds = registry.Keys.ToHashSet();
+        SupportedRoutes = registry.Keys.ToHashSet();
     }
 
-    public IReadOnlySet<JobWorkKind> SupportedWorkKinds { get; }
+    public IReadOnlySet<JobWorkRoute> SupportedRoutes { get; }
 
-    public IJobWorkHandler GetRequired(JobWorkKind workKind) =>
-        _handlers.TryGetValue(workKind, out var handler)
+    public IJobWorkHandler GetRequired(JobWorkRoute route) =>
+        _handlers.TryGetValue(route, out var handler)
             ? handler
             : throw new InvalidOperationException(
-                $"No work handler is registered for '{workKind}'.");
+                $"No work handler is registered for route '{route}'.");
 }

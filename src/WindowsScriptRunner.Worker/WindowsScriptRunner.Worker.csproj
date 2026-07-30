@@ -5,6 +5,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\WindowsScriptRunner.Application\WindowsScriptRunner.Application.csproj" />
+    <ProjectReference Include="..\WindowsScriptRunner.Automation\WindowsScriptRunner.Automation.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Contracts\WindowsScriptRunner.Contracts.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Domain\WindowsScriptRunner.Domain.csproj" />
     <ProjectReference Include="..\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj" />

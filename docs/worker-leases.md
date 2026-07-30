@@ -58,15 +58,16 @@ Recovery writes `JobLeaseExpired` and `JobLeaseRecovered` in the same transactio
 
 Lease audit properties are bounded to work kind, worker ID, lease ID, fencing token, expiration, and recovery disposition. Fencing tokens are non-secret coordination numbers. Parameter values, credential-reference IDs, external credential identifiers, script content, approval comments, and connection data are prohibited.
 
-## Phase 5 contract
+## Phase 6 production handler contract
 
-Phase 5 may register a production handler for an explicitly supported work kind. That handler must:
+When the reviewed inventory package is enabled, Phase 6 registers one production handler for its exact `(DryRun, ScriptVersionId)` route. That handler must:
 
 1. accept only the supplied `ClaimedJobWork`;
 2. use its worker identity and fencing token without replacement;
 3. honor cancellation on lease loss and shutdown;
-4. resolve the lease through the lease-aware Application commands;
-5. make external operations idempotent/fenced where possible; and
-6. never load or log secrets through the queue descriptor.
+4. resolve the lease through lease-aware Application commands in fresh scopes;
+5. treat the local read-only operation as safe to retry under at-least-once delivery;
+6. never load or log parameters, secrets, stdout, stderr, or machine inventory through the queue descriptor; and
+7. never resolve terminal state with stale lease credentials.
 
-Phase 4 intentionally supplies no production handler and does not launch PowerShell.
+With the package disabled, the Worker advertises no route, leases no job, and does not launch PowerShell.

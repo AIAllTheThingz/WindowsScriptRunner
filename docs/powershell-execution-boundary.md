@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 5 establishes one secure process-lifetime boundary for PowerShell 7 on Windows. It executes only the copied, hashed `tests/WindowsScriptRunner.PowerShellTests/Fixtures/ControlledExecutionFixture.ps1` artifact during integration tests. It does not select arbitrary scripts, accept command text, retrieve credentials, dispatch production queue work, persist reports, or implement Phase 6.
+Phase 5 establishes one secure process-lifetime boundary for PowerShell 7 on Windows and is merged. Phase 6 reuses it for exactly one production artifact, `windows.local-host-inventory` `1.0.0`, while retaining the controlled integration fixture. The boundary still does not select arbitrary scripts, accept command text, retrieve credentials, perform remoting, or persist reports.
 
 Out-of-process execution keeps PowerShell engine types and runspaces out of the application and gives the boundary operating-system process handles, separate pipes, exit codes, time limits, and tree termination. Windows PowerShell 5.1 is rejected: only a compatible PowerShell Core `pwsh.exe` is accepted.
 
@@ -21,7 +21,7 @@ The probe uses only `-NoLogo -NoProfile -NonInteractive -Command <constant probe
 
 ## Trusted artifact and arguments
 
-`TrustedPowerShellScript` exposes artifact name, canonical path, expected SHA-256, and allowed parameter names, but its constructor is internal and visible only to the PowerShell tests. Phase 5 has no production artifact resolver.
+`TrustedPowerShellScript` exposes artifact name, canonical path, expected SHA-256, and allowed parameter names, but its constructor remains internal. Phase 6 gives only the reviewed Automation assembly access to a PowerShell-owned reviewed-artifact factory. Automation supplies compile-pinned metadata; the factory combines only that pinned relative path with the configured trusted root and validates the result before returning a trusted script. Requests, SQL, environment variables, and mutable configuration cannot supply the expected hash, path, or allowlist.
 
 Immediately before launch the validator requires a fully qualified canonical local `.ps1` path beneath the allowed root. Root containment includes a trailing separator and uses Windows case-insensitive comparison. UNC/device paths, traversal, sibling-prefix escapes, alternate data streams, missing files, directories, wrong extensions, and any symbolic-link/junction/reparse component are rejected. SHA-256 is recomputed and compared in constant time. Closing the hash handle before process startup leaves a small filesystem time-of-check/time-of-use window.
 
@@ -68,8 +68,10 @@ The single fixture uses strict mode and fixed parameters. Its allowlisted modes 
 
 Injection tests include whitespace, quotes, semicolons, ampersands, pipes, backticks, `$()`, `${}`, wildcards, redirection, Unicode, newlines, empty strings, and a recognizable command marker. Every value round-trips literally; no marker executes.
 
-## Logging and Phase 6 contract
+## Logging and Phase 6 integration
 
 Logs may contain execution ID, artifact name, PowerShell version, timestamps, duration, exit code, termination reason, byte counts, and truncation state. They omit the executable path, parameter values, stdout, stderr, script contents, complete command lines, environment values, connection strings, credential identifiers, and secrets.
 
-Phase 6 may add a separately reviewed production trusted-artifact resolver and leased queue handler. It must preserve the Phase 5 request model, never pass secrets on the command line, and retain fencing/idempotency rules. Phase 5 registers nothing in Web or Worker and changes no queue or persistence behavior.
+The Phase 6 Automation handler preserves this request model and supplies an empty argument list because the reviewed package has no parameters. It derives a deterministic execution ID from `JobId`, invokes only `IPowerShellExecutionBoundary`, and maps structured termination metadata without logging or persisting stdout/stderr. The boundary revalidates the pinned script immediately before launch. Web does not reference or register PowerShell; only enabled Worker-side Automation composition does.
+
+The package script emits one compressed JSON object containing only `schemaVersion`, `computerName`, OS description/version/architecture, PowerShell version, and `collectedUtc`. It performs no remoting, network access, registry or file writes, installation, credential use, or expansive enumeration. Output is discarded after lifecycle mapping; Phase 7 may add reviewed report persistence.

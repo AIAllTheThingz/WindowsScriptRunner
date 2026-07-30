@@ -153,7 +153,7 @@ public sealed class QueryBehaviorTests
             NullLogger<SqlJobQueueCandidateSource>.Instance);
 
         var candidates = await source.FindCandidatesAsync(
-            new HashSet<JobWorkKind> { JobWorkKind.DryRun },
+            SqlServerTestData.Routes(version, JobWorkKind.DryRun),
             5,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
@@ -173,7 +173,7 @@ public sealed class QueryBehaviorTests
         capture.Commands.Clear();
         capture.ParameterCounts.Clear();
         var none = await source.FindCandidatesAsync(
-            new HashSet<JobWorkKind>(),
+            new HashSet<JobWorkRoute>(),
             5,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);

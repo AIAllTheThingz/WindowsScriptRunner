@@ -1,6 +1,6 @@
 # Worker queue
 
-Phase 4 provides durable coordination without executing scripts. The production Worker has no `IJobWorkHandler` registrations; therefore its supported work-kind set is empty, candidate discovery is skipped, and no queued job is leased. Phase 5 may add handlers behind this contract only after Phase 4 is reviewed and merged.
+Phase 4 provides durable lease coordination. When enabled, Phase 6 registers exactly one production handler for the pinned `windows.local-host-inventory` `1.0.0` DryRun route. Registration is disabled by default; with the package disabled, the supported route set is empty, candidate discovery is skipped, and no queued job is leased.
 
 ## Startup and liveness
 
@@ -10,7 +10,7 @@ Normal heartbeat uses a fresh scope, records SQL Server UTC, and creates no audi
 
 ## Handler registry and polling
 
-`JobWorkHandlerRegistry` is immutable after startup. It rejects undefined or duplicate work kinds. Candidate discovery receives exactly that registry's supported set. No handler means no query and no claim.
+`JobWorkHandlerRegistry` is immutable after startup. It rejects invalid or duplicate `(JobWorkKind, ScriptVersionId)` routes. Candidate discovery receives exactly that registry's supported route set. No route means no query and no claim.
 
 For each non-overlapping poll, `JobQueueWorker`:
 
@@ -30,9 +30,9 @@ Eligible work is:
 - `DryRunQueued` mapped to `JobWorkKind.DryRun`;
 - `ExecutionQueued` mapped to `JobWorkKind.Execute`;
 - without an active lease; and
-- within the handler-supported work-kind set.
+- with a `ScriptVersionId` in the exact handler-supported route set.
 
-Ordering is FIFO-like and deterministic: `UpdatedUtc`, `CreatedUtc`, then `JobId`. Phase 4 adds no priority or scheduling model.
+The Phase 6 production registry contains only `(DryRun, windows.local-host-inventory 1.0.0 version ID)`. Unsupported versions are excluded by SQL rather than claimed and released repeatedly. Ordering is FIFO-like and deterministic: `UpdatedUtc`, `CreatedUtc`, then `JobId`. No priority or scheduling model is added.
 
 ## Backoff and concurrency
 
@@ -42,9 +42,11 @@ Empty queue and persistence failure each keep independent exponential state. Bot
 
 ## Dispatch, renewal, and return invariant
 
-The handler receives `ClaimedJobWork`: job ID, work kind, lease ID, worker ID, fencing token, and expiration only. Renewal uses the same fenced credentials, SQL Server UTC, and a fresh scope. After a persistence backoff it retries immediately rather than waiting another scheduled renewal interval. A lost/missing/recovered lease cancels the handler. SQL failure retries only while renewal can still be assured before the current expiration; otherwise the handler is cancelled.
+The handler receives `ClaimedJobWork`: job ID, work kind, pinned script-version ID, lease ID, worker ID, fencing token, and expiration only. It receives no script path, hash, parameters, credentials, or content. Renewal uses the same fenced credentials, SQL Server UTC, and a fresh scope. After a persistence backoff it retries immediately rather than waiting another scheduled renewal interval. A lost/missing/recovered lease cancels the handler. SQL failure retries only while renewal can still be assured before the current expiration; otherwise the handler is cancelled.
 
 A successful handler must have removed its lease through an explicit lifecycle completion or safe release. If it returns with the lease still current, the Worker logs an invariant violation and attempts release only if work remains unstarted. Active work is left for expiration recovery.
+
+The Phase 6 handler independently revalidates the current fenced lease, loads the pinned job and script aggregate only after ownership is established, and uses fresh scopes for every lifecycle mutation. DryRun success atomically reaches `Completed` and removes the lease. Controlled failure outcomes also remove the lease. Caller cancellation terminalizes only while the same lease is current; lease loss or uncertain persistence leaves recovery to expiration.
 
 ## Shutdown
 
@@ -70,6 +72,15 @@ Host cancellation stops polling and acquisition first, signals all tracked handl
 | `QueueProcessingEnabled` | true | Disable to stop queue acquisition |
 | `AllowEphemeralNodeId` | false | Development-only explicit opt-in |
 | `Capabilities` | empty | Unique case-insensitive names |
+
+Phase 6 adds two disabled-by-default package flags outside the Worker section:
+
+| Option | Default | Rule |
+|---|---:|---|
+| `Automation:LocalHostInventory:Enabled` | false | Registers only the reviewed handler and PowerShell boundary |
+| `Automation:LocalHostInventory:RegisterOnStartup` | false | Requires `Enabled=true`; creates the exact package if absent and otherwise verifies an exact match |
+
+When enabled, `PowerShellExecution:AllowedScriptRoot` must be the absolute directory containing `windows.local-host-inventory\1.0.0\Collect-LocalHostInventory.ps1`; `WorkingRoot` must be a separate absolute non-overlapping directory. The configured PowerShell minimum version cannot be lower than the package-pinned `7.4.0`. The artifact is copied under `automation\...` in build and publish output, so an operator commonly selects the output `automation` directory as the allowed root. No configuration key can change package identity, version, relative path, SHA-256, phases, or parameter allowlist.
 
 ## Observability
 

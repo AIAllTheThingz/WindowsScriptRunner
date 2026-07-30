@@ -81,7 +81,7 @@ public interface IJobFingerprintService
 public interface IJobQueueCandidateSource
 {
     Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
-        IReadOnlySet<JobWorkKind> supportedWorkKinds,
+        IReadOnlySet<JobWorkRoute> supportedRoutes,
         int maximumCount,
         DateTimeOffset now,
         CancellationToken cancellationToken);

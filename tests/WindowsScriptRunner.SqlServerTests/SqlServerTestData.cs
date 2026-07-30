@@ -1,3 +1,4 @@
+using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -15,6 +16,13 @@ internal static class SqlServerTestData
     public static readonly UserIdentity Requester = new("DOMAIN\\requester");
     public static readonly UserIdentity Approver = new("DOMAIN\\approver");
     public static readonly string Fingerprint = new('b', 64);
+
+    public static IReadOnlySet<JobWorkRoute> Routes(
+        ScriptVersion version,
+        params JobWorkKind[] workKinds) =>
+        workKinds
+            .Select(workKind => new JobWorkRoute(workKind, version.Id))
+            .ToHashSet();
 
     public static ScriptParameterDefinition Parameter(
         string name,

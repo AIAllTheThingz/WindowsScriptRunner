@@ -39,9 +39,9 @@ public sealed class JobQueueWorker(
             random);
 
         logger.LogInformation(
-            "Worker {WorkerNodeId} queue loop started with {SupportedWorkKindCount} supported work kinds and concurrency {MaximumConcurrency}.",
+            "Worker {WorkerNodeId} queue loop started with {SupportedRouteCount} supported routes and concurrency {MaximumConcurrency}.",
             identity.NodeId,
-            handlerRegistry.SupportedWorkKinds.Count,
+            handlerRegistry.SupportedRoutes.Count,
             configured.MaxConcurrentJobs);
 
         var failedUnexpectedly = false;
@@ -53,7 +53,7 @@ public sealed class JobQueueWorker(
                 if (!configured.QueueProcessingEnabled ||
                     !state.Registered ||
                     !state.HeartbeatHealthy ||
-                    handlerRegistry.SupportedWorkKinds.Count == 0)
+                    handlerRegistry.SupportedRoutes.Count == 0)
                 {
                     await delay.DelayAsync(pollInterval, stoppingToken);
                     continue;
@@ -73,7 +73,7 @@ public sealed class JobQueueWorker(
                     candidates = await discovery.ServiceProvider
                         .GetRequiredService<IJobQueueCandidateSource>()
                         .FindCandidatesAsync(
-                            handlerRegistry.SupportedWorkKinds,
+                            handlerRegistry.SupportedRoutes,
                             Math.Min(
                                 configured.ClaimCandidateBatchSize,
                                 availableSlots),
@@ -128,6 +128,7 @@ public sealed class JobQueueWorker(
                                 new AcquireJobLeaseCommand(
                                     candidate.JobId,
                                     candidate.WorkKind,
+                                    candidate.ScriptVersionId,
                                     identity.NodeId,
                                     TimeSpan.FromSeconds(configured.LeaseDurationSeconds),
                                     TimeSpan.FromSeconds(configured.WorkerStaleAfterSeconds)),
@@ -138,7 +139,10 @@ public sealed class JobQueueWorker(
                                 "Lease acquisition returned work owned by a different worker.");
                         }
 
-                        var handler = handlerRegistry.GetRequired(claimed.WorkKind);
+                        var handler = handlerRegistry.GetRequired(
+                            new JobWorkRoute(
+                                claimed.WorkKind,
+                                claimed.ScriptVersionId));
                         var control = new DispatchControl();
                         control.Task = DispatchAsync(
                             claimed,
