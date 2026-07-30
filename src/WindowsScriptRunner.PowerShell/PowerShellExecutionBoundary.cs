@@ -106,22 +106,13 @@ internal sealed class PowerShellExecutionBoundary(
         using var cancellationRegistration = cancellationToken.Register(
             static state => ((TaskCompletionSource)state!).TrySetResult(),
             cancellationSignal);
-        var completed = await Task.WhenAny(
+        var completed = await PowerShellProcessLifecycle.WaitAsync(
                 exitTask,
+                outputPumpsTask,
                 timeoutTask,
                 capture.LimitExceeded,
                 cancellationSignal.Task)
             .ConfigureAwait(false);
-        if (completed == exitTask)
-        {
-            completed = await Task.WhenAny(
-                    outputPumpsTask,
-                    timeoutTask,
-                    capture.LimitExceeded,
-                    cancellationSignal.Task)
-                .ConfigureAwait(false);
-        }
-
         timeoutCancellation.Cancel();
 
         var callerCancelled =

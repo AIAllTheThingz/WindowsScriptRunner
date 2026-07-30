@@ -81,6 +81,7 @@ internal sealed class PowerShellRuntimeProbe(
             capture.PumpStandardOutputAsync(process.StandardOutput.BaseStream);
         var standardErrorTask =
             capture.PumpStandardErrorAsync(process.StandardError.BaseStream);
+        var outputPumpsTask = Task.WhenAll(standardOutputTask, standardErrorTask);
         var exitTask = process.WaitForExitAsync(CancellationToken.None);
         using var timeoutCancellation = new CancellationTokenSource();
         var timeoutTask = Task.Delay(
@@ -91,15 +92,16 @@ internal sealed class PowerShellRuntimeProbe(
         using var cancellationRegistration = cancellationToken.Register(
             static state => ((TaskCompletionSource)state!).TrySetResult(),
             cancellationSignal);
-        var completed = await Task.WhenAny(
+        var completed = await PowerShellProcessLifecycle.WaitAsync(
                 exitTask,
+                outputPumpsTask,
                 timeoutTask,
                 capture.LimitExceeded,
                 cancellationSignal.Task)
             .ConfigureAwait(false);
         timeoutCancellation.Cancel();
 
-        if (completed != exitTask)
+        if (completed != outputPumpsTask || capture.LimitExceeded.IsCompleted)
         {
             capture.StopStoring();
             try
@@ -126,7 +128,7 @@ internal sealed class PowerShellRuntimeProbe(
                 throw;
             }
 
-            await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
+            await outputPumpsTask.ConfigureAwait(false);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -134,12 +136,12 @@ internal sealed class PowerShellRuntimeProbe(
             }
 
             throw new PowerShellRuntimeValidationException(
-                completed == capture.LimitExceeded
+                capture.LimitExceeded.IsCompleted
                     ? "The PowerShell runtime probe exceeded its output limit."
                     : "The PowerShell runtime probe timed out.");
         }
 
-        await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
+        await outputPumpsTask.ConfigureAwait(false);
         var output = capture.Snapshot();
         if (process.ExitCode != 0 ||
             output.StandardOutputTruncated ||

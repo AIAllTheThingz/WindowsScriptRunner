@@ -359,7 +359,7 @@ public sealed class ProjectBoundaryTests
     }
 
     [Fact]
-    public void JobObjectInteropIsConfinedToPowerShellProcessTreeController()
+    public void NativeInteropIsConfinedToPowerShellBoundaryComponents()
     {
         var files = ReadSourceFiles()
             .Where(file =>
@@ -368,8 +368,11 @@ public sealed class ProjectBoundaryTests
                 file.Content.Contains("JobObject", StringComparison.Ordinal))
             .ToArray();
 
-        var file = Assert.Single(files);
-        Assert.Equal("ProcessTreeController.cs", Path.GetFileName(file.Path));
+        Assert.Equal(
+            ["ExecutionWorkingDirectory.cs", "ProcessTreeController.cs"],
+            files.Select(file => Path.GetFileName(file.Path))
+                .Order(StringComparer.Ordinal)
+                .ToArray());
     }
 
     [Fact]

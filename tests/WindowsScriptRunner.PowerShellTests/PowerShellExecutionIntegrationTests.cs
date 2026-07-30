@@ -315,6 +315,33 @@ public sealed class PowerShellExecutionIntegrationTests(
     }
 
     [Fact]
+    public async Task FallbackTerminatesDescendantAfterRootExits()
+    {
+        var boundary = fixture.CreateBoundary(
+            _ => { },
+            new FallbackProcessTreeController());
+        var executionId = PowerShellExecutionId.New();
+        var result = await boundary.Boundary.ExecuteAsync(
+            boundary.Request(
+                executionId,
+                "SpawnChild",
+                TimeSpan.FromSeconds(1),
+                new PowerShellArgument("SleepSeconds", "0")),
+            CancellationToken.None);
+        var parentId = ProcessTest.ParseProcessId(result.StandardOutput, "PARENT_PID");
+        var childId = ProcessTest.ParseProcessId(result.StandardOutput, "CHILD_PID");
+
+        Assert.Equal(PowerShellTerminationReason.TimedOut, result.TerminationReason);
+        Assert.Null(result.ExitCode);
+        Assert.InRange(result.Duration, TimeSpan.Zero, TimeSpan.FromSeconds(6));
+        Assert.False(
+            Directory.Exists(
+                Path.Combine(boundary.Options.WorkingRoot!, executionId.ToString())));
+        await ProcessTest.AssertExitedAsync(parentId);
+        await ProcessTest.AssertExitedAsync(childId);
+    }
+
+    [Fact]
     public async Task ShortLivedOutputBeyondLimitIsClassifiedAsExceeded()
     {
         var boundary = fixture.CreateBoundary(

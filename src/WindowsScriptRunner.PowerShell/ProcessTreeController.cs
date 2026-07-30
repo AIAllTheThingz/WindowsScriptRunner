@@ -86,25 +86,34 @@ internal sealed class ProcessTreeController(
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(containment);
         Exception? terminationError = null;
+        var treeTerminationRequested = false;
 
         try
         {
-            if (containment.JobHandle is not null &&
-                !containment.JobHandle.IsInvalid &&
-                !NativeMethods.TerminateJobObject(containment.JobHandle, 1))
+            if (containment.JobHandle is not null && !containment.JobHandle.IsInvalid)
             {
-                terminationError = new Win32Exception(Marshal.GetLastWin32Error());
+                if (!NativeMethods.TerminateJobObject(containment.JobHandle, 1))
+                {
+                    terminationError = new Win32Exception(Marshal.GetLastWin32Error());
+                }
+                else
+                {
+                    treeTerminationRequested = true;
+                }
             }
 
-            if (!HasExited(process))
-            {
-                process.Kill(entireProcessTree: true);
-            }
+            process.Kill(entireProcessTree: true);
+            treeTerminationRequested = true;
         }
         catch (Exception exception) when (
             exception is Win32Exception or InvalidOperationException or NotSupportedException)
         {
             terminationError ??= exception;
+        }
+
+        if (!treeTerminationRequested)
+        {
+            throw CreateTerminationException(process, executionId, terminationError);
         }
 
         if (await WaitForExitAsync(process, gracePeriod).ConfigureAwait(false))
@@ -130,10 +139,18 @@ internal sealed class ProcessTreeController(
             return;
         }
 
+        throw CreateTerminationException(process, executionId, terminationError);
+    }
+
+    private static PowerShellProcessTerminationException CreateTerminationException(
+        Process process,
+        PowerShellExecutionId? executionId,
+        Exception? terminationError)
+    {
         var message = executionId is null
             ? "The PowerShell process tree could not be terminated."
             : $"PowerShell execution {executionId} process {SafeProcessId(process)} could not be terminated.";
-        throw terminationError is null
+        return terminationError is null
             ? new PowerShellProcessTerminationException(message)
             : new PowerShellProcessTerminationException(message, terminationError);
     }

@@ -17,7 +17,7 @@ Candidates are considered in this order:
 
 Paths are canonicalized and deduplicated case-insensitively. Explicit and environment overrides are authoritative. Otherwise compatible stable candidates are ordered by highest version and then path for deterministic selection; stable builds are preferred to previews. The default minimum is 7.4.0. Previews are disabled unless configured, and 64-bit is required by default.
 
-The probe uses only `-NoLogo -NoProfile -NonInteractive -Command <constant probe>`. The command is compile-time controlled and contains no caller data. Its bounded JSON result supplies version, PSEdition, platform, OS, and process architecture. `PSEdition=Core` and the Windows platform are mandatory. The first successful runtime is cached so scripts do not cause repeated probes.
+The probe uses only `-NoLogo -NoProfile -NonInteractive -Command <constant probe>`. The command is compile-time controlled and contains no caller data. Its bounded JSON result supplies version, PSEdition, platform, OS, and process architecture. `PSEdition=Core` and the Windows platform are mandatory. Probe completion requires root exit and end-of-stream from both redirected pipes, so the configured probe timeout remains active if a candidate leaves a descendant holding inherited handles. The first successful runtime is cached so scripts do not cause repeated probes.
 
 ## Trusted artifact and arguments
 
@@ -43,7 +43,7 @@ No command-line string, shell, `Invoke-Expression`, encoded caller command, stop
 
 ## Isolation and lifecycle
 
-The configured trusted-script and working roots cannot be equal or nested within each other. Each execution atomically reserves its ID, creates `<working-root>\<execution-id>`, and starts there with `UseShellExecute=false`, redirected UTF-8 stdout/stderr, no redirected stdin, no console window, and the trusted runtime path. The reservation and directory are removed after success, nonzero exit, startup/trust failure, timeout, output overflow, or cancellation. Output and script copies are not retained.
+The configured trusted-script and working roots cannot be equal or nested within each other. Each execution atomically reserves its ID and uses Windows exclusive-create semantics for `<working-root>\<execution-id>`. An existing directory, competing creator, or reparse point is rejected, and an internal open claim prevents replacement until cleanup. The child starts there with `UseShellExecute=false`, redirected UTF-8 stdout/stderr, no redirected stdin, no console window, and the trusted runtime path. The claim, reservation, and directory are removed after success, nonzero exit, startup/trust failure, timeout, output overflow, or cancellation. Output and script copies are not retained.
 
 The inherited environment is cleared. Only the fixed Windows runtime allowlist is copied, then `POWERSHELL_TELEMETRY_OPTOUT=1` and `POWERSHELL_UPDATECHECK=Off` are set. Arbitrary parent variables, API keys, connection strings, cloud credentials, and test sentinels do not cross the boundary.
 
@@ -51,7 +51,7 @@ Stdout and stderr are drained concurrently from process start with fixed-size bu
 
 A normal process exit returns its exact exit code, including nonzero codes. Timeout returns `TimedOut` and does not masquerade as caller cancellation. In-flight caller cancellation stops capture, terminates and drains the tree, cleans the directory, and throws `OperationCanceledException`.
 
-The boundary attempts a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` immediately after startup. Timeout, cancellation, overflow, and disposal kill descendants. `Process.Kill(entireProcessTree: true)` is the fallback and retry path. Termination has a bounded grace period and fails critically if the root remains. Because the process is not created suspended, a small startup-to-assignment race remains. A Job Object is lifetime containment, not a filesystem, registry, network, language, token, or privilege sandbox.
+The boundary attempts a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` immediately after startup. Timeout, cancellation, overflow, and disposal kill descendants. `Process.Kill(entireProcessTree: true)` is the fallback and retry path and is invoked even after root exit so descendants retaining inherited pipes are still terminated. Termination has a bounded grace period and fails critically if no tree-termination mechanism can be requested or the root remains. Because the process is not created suspended, a small startup-to-assignment race remains. A Job Object is lifetime containment, not a filesystem, registry, network, language, token, or privilege sandbox.
 
 ## Controlled fixture
 

@@ -1407,3 +1407,25 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T09:15:39.7673781-05:00` to `09:16:13.9489827-05:00`, exit 0, the same 539 tests passed.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-30T09:16:21.4074661-05:00` to `09:16:26.3402788-05:00`, exit 0, no pending model changes.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 fallback, probe, and directory-claim corrections
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- The full-tree fallback now invokes `Process.Kill(entireProcessTree: true)` after root exit. A real `SpawnChild` test disables Job Object containment, lets the root exit, and verifies timeout still terminates the descendant and completes within six seconds.
+- Execution and runtime probing share one lifecycle gate that keeps timeout, output-limit, and cancellation signals active until root exit and both redirected pumps complete.
+- Execution directories use native exclusive-create semantics. An open, delete-protected internal claim prevents replacement until cleanup; existing directories, competing claims, and reparse points are rejected.
+- Added five focused regressions for fallback descendant termination, pipe-aware lifecycle completion, directory replacement prevention, an existing competing directory, and a competing reparse point.
+- Corrected during focused validation: a directory handle alone did not prevent `Directory.Delete` on this Windows runtime. The claim now includes a held delete-protected file inside the directory; the focused replacement test and full suite then passed.
+- PowerShell focused suite: 95 passed, 0 failed, 0 skipped against the actual runtime.
+- Security focused suite: 48 passed, 0 failed, 0 skipped. Native interop remains confined to `ExecutionWorkingDirectory.cs` and `ProcessTreeController.cs`.
+- `dotnet tool restore`: `2026-07-30T10:55:21.4557819-05:00` to `10:55:21.9950988-05:00`, exit 0, dotnet-ef 10.0.10.
+- `dotnet restore`: `2026-07-30T10:55:28.2450613-05:00` to `10:55:30.7950149-05:00`, exit 0.
+- `dotnet build --configuration Release`: `2026-07-30T10:55:35.3804217-05:00` to `10:55:40.8270463-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release`: `2026-07-30T10:55:45.4215043-05:00` to `10:56:23.8762157-05:00`, exit 0, 544 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 95.
+- `dotnet format`: `2026-07-30T10:56:30.1577068-05:00` to `10:56:57.3094122-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-30T10:57:01.7347922-05:00` to `10:57:28.6309122-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T10:57:39.6832211-05:00` to `10:57:43.1164020-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T10:57:48.2977774-05:00` to `10:58:23.3479140-05:00`, exit 0, the same 544 tests passed.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-30T10:58:29.0385313-05:00` to `10:58:33.9105859-05:00`, exit 0, no pending model changes.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
