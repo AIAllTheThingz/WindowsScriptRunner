@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 
 namespace WindowsScriptRunner.PowerShell;
@@ -48,13 +49,15 @@ internal sealed class BoundedProcessOutput : IDisposable
     {
         lock (_sync)
         {
+            var standardOutput = DecodeUtf8Prefix(_standardOutput, out var outputTrimmed);
+            var standardError = DecodeUtf8Prefix(_standardError, out var errorTrimmed);
             return new CapturedProcessOutput(
-                Encoding.UTF8.GetString(_standardOutput.ToArray()),
-                Encoding.UTF8.GetString(_standardError.ToArray()),
+                standardOutput,
+                standardError,
                 _standardOutputBytes,
                 _standardErrorBytes,
-                _standardOutputTruncated,
-                _standardErrorTruncated);
+                _standardOutputTruncated || outputTrimmed,
+                _standardErrorTruncated || errorTrimmed);
         }
     }
 
@@ -141,6 +144,28 @@ internal sealed class BoundedProcessOutput : IDisposable
             _storeOutput = false;
             _limitExceeded.TrySetResult();
         }
+    }
+
+    private static string DecodeUtf8Prefix(MemoryStream stream, out bool trimmed)
+    {
+        var bytes = stream.ToArray();
+        var completeLength = 0;
+        while (completeLength < bytes.Length)
+        {
+            var status = Rune.DecodeFromUtf8(
+                bytes.AsSpan(completeLength),
+                out _,
+                out var consumed);
+            if (status != OperationStatus.Done)
+            {
+                break;
+            }
+
+            completeLength += consumed;
+        }
+
+        trimmed = completeLength != bytes.Length;
+        return Encoding.UTF8.GetString(bytes, 0, completeLength);
     }
 }
 

@@ -1508,3 +1508,14 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T15:04:51.4194014-05:00` to `15:05:30.2625816-05:00`, exit 0, 554 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 105.
 - `dotnet format --verify-no-changes --no-restore`: `2026-07-30T15:05:55.1703692-05:00` to `15:06:21.7275571-05:00`, exit 0.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## Post-merge UTF-8 truncation correction
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Bounded stdout and stderr snapshots decode only their longest complete UTF-8 prefix. Incomplete or invalid trailing bytes are removed and reflected in the stream's truncation flag while raw byte counts remain unchanged.
+- Focused UTF-8 regressions: 3 passed, 0 failed, 0 skipped. They cover a multibyte character split at stdout and stderr limits and preservation of the last complete multibyte character.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T15:19:36.2410606-05:00` to `15:19:41.8750083-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T15:19:41.8903724-05:00` to `15:20:22.6570094-05:00`, exit 0, 557 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 108.
+- `dotnet format --verify-no-changes --no-restore`: `2026-07-30T15:20:47.2067059-05:00` to `15:21:15.3164133-05:00`, exit 0.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
