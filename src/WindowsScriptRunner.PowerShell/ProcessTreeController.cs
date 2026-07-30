@@ -199,6 +199,8 @@ internal sealed class ProcessTreeContainment(SafeJobHandle? jobHandle) : IDispos
 {
     internal SafeJobHandle? JobHandle { get; } = jobHandle;
 
+    internal bool UsesFallback => JobHandle is null || JobHandle.IsInvalid;
+
     public void Dispose() => JobHandle?.Dispose();
 }
 

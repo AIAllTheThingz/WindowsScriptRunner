@@ -1462,3 +1462,16 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T13:00:29.6125477-05:00` to `13:01:05.2572006-05:00`, exit 0, 549 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 100.
 - `dotnet format --verify-no-changes --no-restore`: `2026-07-30T13:01:20.9470457-05:00` to `13:01:46.0395025-05:00`, exit 0.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 fallback normal-exit correction
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Normal completion now invokes fallback tree termination when Job Object containment is unavailable. A detached fixed-command child that closes the root's redirected pipes is terminated while the root's exact exit code and `Exited` outcome are preserved.
+- Focused regressions: 2 passed, 0 failed, 0 skipped. They cover detached-descendant cleanup after normal root exit and normal fallback completion with no descendants.
+- Corrected during focused validation: redirecting the child's assigned streams, then explicitly closing its assigned handles, did not close every inherited pipe handle and the intended normal-exit regression timed out. The final fixture uses a fixed `Start-Process` child without inherited redirected pipes; both focused regressions then passed.
+- `dotnet format`: `2026-07-30T14:02:04.6599416-05:00` to `14:02:32.4983750-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T14:02:32.5161081-05:00` to `14:02:43.0529196-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T14:02:43.0542573-05:00` to `14:03:23.2494458-05:00`, exit 0, 551 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 102.
+- `dotnet format --verify-no-changes --no-restore`: `2026-07-30T14:04:05.0742490-05:00` to `14:04:32.7660788-05:00`, exit 0.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.

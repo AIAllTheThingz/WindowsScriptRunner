@@ -60,16 +60,26 @@ switch ($Mode) {
     }
 
     'SpawnChild' {
-        $childStart = [Diagnostics.ProcessStartInfo]::new()
-        $childStart.FileName = Join-Path $PSHOME 'pwsh.exe'
-        $childStart.UseShellExecute = $false
-        $childStart.CreateNoWindow = $true
-        $childStart.ArgumentList.Add('-NoLogo')
-        $childStart.ArgumentList.Add('-NoProfile')
-        $childStart.ArgumentList.Add('-NonInteractive')
-        $childStart.ArgumentList.Add('-Command')
-        $childStart.ArgumentList.Add('Start-Sleep -Seconds 30')
-        $child = [Diagnostics.Process]::Start($childStart)
+        if ($Message -eq 'DetachedOutput') {
+            $child = Start-Process `
+                -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
+                -ArgumentList '/D /C "ping -n 31 127.0.0.1 >NUL 2>&1"' `
+                -WindowStyle Hidden `
+                -PassThru
+        }
+        else {
+            $childStart = [Diagnostics.ProcessStartInfo]::new()
+            $childStart.FileName = Join-Path $PSHOME 'pwsh.exe'
+            $childStart.UseShellExecute = $false
+            $childStart.CreateNoWindow = $true
+            $childStart.ArgumentList.Add('-NoLogo')
+            $childStart.ArgumentList.Add('-NoProfile')
+            $childStart.ArgumentList.Add('-NonInteractive')
+            $childStart.ArgumentList.Add('-Command')
+            $childStart.ArgumentList.Add('Start-Sleep -Seconds 30')
+            $child = [Diagnostics.Process]::Start($childStart)
+        }
+
         try {
             Set-Content -LiteralPath (Join-Path (Get-Location) 'started.marker') -Value $PID
             Set-Content -LiteralPath (Join-Path (Get-Location) 'child.marker') -Value $child.Id

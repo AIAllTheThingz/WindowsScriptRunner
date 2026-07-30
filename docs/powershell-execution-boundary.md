@@ -51,7 +51,7 @@ Stdout and stderr are drained concurrently from process start with fixed-size bu
 
 A normal process exit returns its exact exit code, including nonzero codes. Timeout returns `TimedOut` and does not masquerade as caller cancellation. In-flight caller cancellation stops capture, terminates and drains the tree, cleans the directory, and throws `OperationCanceledException`.
 
-The boundary attempts a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` immediately after startup. Timeout, cancellation, overflow, and disposal kill descendants. `Process.Kill(entireProcessTree: true)` is the fallback and retry path and is invoked even after root exit so descendants retaining inherited pipes are still terminated. Termination has a bounded grace period and fails critically if no tree-termination mechanism can be requested or the root remains. Because the process is not created suspended, a small startup-to-assignment race remains. A Job Object is lifetime containment, not a filesystem, registry, network, language, token, or privilege sandbox.
+The boundary attempts a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` immediately after startup. Timeout, cancellation, overflow, and disposal kill descendants. `Process.Kill(entireProcessTree: true)` is the fallback and retry path and is invoked after fallback root exit, including normal completion, so descendants are terminated whether they retain or close inherited pipes. Termination has a bounded grace period and fails critically if no tree-termination mechanism can be requested or the root remains. Because the process is not created suspended, a small startup-to-assignment race remains. A Job Object is lifetime containment, not a filesystem, registry, network, language, token, or privilege sandbox.
 
 ## Controlled fixture
 
@@ -61,7 +61,7 @@ The single fixture uses strict mode and fixed parameters. Its allowlisted modes 
 - `Streams` — writes deterministic Unicode markers concurrently to both streams and can return a bounded nonzero code.
 - `ExitCode` — returns the requested bounded code.
 - `Sleep` — emits its PID and waits for timeout tests.
-- `SpawnChild` — starts one fixed-command child from `$PSHOME\pwsh.exe`, emits both PIDs, and waits for tree-termination tests.
+- `SpawnChild` — starts one fixed-command child, emits both PIDs, and supports inherited-pipe and detached-output tree-termination tests.
 - `FloodOutput` — emits bounded deterministic stdout, stderr, or both until the boundary stops it.
 - `Environment` — reports only whether a conservatively named variable exists, never its value.
 - `WorkingDirectory` — reports the current directory in Base64.

@@ -342,6 +342,45 @@ public sealed class PowerShellExecutionIntegrationTests(
     }
 
     [Fact]
+    public async Task FallbackTerminatesDetachedDescendantAfterNormalRootExit()
+    {
+        var boundary = fixture.CreateBoundary(
+            _ => { },
+            new FallbackProcessTreeController());
+        var executionId = PowerShellExecutionId.New();
+        var result = await boundary.Boundary.ExecuteAsync(
+            boundary.Request(
+                executionId,
+                "SpawnChild",
+                TimeSpan.FromSeconds(10),
+                new PowerShellArgument("Message", "DetachedOutput"),
+                new PowerShellArgument("SleepSeconds", "0")),
+            CancellationToken.None);
+        var parentId = ProcessTest.ParseProcessId(result.StandardOutput, "PARENT_PID");
+        var childId = ProcessTest.ParseProcessId(result.StandardOutput, "CHILD_PID");
+
+        Assert.Equal(PowerShellTerminationReason.Exited, result.TerminationReason);
+        Assert.Equal(0, result.ExitCode);
+        await ProcessTest.AssertExitedAsync(parentId);
+        await ProcessTest.AssertExitedAsync(childId);
+    }
+
+    [Fact]
+    public async Task FallbackNormalExitWithoutDescendantsRemainsSuccessful()
+    {
+        var boundary = fixture.CreateBoundary(
+            _ => { },
+            new FallbackProcessTreeController());
+
+        var result = await boundary.Boundary.ExecuteAsync(
+            boundary.Request(PowerShellExecutionId.New(), "Echo"),
+            CancellationToken.None);
+
+        Assert.Equal(PowerShellTerminationReason.Exited, result.TerminationReason);
+        Assert.Equal(0, result.ExitCode);
+    }
+
+    [Fact]
     public async Task ShortLivedOutputBeyondLimitIsClassifiedAsExceeded()
     {
         var boundary = fixture.CreateBoundary(

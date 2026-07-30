@@ -123,6 +123,15 @@ internal sealed class PowerShellExecutionBoundary(
         {
             terminationReason = PowerShellTerminationReason.Exited;
             exitCode = process.ExitCode;
+            if (containment.UsesFallback)
+            {
+                await processTreeController.TerminateAsync(
+                        process,
+                        containment,
+                        TimeSpan.FromSeconds(_options.TerminationGraceSeconds),
+                        request.ExecutionId)
+                    .ConfigureAwait(false);
+            }
         }
         else
         {
