@@ -18,6 +18,7 @@ internal sealed class BoundedProcessOutput : IDisposable
     private bool _standardOutputTruncated;
     private bool _standardErrorTruncated;
     private bool _storeOutput = true;
+    private bool _disposed;
 
     public BoundedProcessOutput(
         int standardOutputLimit,
@@ -59,8 +60,13 @@ internal sealed class BoundedProcessOutput : IDisposable
 
     public void Dispose()
     {
-        _standardOutput.Dispose();
-        _standardError.Dispose();
+        lock (_sync)
+        {
+            _disposed = true;
+            _storeOutput = false;
+            _standardOutput.Dispose();
+            _standardError.Dispose();
+        }
     }
 
     private async Task PumpAsync(Stream stream, bool isStandardOutput)
@@ -101,7 +107,7 @@ internal sealed class BoundedProcessOutput : IDisposable
                 _standardErrorBytes += count;
             }
 
-            if (_storeOutput)
+            if (_storeOutput && !_disposed)
             {
                 var target = isStandardOutput ? _standardOutput : _standardError;
                 var streamRemaining = Math.Max(0, streamLimit - (int)target.Length);

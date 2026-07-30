@@ -156,6 +156,12 @@ public sealed class PowerShellContractAndOptionsTests
         options => options.AllowedScriptRoot = "relative",
         options => options.WorkingRoot = "relative",
         options => options.WorkingRoot = options.AllowedScriptRoot,
+        options => options.WorkingRoot = Path.Combine(
+            options.AllowedScriptRoot!,
+            "working"),
+        options => options.AllowedScriptRoot = Path.Combine(
+            options.WorkingRoot!,
+            "allowed"),
         options => options.AllowedScriptRoot = @"\\server\share",
         options => options.WorkingRoot = @"\\?\C:\work",
         options => options.WorkingRoot += ":alternate",

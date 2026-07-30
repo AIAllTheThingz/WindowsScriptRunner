@@ -133,12 +133,29 @@ internal sealed class PowerShellExecutionBoundary(
                 ? PowerShellTerminationReason.OutputLimitExceeded
                 : PowerShellTerminationReason.TimedOut;
             exitCode = null;
-            await processTreeController.TerminateAsync(
-                    process,
-                    containment,
-                    TimeSpan.FromSeconds(_options.TerminationGraceSeconds),
-                    request.ExecutionId)
-                .ConfigureAwait(false);
+            try
+            {
+                await processTreeController.TerminateAsync(
+                        process,
+                        containment,
+                        TimeSpan.FromSeconds(_options.TerminationGraceSeconds),
+                        request.ExecutionId)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception terminationException)
+            {
+                var pumpException = await CloseAndObservePumpsAsync(
+                        process,
+                        standardOutputTask,
+                        standardErrorTask)
+                    .ConfigureAwait(false);
+                if (pumpException is not null)
+                {
+                    terminationException.Data["OutputPumpException"] = pumpException;
+                }
+
+                throw;
+            }
         }
 
         await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
@@ -225,5 +242,23 @@ internal sealed class PowerShellExecutionBoundary(
         }
 
         return timeout;
+    }
+
+    private static async Task<Exception?> CloseAndObservePumpsAsync(
+        Process process,
+        Task standardOutputTask,
+        Task standardErrorTask)
+    {
+        process.StandardOutput.Dispose();
+        process.StandardError.Dispose();
+        try
+        {
+            await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 }

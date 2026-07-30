@@ -76,7 +76,20 @@ internal sealed class ExecutionWorkingDirectory(
                      StringSplitOptions.RemoveEmptyEntries))
         {
             current = Path.Combine(current, component);
-            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(current);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                throw new PowerShellExecutionException(
+                    "The PowerShell working directory path could not be inspected.",
+                    exception);
+            }
+
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
                 throw new PowerShellExecutionException(
                     "The PowerShell working root cannot contain a reparse point.");

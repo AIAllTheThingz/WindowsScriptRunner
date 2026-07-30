@@ -25,7 +25,7 @@ The probe uses only `-NoLogo -NoProfile -NonInteractive -Command <constant probe
 
 Immediately before launch the validator requires a fully qualified canonical local `.ps1` path beneath the allowed root. Root containment includes a trailing separator and uses Windows case-insensitive comparison. UNC/device paths, traversal, sibling-prefix escapes, alternate data streams, missing files, directories, wrong extensions, and any symbolic-link/junction/reparse component are rejected. SHA-256 is recomputed and compared in constant time. Closing the hash handle before process startup leaves a small filesystem time-of-check/time-of-use window.
 
-Arguments are named only. Names must match `[A-Za-z_][A-Za-z0-9_]{0,99}`, belong to the artifact allowlist, and be unique case-insensitively. Count and value length are bounded. Null, NUL-containing, and sensitive-classified values fail before script startup. Command-line parameters are OS-inspectable, so Phase 5 accepts no secrets.
+Arguments are named only. Names must match `[A-Za-z_][A-Za-z0-9_]{0,99}`, belong to the artifact allowlist, and be unique case-insensitively. Count and value length are bounded. Null, NUL-containing, leading-hyphen, and sensitive-classified values fail before script startup. A leading hyphen is rejected because PowerShell can reinterpret values such as `-Verbose` as common parameters in `-File` mode. Command-line parameters are OS-inspectable, so Phase 5 accepts no secrets.
 
 Startup uses `ProcessStartInfo.ArgumentList`:
 
@@ -43,7 +43,7 @@ No command-line string, shell, `Invoke-Expression`, encoded caller command, stop
 
 ## Isolation and lifecycle
 
-Each execution creates `<working-root>\<execution-id>` and starts there with `UseShellExecute=false`, redirected UTF-8 stdout/stderr, no redirected stdin, no console window, and the trusted runtime path. The directory is removed after success, nonzero exit, startup/trust failure, timeout, output overflow, or cancellation. Output and script copies are not retained.
+The configured trusted-script and working roots cannot be equal or nested within each other. Each execution creates `<working-root>\<execution-id>` and starts there with `UseShellExecute=false`, redirected UTF-8 stdout/stderr, no redirected stdin, no console window, and the trusted runtime path. The directory is removed after success, nonzero exit, startup/trust failure, timeout, output overflow, or cancellation. Output and script copies are not retained.
 
 The inherited environment is cleared. Only the fixed Windows runtime allowlist is copied, then `POWERSHELL_TELEMETRY_OPTOUT=1` and `POWERSHELL_UPDATECHECK=Off` are set. Arbitrary parent variables, API keys, connection strings, cloud credentials, and test sentinels do not cross the boundary.
 

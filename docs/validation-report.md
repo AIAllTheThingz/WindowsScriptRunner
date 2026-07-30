@@ -1309,7 +1309,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 
 - Discovery order validated: configured absolute path, `WINDOWSSCRIPTRUNNER_PWSH_PATH`, PATH inspected through file APIs, then `%ProgramFiles%\PowerShell` stable locations. Duplicate candidates are removed case-insensitively, stable runtimes are preferred to previews, compatible stable versions are ordered highest first, and a successful selection is cached.
 - Selected executable: `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.4.0_x64__8wekyb3d8bbwe\pwsh.exe`.
-- Fixed-probe metadata: version 7.6.4, PSEdition Core, platform Win32NT, architecture X64. The alternative WindowsApps alias reported the same runtime; deterministic path ordering selected the Program Files package path.
+- Fixed-probe metadata: version 7.6.4, PSEdition Core, platform Win32NT, architecture X64. PATH inspection produced both WindowsApps candidates; deterministic path ordering selected the package installation path shown above.
 - The real-runtime integration test was executed, not skipped. Missing/relative/configured legacy executable, below-minimum version, Desktop edition, malformed JSON, disallowed preview, and non-64-bit metadata tests passed. Preview opt-in passed separately.
 - Controlled fixture: `<repo-root>\tests\WindowsScriptRunner.PowerShellTests\Fixtures\ControlledExecutionFixture.ps1`.
 - The test copies the fixture beneath a unique allowed root, computes SHA-256, creates the internal trusted artifact, and hashes again immediately before launch. Valid hash, post-trust tampering, outside-root sibling prefix, traversal, UNC, device, alternate-stream, and actual NTFS junction-component tests passed.
@@ -1361,3 +1361,29 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - Blocked required items: none.
 - NotRun: production queue-to-PowerShell dispatch, production trusted-artifact resolution, arbitrary script selection/upload, script manifests/packages, credential retrieval/injection, remoting, report parsing/persistence, production SQL deployment, authentication/authorization, and Phase 6 behavior. These are outside Phase 5.
 - Remaining limitations: Job Objects govern lifetime rather than filesystem, registry, network, language, token, or privilege access. Process startup precedes Job Object assignment, and the SHA-256 file handle closes before process startup, leaving small documented races. Command-line values are OS-visible, so secrets are prohibited. The boundary is validated only against the controlled fixture and is not an operating-system sandbox.
+
+## PR #5 review corrections
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Clarified that PATH inspection produced both WindowsApps runtime candidates and deterministic path ordering selected the package installation path.
+- Synchronized bounded-capture disposal with in-flight storage. If process-tree termination fails, redirected readers are closed and both pump tasks are observed without concealing the termination exception.
+- Wrapped working-root attribute inspection failures in `PowerShellExecutionException`.
+- Rejected leading-hyphen values after real-runtime verification showed that `-Verbose` is interpreted as a common parameter in `-File` mode.
+- Published the immutable cached runtime through `Volatile.Read` and `Volatile.Write`; concurrent callers share one probed instance.
+- Rejected equal or nested trusted-script and working roots in either direction.
+- Tightened the injection-marker assertion and made PID marker reads wait for non-empty content.
+- Added focused regressions for capture disposal, termination failure, concurrent runtime caching, nested roots, and leading-hyphen values.
+- Focused PowerShell tests: 87 passed, 0 failed, 0 skipped against the actual runtime.
+- Filtered PowerShell Unit tests: 4 passed, 0 failed, 0 skipped.
+- Security tests: 48 passed, 0 failed, 0 skipped.
+- `dotnet tool restore`: `2026-07-30T08:42:05.8636964-05:00` to `08:42:06.4945626-05:00`, exit 0.
+- `dotnet restore`: `2026-07-30T08:42:06.4959968-05:00` to `08:42:09.3779583-05:00`, exit 0.
+- `dotnet build --configuration Release`: `2026-07-30T08:42:09.3790950-05:00` to `08:42:14.8293917-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release`: `2026-07-30T08:42:14.8302978-05:00` to `08:42:49.6932093-05:00`, exit 0, 536 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 87.
+- `dotnet format`: `2026-07-30T08:42:49.6941322-05:00` to `08:43:19.2486690-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-30T08:43:19.2494101-05:00` to `08:43:48.0107491-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T08:43:48.0115846-05:00` to `08:43:51.8276819-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T08:43:51.8284079-05:00` to `08:44:24.2637894-05:00`, exit 0, the same 536 tests passed.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ...`: `2026-07-30T08:44:24.2647168-05:00` to `08:44:33.4747390-05:00`, exit 0, no pending model changes.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.

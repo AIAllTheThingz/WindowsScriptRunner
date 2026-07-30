@@ -190,6 +190,7 @@ public sealed class PowerShellTrustTests : IDisposable
                     ]
                 },
                 { [new PowerShellArgument("Message", "contains\0nul")] },
+                { [new PowerShellArgument("Message", "-Verbose")] },
                 {
                     [
             new PowerShellArgument(

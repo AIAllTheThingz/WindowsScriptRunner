@@ -111,13 +111,16 @@ public sealed class PowerShellExecutionOptionsValidator :
         if (options.AllowedScriptRoot is not null &&
             options.WorkingRoot is not null &&
             Path.IsPathFullyQualified(options.AllowedScriptRoot) &&
-            Path.IsPathFullyQualified(options.WorkingRoot) &&
-            string.Equals(
-                NormalizeDirectory(options.AllowedScriptRoot!),
-                NormalizeDirectory(options.WorkingRoot!),
-                StringComparison.OrdinalIgnoreCase))
+            Path.IsPathFullyQualified(options.WorkingRoot))
         {
-            failures.Add("AllowedScriptRoot and WorkingRoot must be different directories.");
+            var allowedRoot = NormalizeDirectory(options.AllowedScriptRoot);
+            var workingRoot = NormalizeDirectory(options.WorkingRoot);
+            if (IsSameOrDescendant(allowedRoot, workingRoot) ||
+                IsSameOrDescendant(workingRoot, allowedRoot))
+            {
+                failures.Add(
+                    "AllowedScriptRoot and WorkingRoot must not overlap or be nested.");
+            }
         }
 
         return failures.Count == 0
@@ -153,6 +156,19 @@ public sealed class PowerShellExecutionOptionsValidator :
 
     private static string NormalizeDirectory(string path) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    private static bool IsSameOrDescendant(string root, string candidate)
+    {
+        if (string.Equals(root, candidate, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var rootWithSeparator = Path.EndsInDirectorySeparator(root)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void RequirePositive(
         int value,

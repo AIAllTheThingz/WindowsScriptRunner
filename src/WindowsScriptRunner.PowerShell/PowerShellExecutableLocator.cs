@@ -66,36 +66,40 @@ internal sealed class PowerShellExecutableLocator(
     public async Task<PowerShellRuntimeInfo> LocateAsync(
         CancellationToken cancellationToken)
     {
-        if (_cachedRuntime is not null)
+        var cachedRuntime = Volatile.Read(ref _cachedRuntime);
+        if (cachedRuntime is not null)
         {
-            return _cachedRuntime;
+            return cachedRuntime;
         }
 
         await _discoveryLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_cachedRuntime is not null)
+            cachedRuntime = Volatile.Read(ref _cachedRuntime);
+            if (cachedRuntime is not null)
             {
-                return _cachedRuntime;
+                return cachedRuntime;
             }
 
             if (!string.IsNullOrWhiteSpace(_options.ExecutablePath))
             {
-                _cachedRuntime = await ProbeAuthoritativeAsync(
+                var runtime = await ProbeAuthoritativeAsync(
                         _options.ExecutablePath,
                         cancellationToken)
                     .ConfigureAwait(false);
-                return _cachedRuntime;
+                Volatile.Write(ref _cachedRuntime, runtime);
+                return runtime;
             }
 
             var candidates = candidateSource.GetCandidates();
             if (!string.IsNullOrWhiteSpace(candidates.EnvironmentOverride))
             {
-                _cachedRuntime = await ProbeAuthoritativeAsync(
+                var runtime = await ProbeAuthoritativeAsync(
                         candidates.EnvironmentOverride,
                         cancellationToken)
                     .ConfigureAwait(false);
-                return _cachedRuntime;
+                Volatile.Write(ref _cachedRuntime, runtime);
+                return runtime;
             }
 
             var uniqueCandidates = candidates.PathCandidates
@@ -121,22 +125,23 @@ internal sealed class PowerShellExecutableLocator(
                 }
             }
 
-            _cachedRuntime = compatible
+            var selectedRuntime = compatible
                 .OrderBy(runtime => runtime.IsPreview)
                 .ThenByDescending(runtime => runtime.Version)
                 .ThenBy(runtime => runtime.ExecutablePath, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
-            if (_cachedRuntime is null)
+            if (selectedRuntime is null)
             {
                 throw new PowerShellRuntimeNotFoundException(
                     "No compatible PowerShell 7 runtime was found.");
             }
 
+            Volatile.Write(ref _cachedRuntime, selectedRuntime);
             logger.LogInformation(
                 "Selected PowerShell {PowerShellVersion} at {ExecutablePath}.",
-                _cachedRuntime.Version,
-                _cachedRuntime.ExecutablePath);
-            return _cachedRuntime;
+                selectedRuntime.Version,
+                selectedRuntime.ExecutablePath);
+            return selectedRuntime;
         }
         finally
         {

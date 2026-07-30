@@ -56,7 +56,7 @@ public sealed class PowerShellExecutionIntegrationTests(
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(message, DecodeValue(result.StandardOutput, "ECHO_BASE64"));
         Assert.DoesNotContain(
-            "WSR_INJECTION_SUCCEEDED" + Environment.NewLine,
+            "WSR_INJECTION_SUCCEEDED",
             result.StandardOutput,
             StringComparison.Ordinal);
     }
@@ -248,13 +248,11 @@ public sealed class PowerShellExecutionIntegrationTests(
             cancellation.Token);
         var marker = Path.Combine(executionPath, "started.marker");
         var childMarker = Path.Combine(executionPath, "child.marker");
-        await ProcessTest.WaitForFileAsync(marker);
-        await ProcessTest.WaitForFileAsync(childMarker);
         var processId = int.Parse(
-            (await File.ReadAllTextAsync(marker)).Trim(),
+            await ProcessTest.WaitForFileAsync(marker),
             System.Globalization.CultureInfo.InvariantCulture);
         var childProcessId = int.Parse(
-            (await File.ReadAllTextAsync(childMarker)).Trim(),
+            await ProcessTest.WaitForFileAsync(childMarker),
             System.Globalization.CultureInfo.InvariantCulture);
 
         cancellation.Cancel();
@@ -288,6 +286,29 @@ public sealed class PowerShellExecutionIntegrationTests(
             Directory.Exists(Path.Combine(fixture.WorkingRoot, executionId.ToString())));
         await ProcessTest.AssertExitedAsync(parentId);
         await ProcessTest.AssertExitedAsync(childId);
+    }
+
+    [Fact]
+    public async Task TerminationFailureIsPreservedAfterOutputPumpsAreObserved()
+    {
+        var controller = new FailingAfterKillProcessTreeController();
+        var boundary = fixture.CreateBoundary(_ => { }, controller);
+        var executionId = PowerShellExecutionId.New();
+
+        await Assert.ThrowsAsync<PowerShellProcessTerminationException>(
+            () => boundary.Boundary.ExecuteAsync(
+                boundary.Request(
+                    executionId,
+                    "Sleep",
+                    TimeSpan.FromSeconds(1),
+                    new PowerShellArgument("SleepSeconds", "10")),
+                CancellationToken.None));
+
+        Assert.NotNull(controller.TerminatedProcessId);
+        Assert.False(
+            Directory.Exists(
+                Path.Combine(boundary.Options.WorkingRoot!, executionId.ToString())));
+        await ProcessTest.AssertExitedAsync(controller.TerminatedProcessId.Value);
     }
 
     [Theory]

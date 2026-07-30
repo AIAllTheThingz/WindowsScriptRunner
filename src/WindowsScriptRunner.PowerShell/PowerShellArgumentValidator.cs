@@ -41,6 +41,7 @@ internal sealed class PowerShellArgumentValidator : IPowerShellArgumentValidator
 
             if (argument.Value is null ||
                 argument.Value.Contains('\0', StringComparison.Ordinal) ||
+                argument.Value.StartsWith('-') ||
                 argument.Value.Length > PowerShellExecutionOptions.MaximumArgumentValueLength)
             {
                 throw new PowerShellScriptTrustException(

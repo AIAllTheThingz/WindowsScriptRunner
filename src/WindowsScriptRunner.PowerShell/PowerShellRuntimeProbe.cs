@@ -102,12 +102,30 @@ internal sealed class PowerShellRuntimeProbe(
         if (completed != exitTask)
         {
             capture.StopStoring();
-            await processTreeController.TerminateAsync(
-                    process,
-                    containment,
-                    TimeSpan.FromSeconds(_options.TerminationGraceSeconds),
-                    null)
-                .ConfigureAwait(false);
+            try
+            {
+                await processTreeController.TerminateAsync(
+                        process,
+                        containment,
+                        TimeSpan.FromSeconds(_options.TerminationGraceSeconds),
+                        null)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception terminationException)
+            {
+                var pumpException = await CloseAndObservePumpsAsync(
+                        process,
+                        standardOutputTask,
+                        standardErrorTask)
+                    .ConfigureAwait(false);
+                if (pumpException is not null)
+                {
+                    terminationException.Data["OutputPumpException"] = pumpException;
+                }
+
+                throw;
+            }
+
             await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
 
             if (cancellationToken.IsCancellationRequested)
@@ -229,6 +247,24 @@ internal sealed class PowerShellRuntimeProbe(
         {
             throw new PowerShellRuntimeValidationException(
                 "The PowerShell executable candidate is invalid.");
+        }
+    }
+
+    private static async Task<Exception?> CloseAndObservePumpsAsync(
+        Process process,
+        Task standardOutputTask,
+        Task standardErrorTask)
+    {
+        process.StandardOutput.Dispose();
+        process.StandardError.Dispose();
+        try
+        {
+            await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
         }
     }
 

@@ -33,6 +33,24 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
     }
 
     [Fact]
+    public async Task ConcurrentCallsShareSafelyPublishedCachedRuntime()
+    {
+        var explicitPath = CreateExecutable("explicit");
+        var probe = new FakeRuntimeProbe(delay: TimeSpan.FromMilliseconds(50));
+        var locator = CreateLocator(
+            new PowerShellExecutionOptions { ExecutablePath = explicitPath },
+            probe,
+            new PowerShellCandidateSet(null, [], []));
+
+        var runtimes = await Task.WhenAll(
+            Enumerable.Range(0, 20)
+                .Select(_ => locator.LocateAsync(CancellationToken.None)));
+
+        Assert.All(runtimes, runtime => Assert.Same(runtimes[0], runtime));
+        Assert.Equal([explicitPath], probe.ProbedPaths);
+    }
+
+    [Fact]
     public async Task EnvironmentOverrideIsSecondAndAuthoritative()
     {
         var environmentPath = CreateExecutable("environment");
@@ -216,34 +234,39 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
 
     private sealed class FakeRuntimeProbe(
         IReadOnlyDictionary<string, Version>? versions = null,
-        string? previewPath = null) : IPowerShellRuntimeProbe
+        string? previewPath = null,
+        TimeSpan? delay = null) : IPowerShellRuntimeProbe
     {
         private readonly List<string> _probedPaths = [];
 
         public IReadOnlyList<string> ProbedPaths => _probedPaths;
 
-        public Task<PowerShellRuntimeInfo> ProbeAsync(
+        public async Task<PowerShellRuntimeInfo> ProbeAsync(
             string executablePath,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             _probedPaths.Add(executablePath);
+            if (delay is not null)
+            {
+                await Task.Delay(delay.Value, cancellationToken);
+            }
+
             var version = versions is not null &&
                 versions.TryGetValue(executablePath, out var configured)
                 ? configured
                 : new Version(7, 4, 0);
-            return Task.FromResult(
-                new PowerShellRuntimeInfo(
+            return new PowerShellRuntimeInfo(
+                executablePath,
+                version,
+                "Core",
+                "Win32NT",
+                "Windows",
+                "X64",
+                string.Equals(
                     executablePath,
-                    version,
-                    "Core",
-                    "Win32NT",
-                    "Windows",
-                    "X64",
-                    string.Equals(
-                        executablePath,
-                        previewPath,
-                        StringComparison.OrdinalIgnoreCase)));
+                    previewPath,
+                    StringComparison.OrdinalIgnoreCase));
         }
     }
 }

@@ -77,7 +77,12 @@ public sealed class PowerShellIntegrationFixture : IAsyncLifetime
     }
 
     public PowerShellTestBoundary CreateBoundary(
-        Action<PowerShellExecutionOptions> configure)
+        Action<PowerShellExecutionOptions> configure) =>
+        CreateBoundary(configure, null);
+
+    internal PowerShellTestBoundary CreateBoundary(
+        Action<PowerShellExecutionOptions> configure,
+        IProcessTreeController? processTreeController)
     {
         var root = Path.Combine(_testRoot, Guid.NewGuid().ToString("N"));
         var allowedRoot = Path.Combine(root, "allowed");
@@ -92,7 +97,8 @@ public sealed class PowerShellIntegrationFixture : IAsyncLifetime
             options,
             Runtime,
             scriptPath,
-            new RecordingLogger<PowerShellExecutionBoundary>());
+            new RecordingLogger<PowerShellExecutionBoundary>(),
+            processTreeController);
     }
 
     internal static PowerShellExecutionOptions CreateOptions(
@@ -149,11 +155,13 @@ public sealed class PowerShellTestBoundary
         PowerShellExecutionOptions options,
         PowerShellRuntimeInfo runtime,
         string scriptPath,
-        ILogger<PowerShellExecutionBoundary> boundaryLogger)
+        ILogger<PowerShellExecutionBoundary> boundaryLogger,
+        IProcessTreeController? processTreeController = null)
     {
         var wrappedOptions =
             Microsoft.Extensions.Options.Options.Create(options);
-        var controller = new ProcessTreeController(NullLogger<ProcessTreeController>.Instance);
+        var controller = processTreeController ??
+            new ProcessTreeController(NullLogger<ProcessTreeController>.Instance);
         var trusted = CreateTrustedScript(scriptPath);
         var boundary = new PowerShellExecutionBoundary(
             wrappedOptions,
@@ -217,6 +225,31 @@ internal sealed class RecordingLogger<T> : ILogger<T>
         _messages.Enqueue(formatter(state, exception));
 }
 
+internal sealed class FailingAfterKillProcessTreeController : IProcessTreeController
+{
+    public int? TerminatedProcessId { get; private set; }
+
+    public ProcessTreeContainment Attach(Process process) =>
+        new(null);
+
+    public async Task TerminateAsync(
+        Process process,
+        ProcessTreeContainment containment,
+        TimeSpan gracePeriod,
+        PowerShellExecutionId? executionId)
+    {
+        TerminatedProcessId = process.Id;
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+        }
+
+        await process.WaitForExitAsync();
+        throw new PowerShellProcessTerminationException(
+            "Injected process-tree termination failure.");
+    }
+}
+
 internal static class ProcessTest
 {
     public static int ParseProcessId(string output, string key)
@@ -227,15 +260,28 @@ internal static class ProcessTest
         return int.Parse(line[(key.Length + 1)..], System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    public static async Task WaitForFileAsync(string path)
+    public static async Task<string> WaitForFileAsync(string path)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
-        while (!File.Exists(path) && DateTimeOffset.UtcNow < deadline)
+        while (DateTimeOffset.UtcNow < deadline)
         {
+            try
+            {
+                var content = (await File.ReadAllTextAsync(path)).Trim();
+                if (content.Length > 0)
+                {
+                    return content;
+                }
+            }
+            catch (IOException)
+            {
+            }
+
             await Task.Delay(25);
         }
 
-        Assert.True(File.Exists(path), $"Expected fixture marker '{path}'.");
+        Assert.Fail($"Expected non-empty fixture marker '{path}'.");
+        return string.Empty;
     }
 
     public static async Task AssertExitedAsync(int processId)
