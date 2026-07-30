@@ -31,6 +31,7 @@ public interface IJobRepository
     Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken);
     Task AddAsync(Job job, CancellationToken cancellationToken);
     Task UpdateAsync(Job job, CancellationToken cancellationToken);
+    Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken);
 }
 
 public interface IScriptDefinitionRepository

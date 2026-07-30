@@ -644,7 +644,7 @@ internal static class PersistenceMapper
         }
     }
 
-    private static void SynchronizeLease(Job job, JobEntity entity)
+    public static void SynchronizeLease(Job job, JobEntity entity)
     {
         if (job.Lease is null)
         {

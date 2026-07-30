@@ -1565,6 +1565,9 @@ public sealed class ApplicationHandlerTests
             UpdateCount++;
             return Task.CompletedTask;
         }
+
+        public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken) =>
+            UpdateAsync(job, cancellationToken);
     }
 
     private sealed class FakeScriptRepository : IScriptDefinitionRepository

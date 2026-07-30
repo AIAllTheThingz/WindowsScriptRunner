@@ -24,6 +24,8 @@ Accepted clears write `JobParameterCleared` rather than misleading set semantics
 
 No generic repository or SQL terminology is exposed through Application. Phase 3 provides SQL Server implementations entirely in Infrastructure. Repository methods load or stage tracked aggregate graphs and propagate cancellation; they do not commit. The scoped `IUnitOfWork` performs the one atomic commit for both aggregate and audit changes.
 
+`IJobRepository.UpdateLeaseAsync` is the renewal-only staging path. It synchronizes the existing lease timestamps without dirtying the unchanged job row; other job mutations continue through the aggregate update path.
+
 ## DTOs and sensitive values
 
 Contracts uses immutable records, GUIDs at the external boundary, string enum names, and `DateTimeOffset`. `StartExecutionAttemptRequest` carries the job ID and optional worker-node ID required to enter Executing without exposing domain entities. Contracts does not reference Domain or expose domain entities. `JobParameterResponse` reports whether a value is redacted; application mapping always replaces a sensitive serialized value with `[REDACTED]` based on the pinned immutable `ScriptParameterDefinition`, never on duplicated job-parameter metadata.

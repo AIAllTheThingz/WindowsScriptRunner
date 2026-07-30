@@ -202,6 +202,8 @@ public sealed class QueueApplicationTests
         Assert.Equal(fixture.Clock.UtcNow.AddMinutes(2), expiration);
         Assert.Equal(expiration, fixture.Jobs.Job.Lease!.ExpiresUtc);
         Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Equal(1, fixture.Jobs.LeaseUpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
     }
 
@@ -378,6 +380,7 @@ public sealed class QueueApplicationTests
     {
         public Job? Job { get; set; }
         public int UpdateCount { get; private set; }
+        public int LeaseUpdateCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken)
@@ -399,6 +402,14 @@ public sealed class QueueApplicationTests
         public Task UpdateAsync(Job job, CancellationToken cancellationToken)
         {
             UpdateCount++;
+            Job = job;
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LeaseUpdateCount++;
             Job = job;
             return Task.CompletedTask;
         }

@@ -30,7 +30,7 @@ The lease, aggregate change, and `JobLeaseAcquired` audit commit atomically. Opt
 
 ## Renewal and release
 
-Renewal requires current credentials, occurs before half the lease duration, and must extend expiration. Persistence retries run immediately after their bounded backoff instead of waiting another renewal interval. Renewal changes no job status, generates no fencing token, and writes no normal audit event.
+Renewal requires current credentials, occurs before half the lease duration, and must extend expiration. Persistence retries run immediately after their bounded backoff instead of waiting another renewal interval. Renewal changes no job status, generates no fencing token, and writes no normal audit event. It does not update the unchanged job row, so its lease-row write can commit concurrently with a valid leased lifecycle transition without a false aggregate rowversion conflict.
 
 Safe release is restricted to unstarted work:
 

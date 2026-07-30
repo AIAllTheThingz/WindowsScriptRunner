@@ -122,7 +122,7 @@ public sealed class RenewJobLeaseHandler(
                 "The job lease could not be renewed because ownership changed.",
                 exception);
         }
-        await jobRepository.UpdateAsync(job, cancellationToken);
+        await jobRepository.UpdateLeaseAsync(job, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
         return expiration;
     }

@@ -86,6 +86,9 @@ public sealed class ApplicationHandlerIntegrationTests
             Job = job;
             return Task.CompletedTask;
         }
+
+        public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken) =>
+            UpdateAsync(job, cancellationToken);
     }
 
     private sealed class RecordingAuditWriter : IAuditWriter

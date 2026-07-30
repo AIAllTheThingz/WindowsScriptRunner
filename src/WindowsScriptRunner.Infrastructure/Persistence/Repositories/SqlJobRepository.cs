@@ -118,6 +118,31 @@ public sealed class SqlJobRepository(
         return Task.CompletedTask;
     }
 
+    public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        cancellationToken.ThrowIfCancellationRequested();
+        var stopwatch = Stopwatch.StartNew();
+        var entity = FindTracked(job.Id.Value) ??
+            throw new ApplicationConflictException(
+                "The job must be loaded in the current persistence scope before its lease can be updated.");
+        if (job.Lease is null || entity.Lease is null)
+        {
+            throw new ApplicationConflictException(
+                "The job must have an active tracked lease before it can be updated.");
+        }
+
+        PersistenceMapper.SynchronizeLease(job, entity);
+        logger.LogDebug(
+            "Repository operation {Operation} for {EntityType} {EntityId} completed in {DurationMs} ms with {Outcome}",
+            nameof(UpdateLeaseAsync),
+            nameof(JobLease),
+            job.Id,
+            stopwatch.ElapsedMilliseconds,
+            "Staged");
+        return Task.CompletedTask;
+    }
+
     private JobEntity? FindTracked(Guid id) =>
         dbContext.ChangeTracker
             .Entries<JobEntity>()

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Application.Workers;
 using WindowsScriptRunner.Domain;
@@ -449,6 +450,57 @@ public sealed class QueuePersistenceTests
                 job.Lease is not null &&
                 job.Lease.ExpiresUtc > seeded.Work.LeaseExpiresUtc) ||
             (job.Status == JobStatus.ExecutionQueued && job.Lease is null));
+    }
+
+    [Fact]
+    public async Task ConcurrentRenewalAndExecutionStartBothCommit()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var seeded = await SeedClaimedJobAsync(database);
+        var operationTime = seeded.Work.LeaseExpiresUtc.AddSeconds(-30);
+        var renewedExpiration = operationTime.AddMinutes(2);
+        await using var renewal = new PersistenceTestScope(database);
+        await using var execution = new PersistenceTestScope(database);
+        var barrier = new CommitBarrier(2);
+        var renewalHandler = new RenewJobLeaseHandler(
+            renewal.Jobs,
+            new CoordinatedUnitOfWork(renewal.UnitOfWork, barrier),
+            new FixedClock(operationTime));
+        var executionHandler = new StartExecutionAttemptHandler(
+            execution.Jobs,
+            execution.Audits,
+            new CoordinatedUnitOfWork(execution.UnitOfWork, barrier),
+            new FixedClock(operationTime));
+
+        var results = await Task.WhenAll(
+            CaptureOperationAsync(
+                () => renewalHandler.HandleAsync(
+                    new RenewJobLeaseCommand(
+                        seeded.JobId,
+                        seeded.Work.Credentials,
+                        TimeSpan.FromMinutes(2)),
+                    CancellationToken.None)),
+            CaptureOperationAsync(
+                async () =>
+                {
+                    await executionHandler.HandleAsync(
+                        new StartExecutionAttemptCommand(
+                            seeded.JobId,
+                            seeded.Work.Credentials,
+                            new UserIdentity("worker:concurrency")),
+                        CancellationToken.None);
+                    return operationTime;
+                }));
+
+        Assert.All(results, result => Assert.Null(result.Exception));
+        await using var verification = new PersistenceTestScope(database);
+        var job = Assert.IsType<Job>(
+            await verification.Jobs.GetByIdAsync(seeded.JobId, CancellationToken.None));
+        var lease = Assert.IsType<JobLease>(job.Lease);
+        var attempt = Assert.Single(job.Executions);
+        Assert.Equal(JobStatus.Executing, job.Status);
+        Assert.Equal(renewedExpiration, lease.ExpiresUtc);
+        Assert.Equal(operationTime, attempt.StartedUtc);
     }
 
     [Fact]

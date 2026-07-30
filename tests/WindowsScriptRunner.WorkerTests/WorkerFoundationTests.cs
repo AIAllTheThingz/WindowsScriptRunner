@@ -620,6 +620,9 @@ internal sealed class FakeJobRepository : IJobRepository
         Jobs[job.Id] = job;
         return Task.CompletedTask;
     }
+
+    public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken) =>
+        UpdateAsync(job, cancellationToken);
 }
 
 internal sealed class FakeAuditWriter : IAuditWriter
