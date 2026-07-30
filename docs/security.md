@@ -37,7 +37,7 @@
 - Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
 - Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
-Authentication, authorization, executable signing, trusted hash calculation, external credential retrieval, process isolation, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.
+Authentication, authorization, executable signing, production trusted-artifact resolution, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.
 
 ## Phase 4 queue security
 
@@ -51,3 +51,20 @@ Authentication, authorization, executable signing, trusted hash calculation, ext
 - Audit metadata is limited to work kind, worker ID, lease ID, fencing token, expiration, and recovery disposition. `FencingToken` is coordination metadata, not authentication or secret material.
 - Logs use identifiers, counts, outcomes, and bounded persistence categories. They omit parameter values, credential data, scripts, connection strings, SQL authentication data, and approval comments.
 - Lease coordination is at-least-once. A future side-effecting handler must make its downstream operations idempotent and propagate or validate fencing where that downstream system supports it.
+
+## Phase 5 PowerShell security
+
+- PowerShell runs only as an external `pwsh.exe` process. Production projects contain no `Microsoft.PowerShell.SDK`, `System.Management.Automation`, runspace, `powershell.exe`, command-shell, or execution-policy-bypass dependency.
+- Runtime discovery is deterministic and validates fixed JSON metadata. PowerShell Core, Windows, minimum version, preview policy, and architecture are enforced, and the successful runtime is cached.
+- `TrustedPowerShellScript` has no public constructor. Phase 5 creates only the test fixture artifact through test-only internal access; there is no production resolver or arbitrary script API.
+- The script must be an existing canonical local `.ps1` beneath the separator-normalized allowed root. UNC paths, device paths, alternate data streams, traversal, sibling-prefix escapes, and reparse-point components are rejected.
+- SHA-256 is recomputed with a read-only file handle immediately before startup and compared in constant time. A small close-to-process-start time-of-check/time-of-use race remains.
+- Parameter names use a conservative identifier grammar, must belong to the artifact allowlist, and are unique case-insensitively. Count and value length are bounded; null, NUL, and sensitive-classified values are rejected.
+- `ArgumentList` supplies `-NoLogo`, `-NoProfile`, `-NonInteractive`, `-File`, the trusted path, and named literal values. No caller value enters `-Command`; no shell quoting heuristic or `ExecutionPolicy Bypass` is used.
+- Command-line arguments are visible to operating-system process inspection. Phase 5 therefore does not accept secret values or perform secret injection.
+- The child environment is cleared and rebuilt from a fixed Windows allowlist plus telemetry/update-check controls. Parent API keys, connection strings, and arbitrary variables are not inherited.
+- Each execution receives a unique directory beneath the configured working root. It is removed after exit, failure, timeout, cancellation, or output overflow.
+- UTF-8 stdout and stderr are drained concurrently into fixed-size, bounded capture. Output text and parameter values are returned only to the caller and never logged; logs contain safe IDs, artifact/runtime metadata, durations, reasons, exit codes, byte counts, and truncation flags.
+- Timeout, caller cancellation, and output overflow terminate the complete process tree through a kill-on-close Windows Job Object with a full-tree kill fallback. Termination is bounded and failure is not reported as ordinary success.
+- Job Objects provide lifetime containment only. They do not restrict filesystem, registry, network, privileges, or the PowerShell language. The immediate post-start assignment has a small race because the process is not created suspended.
+- Web and Worker neither reference nor register the PowerShell project. The production Worker still registers no `IJobWorkHandler`, so Phase 5 cannot lease or execute queued work.

@@ -162,6 +162,11 @@ public sealed class WorkerFoundationTests
         Assert.DoesNotContain(
             services,
             descriptor => descriptor.ServiceType == typeof(IJobWorkHandler));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType.FullName?.Contains(
+                "PowerShell",
+                StringComparison.OrdinalIgnoreCase) == true);
     }
 
     private static WorkerOptionsValidator Validator(

@@ -2,7 +2,7 @@
 
 The web application and worker are separate processes. The web process must never execute PowerShell directly. It will eventually submit work through application contracts, while the worker will coordinate job execution.
 
-The Domain project remains independent of all outer layers and owns aggregates and lifecycle invariants. Application coordinates use cases through domain-specific repository, audit, clock, and unit-of-work interfaces. Infrastructure implements those persistence contracts with EF Core and SQL Server. PowerShell execution is planned to occur through a separate child process behind the isolated PowerShell boundary and is not implemented in Phase 3.
+The Domain project remains independent of all outer layers and owns aggregates and lifecycle invariants. Application coordinates use cases through domain-specific repository, audit, clock, and unit-of-work interfaces. Infrastructure implements those persistence contracts with EF Core and SQL Server. The Phase 5 PowerShell project owns an out-of-process PowerShell 7 boundary and has no production-project dependency. Only its integration tests invoke the boundary.
 
 ```text
 Browser
@@ -15,8 +15,9 @@ Web --> Application --> Domain
 
 Worker --> Application --> Domain
    |----> Infrastructure
-   |----> Reporting
-   +----> PowerShell boundary --> separate child process (future)
+   +----> Reporting
+
+PowerShellTests --> PowerShell boundary --> controlled pwsh.exe child process
 ```
 
 Arrows represent compile-time dependencies. Domain has no solution-project dependencies.
@@ -50,3 +51,15 @@ Candidate discovery returns identifiers and queue metadata only. It does not loa
 `Job` owns its optional `JobLease`. Persisted job handlers and worker handlers obtain SQL Server UTC through the scoped coordination clock; lease acquisition also obtains a monotonic SQL fencing token. Queue entry, registration, heartbeat, acquisition, renewal, leased lifecycle validation, and expiration recovery therefore share one time authority across hosts. Terminal lease resolution uses a bounded retry only when the job row is unchanged and the same fenced owner renewed the lease concurrently. The queue tracks every dispatch, renews through fresh scopes, cancels work after lease loss, limits local concurrency, and drains for a configured interval at shutdown. Expired leases are independently revalidated and recovered. This produces at-least-once coordination; it does not promise exactly-once external side effects.
 
 Worker liveness is deliberately separate from Web health. `/health`, `/health/live`, and `/health/ready` remain Web endpoints, and Web readiness continues to depend only on its SQL/migration state. The Worker exposes testable in-process state rather than a new HTTP endpoint.
+
+## Phase 5 PowerShell boundary
+
+`WindowsScriptRunner.PowerShell` alone owns executable discovery, the constant runtime probe, `ProcessStartInfo`, process lifecycle, stream capture, Windows Job Object containment, trusted-path validation, hash verification, working directories, and the minimized child environment. It uses `ProcessStartInfo.ArgumentList`; caller values never enter `-Command`, a command string, or a shell. The public execution method accepts a request containing an internally constructed `TrustedPowerShellScript`, named non-sensitive arguments, an execution ID, and a bounded timeout. There is no public arbitrary path, command, or script-text execution API.
+
+The locator considers a configured absolute `pwsh.exe`, `WINDOWSSCRIPTRUNNER_PWSH_PATH`, PATH entries inspected with file APIs, and stable `%ProgramFiles%\PowerShell` installations. A constant JSON probe requires PowerShell Core on Windows, the configured minimum version, allowed preview status, and the configured architecture. The successful immutable runtime is cached.
+
+Every execution creates `<working-root>\<execution-id>`, revalidates the controlled script path and SHA-256 immediately before launch, starts `pwsh.exe` without a shell, drains UTF-8 stdout and stderr concurrently into bounded buffers, and removes the working directory on every completion path. Timeout and output overflow return distinct results; caller cancellation terminates the process tree, drains the pipes, cleans up, and throws `OperationCanceledException`.
+
+Windows Job Objects apply `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; `Process.Kill(entireProcessTree: true)` is the fallback and retry path. This controls process lifetime, not filesystem, registry, network, token, or privilege access. Assignment occurs immediately after startup, so a small process-start-to-assignment race remains. The trusted hash check also has a small check-to-process-start filesystem race. Phase 5 makes neither an operating-system sandbox nor an absolute malicious-filesystem claim.
+
+No Web or Worker composition root registers this boundary. The production handler registry remains empty, and no queue status, lease, or database row changes because Phase 5 exists. Phase 6 may introduce a reviewed handler that resolves a production trusted artifact and maps leased work into this boundary; that integration is not present here.

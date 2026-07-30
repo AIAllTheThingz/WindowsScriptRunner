@@ -1288,3 +1288,76 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - Blocked required items: none.
 - Blocked harness capabilities: hidden `Start-Process` launch and Ctrl+C delivery for non-interactive runtime processes. Foreground sessions, exact PID verification, endpoint/database evidence, forced cleanup, and hosted-service cancellation tests covered the required outcomes without changing product behavior.
 - NotRun: production SQL Server deployment/rollback, production authentication/authorization, external secret retrieval, PowerShell execution, script process isolation, paid telemetry, deployment automation, containers, and Phase 5. No production execution evidence is claimed.
+
+# Phase 5 PowerShell Execution Boundary
+
+Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran from `<repo-root>`.
+
+## Starting gate and baseline
+
+- Starting commit: `a18f7ee57376cbe4a48be27085dd9b6576fcd4e1`, the Phase 4 review-fix merge on `main`.
+- Phase 4 PRs #3 and #4 were merged into `main`. Their 15 total review threads had zero unresolved threads. No open PR, open issue, dirty file, or existing Phase 5 branch blocked the start.
+- Phase 5 branch: `agent/phase-5-powershell-execution-boundary`.
+- Baseline tool restore: `2026-07-29T22:42:46.6801751-05:00` to `22:42:47.2200310-05:00`, exit 0, dotnet-ef 10.0.10.
+- Baseline restore: `2026-07-29T22:42:47.2348416-05:00` to `22:42:49.1537823-05:00`, exit 0.
+- Baseline Release build: `2026-07-29T22:42:49.1548838-05:00` to `22:42:53.6405676-05:00`, exit 0, 0 warnings/errors.
+- Baseline full test: `2026-07-29T22:42:53.6412917-05:00` to `22:43:13.7718070-05:00`, exit 0, 441 passed, 0 failed, 0 skipped: Unit 314, Security 42, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 2.
+- Baseline format verification: `2026-07-29T22:43:13.7726875-05:00` to `22:43:39.8253891-05:00`, exit 0.
+- Baseline pending-model check: `2026-07-29T22:43:39.8261089-05:00` to `22:43:47.9790202-05:00`, exit 0, no pending model changes.
+
+## Runtime and trust validation
+
+- Discovery order validated: configured absolute path, `WINDOWSSCRIPTRUNNER_PWSH_PATH`, PATH inspected through file APIs, then `%ProgramFiles%\PowerShell` stable locations. Duplicate candidates are removed case-insensitively, stable runtimes are preferred to previews, compatible stable versions are ordered highest first, and a successful selection is cached.
+- Selected executable: `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.4.0_x64__8wekyb3d8bbwe\pwsh.exe`.
+- Fixed-probe metadata: version 7.6.4, PSEdition Core, platform Win32NT, architecture X64. The alternative WindowsApps alias reported the same runtime; deterministic path ordering selected the Program Files package path.
+- The real-runtime integration test was executed, not skipped. Missing/relative/configured legacy executable, below-minimum version, Desktop edition, malformed JSON, disallowed preview, and non-64-bit metadata tests passed. Preview opt-in passed separately.
+- Controlled fixture: `<repo-root>\tests\WindowsScriptRunner.PowerShellTests\Fixtures\ControlledExecutionFixture.ps1`.
+- The test copies the fixture beneath a unique allowed root, computes SHA-256, creates the internal trusted artifact, and hashes again immediately before launch. Valid hash, post-trust tampering, outside-root sibling prefix, traversal, UNC, device, alternate-stream, and actual NTFS junction-component tests passed.
+- The production assembly has no public trusted-artifact constructor or resolver and exposes no raw script-path, command-line, command-text, or script-text execution method.
+
+## Execution behavior
+
+- Literal argument tests passed for plain text, spaces, double/single quotes, semicolons, ampersands, pipes, backticks, `$()`, `${}`, wildcards, redirection, Unicode, newlines, empty string, and the injection marker. The Base64-decoded fixture value matched exactly and no marker executed.
+- Parameter allowlist, case-insensitive duplicate, NUL, oversized value, excessive count, and sensitive-classification rejection tests passed before working-directory creation.
+- Concurrent UTF-8 stream tests passed with 512 stdout and 512 stderr markers, exact byte counts, Unicode preservation, exit 0, and nonzero exit 1. Nonzero exits 1 and 37 returned exactly without throwing.
+- Timeout returned `TimedOut`, no fabricated exit code, finalized streams, terminated the tracked PID, remained bounded, and removed the execution directory.
+- In-flight cancellation used `SpawnChild`, waited for parent and child marker files, cancelled after startup, terminated both tracked PIDs, drained streams, deleted the directory, and threw `OperationCanceledException`.
+- The timeout process-tree scenario captured parent and fixed-command child PIDs and verified both exited. Post-test inspection found no tracked fixture PID alive. Existing unrelated PowerShell sessions were not changed.
+- Stdout, stderr, and combined overflow scenarios returned `OutputLimitExceeded`, set truncation, kept captured UTF-8 content within configured stream/combined bounds, terminated the tracked root, and removed the working directory.
+- Parent values for `WSR_PRIVATE_SENTINEL`, `OPENAI_API_KEY`, and `ConnectionStrings__WindowsScriptRunner` were absent in the fixture. Required `SystemRoot` and `TEMP` remained available. Sentinel values were neither returned nor logged.
+- Two working-directory executions reported distinct `<working-root>\<execution-id>` directories, not the script directory or repository, and both directories were deleted after completion. Trust failure, timeout, overflow, and cancellation cleanup tests also passed.
+- Captured logs contained execution ID, artifact, runtime version, duration, exit code, termination reason, byte counts, and truncation status. They omitted parameter values, stdout/stderr, fixture path/content, complete command line, environment values, connection strings, and credential identifiers.
+
+## Focused validation
+
+- PowerShell focused suite: 81 passed, 0 failed, 0 skipped against the actual runtime.
+- PowerShell/Process/TrustedScript Unit filter: 4 passed, 0 failed, 0 skipped.
+- Security focused suite: 48 passed, 0 failed, 0 skipped.
+- Worker regression suite: 37 passed, 0 failed, 0 skipped. Production registration contains neither an executable work handler nor a PowerShell service.
+- SQL Server regression suite: 43 passed, 0 failed, 0 skipped against LocalDB.
+- Source inspection found process APIs and Job Object interop only in `WindowsScriptRunner.PowerShell`; no production `System.Management.Automation`, PowerShell SDK, `powershell.exe`, command shell, `Invoke-Expression`, unsafe `Arguments`, shell execution, caller-controlled `-Command`, or execution-policy bypass.
+- Web and Worker have no PowerShell reference or registration. No production `IJobWorkHandler`, persistence migration, table, or model change was added.
+
+## Final build, test, formatting, and model validation
+
+- `dotnet tool restore`: `2026-07-29T23:23:00.0034043-05:00` to `23:23:00.5260266-05:00`, exit 0.
+- `dotnet restore`: `2026-07-29T23:23:00.5273690-05:00` to `23:23:02.3627572-05:00`, exit 0.
+- `dotnet build --configuration Release`: `2026-07-29T23:23:02.3638824-05:00` to `23:23:06.5964292-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release`: `2026-07-29T23:23:06.5972920-05:00` to `23:23:38.1525373-05:00`, exit 0, 530 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 81.
+- `dotnet format`: `2026-07-29T23:23:38.1533349-05:00` to `23:24:05.4504895-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-29T23:24:05.4512453-05:00` to `23:24:32.3863914-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-29T23:24:32.3871193-05:00` to `23:24:35.7217455-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-29T23:24:35.7224085-05:00` to `23:25:04.7804403-05:00`, exit 0, the same 530 tests passed.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ...`: `2026-07-29T23:25:04.7811357-05:00` to `23:25:12.3927279-05:00`, exit 0, no pending model changes.
+
+## Corrected, failed, blocked, NotRun, and limitations
+
+- Corrected: the first validation wrapper captured its own pipeline output and returned a harness exit 1; every exact baseline command was rerun with visible timestamps and passed.
+- Corrected: the first focused build exposed source-generated Job Object interop safe-handle return requirements. The raw handle is now wrapped immediately in `SafeJobHandle`; the focused build then passed with zero warnings.
+- Corrected: the initial real-process run had a timeout shorter than the fixture PID flush and an empty-string negative log assertion. The test timing/assertion was corrected without changing boundary behavior; all focused PowerShell tests passed.
+- Corrected: the environment did not grant symbolic-link creation privilege. A privilege-independent NTFS junction fixture was added through test-only native setup, and the actual reparse-component rejection passed. An initial recursive cleanup attempt traversed the junction; cleanup now deletes the junction itself first and left no test directory.
+- Corrected: the prescribed Unit filter initially matched no existing test name. Four public PowerShell contract tests were added to the Unit project, and the exact filter passed.
+- Failed required final items: none.
+- Blocked required items: none.
+- NotRun: production queue-to-PowerShell dispatch, production trusted-artifact resolution, arbitrary script selection/upload, script manifests/packages, credential retrieval/injection, remoting, report parsing/persistence, production SQL deployment, authentication/authorization, and Phase 6 behavior. These are outside Phase 5.
+- Remaining limitations: Job Objects govern lifetime rather than filesystem, registry, network, language, token, or privilege access. Process startup precedes Job Object assignment, and the SHA-256 file handle closes before process startup, leaving small documented races. Command-line values are OS-visible, so secrets are prohibited. The boundary is validated only against the controlled fixture and is not an operating-system sandbox.
