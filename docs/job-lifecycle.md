@@ -31,13 +31,13 @@ Completed, CompletedWithWarnings, Failed, Rejected, Cancelled, TimedOut, Blocked
 
 ## Approval fingerprint
 
-Phase 2 accepts a supplied 64-character hexadecimal SHA-256 fingerprint. A future implementation will bind it to the script version, requested phase, targets, parameters, execution window, and dry-run evidence.
+The current application contract accepts a structurally valid 64-character hexadecimal SHA-256 fingerprint. Phase 8 will calculate and verify the trusted fingerprint from the script version, requested phase, targets, parameters, execution window, and dry-run evidence at an authenticated boundary.
 
-Approval policy is evaluated from the immutable policy snapshot captured from the published script at submission. Medium, High, and Critical requesters cannot self-approve; the documented Phase 2 policy permits Low and ReadOnly self-approval. Validation precedes decision-record and status mutation.
+Approval policy is evaluated from the immutable policy snapshot captured from the published script at submission. Medium, High, and Critical requesters cannot self-approve; the current policy permits Low and ReadOnly self-approval. Validation precedes decision-record and status mutation. Web approval actions and authenticated principal mapping remain Phase 8 work.
 
 ## Requested phase enforcement
 
-Phase 2 supports submitted requests for `Validation`, `DryRun`, and `Execute`.
+The current lifecycle supports submitted requests for `Validation`, `DryRun`, and `Execute`.
 
 - `Validation` requests may move from Draft to Submitted to Validated to Completed. They cannot queue dry-run, require approval, queue execution, claim, execute, or post-validate.
 - `DryRun` requests may move from Draft to Submitted to Validated to DryRunQueued to DryRunRunning to DryRunCompleted to Completed. They cannot require approval, queue execution, claim, execute, or post-validate, even when the script version also supports Execute.
@@ -47,7 +47,7 @@ Other enum values, including `Discovery`, `Report`, and `PostValidation`, are re
 
 ## Lease-controlled transitions
 
-Phase 4 makes worker-controlled transitions lease-aware. The current lease ID, worker ID, and fencing token are required for renewal and every transition after acquisition. The generic transition application handler cannot enter `DryRunRunning`, `DryRunCompleted`, `Claimed`, or `PostValidation`, and it cannot mutate a leased job.
+Worker-controlled transitions are lease-aware. The current lease ID, worker ID, and fencing token are required for renewal and every transition after acquisition. The generic transition application handler cannot enter `DryRunRunning`, `DryRunCompleted`, `Claimed`, or `PostValidation`, and it cannot mutate a leased job.
 
 | Work | Acquisition | Handler start | Successful resolution | Expiration before start | Expiration after start |
 |---|---|---|---|---|---|
@@ -55,3 +55,9 @@ Phase 4 makes worker-controlled transitions lease-aware. The current lease ID, w
 | Execute | `ExecutionQueued -> Claimed` with lease | `Claimed -> Executing` and creates attempt | terminal outcome completes attempt/job and removes lease | `Claimed -> ExecutionQueued`, lease removed | active attempt becomes `TimedOut`, lease removed |
 
 Execute may enter `PostValidation` only through the lease-aware handler. Lease renewal changes only lease timestamps. A stale worker cannot renew, release, transition, or report success after expiration recovery or ownership change.
+
+## Reviewed inventory completion
+
+The local-host inventory DryRun route has a stricter successful resolution than the generic lifecycle table can express. A zero process exit code is only transport success. The bounded output must also parse and canonicalize as the expected typed report.
+
+Application then commits the immutable `JobReport`, `DryRunCompleted` job state, lease removal, and audit event atomically. A report already associated with the job blocks replay. Invalid output, a stale lease, a pinned-version mismatch, or persistence failure cannot produce a completed job without its corresponding typed report.

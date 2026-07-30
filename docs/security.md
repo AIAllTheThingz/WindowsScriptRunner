@@ -1,5 +1,7 @@
 # Security properties
 
+These properties describe the repository through Phase 7. Phase 8 is the next trust-boundary change and will add authenticated identity, authorization, approval workflow, and trusted approval-fingerprint calculation.
+
 - No raw credential property exists in the domain model; `CredentialReference` stores only an external identifier.
 - `SecureReference` job parameters must contain a canonical non-empty `CredentialReferenceId` GUID. Application handlers resolve the ID, reject missing or disabled references, store only the canonical ID, and never audit external vault identifiers.
 - Null, empty, and whitespace are one absent-value representation. The pinned definition accepts or rejects absence before type parsing or credential lookup. Accepted absence removes the explicit draft binding; required absence without a default leaves the job unchanged and performs no credential lookup, persistence update, success audit, or commit.
@@ -16,10 +18,10 @@
 - Web has no direct reference to Worker, Automation, or PowerShell.
 - Domain references no solution, ASP.NET Core, Entity Framework Core, or SQL client assembly.
 - Submission captures trusted script risk plus Execute- and PostValidation-phase capabilities in an immutable job policy snapshot only after rejecting undefined risk and phase enum values.
-- New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured Phase 2 policy until future runtime governance is implemented.
+- New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured policy until runtime governance is implemented.
 - Submitted jobs enforce the requested phase: Validation stops after validation, DryRun stops after dry-run, and only Execute requests may enter approval/execution states.
-- Requesters cannot self-approve Medium, High, or Critical work, and callers cannot lower risk at approval time. The documented Phase 2 policy permits ReadOnly and Low self-approval.
-- Windows user identities compare with ordinal case-insensitive equality so casing cannot bypass self-approval checks. Future authentication should map users to stable SIDs or equivalent principal identifiers.
+- Requesters cannot self-approve Medium, High, or Critical work, and callers cannot lower risk at approval time. The current policy permits ReadOnly and Low self-approval.
+- Windows user identities compare with ordinal case-insensitive equality so casing cannot bypass self-approval checks. Phase 8 should map authenticated users to stable SIDs or equivalent principal identifiers.
 - Read-only completion requires captured ReadOnly risk and a captured absence of Execute support; callers cannot override either value.
 - Approval, rejection, execution, and completion states require dedicated evidence-bearing operations; the generic application transition handler rejects protected targets and refuses to terminalize jobs with active execution attempts.
 - Execution outcomes complete the active `JobExecution` and terminalize the parent `Job` in one aggregate operation, preventing orphaned active attempts.
@@ -37,11 +39,11 @@
 - Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
 - Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
-Authentication, authorization, executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, and production approval controls are not implemented.
+Authentication, authorization, trusted approval-fingerprint calculation, executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, and production approval controls are not implemented.
 
-## Queue security (Phase 4 foundation, Phase 6 routing)
+## Queue and routing security
 
-- With Phase 6 disabled, production registers no `IJobWorkHandler`, advertises zero routes, and leases no jobs.
+- With the reviewed package disabled, production registers no `IJobWorkHandler`, advertises zero routes, and leases no jobs.
 - Worker continues to have no PowerShell project reference, `Process.Start`, `System.Diagnostics.Process`, or `System.Management.Automation` use.
 - Candidate and claimed-work descriptors contain no parameters, serialized values, credential-reference IDs, external identifiers, or script content.
 - The SQL candidate projection is bounded, parameterized, filters exact eligible status, lease absence, and handler-supported `ScriptVersionId`, and orders deterministically.
@@ -52,16 +54,16 @@ Authentication, authorization, executable signing, external credential retrieval
 - Logs use identifiers, counts, outcomes, and bounded persistence categories. They omit parameter values, credential data, scripts, connection strings, SQL authentication data, and approval comments.
 - Lease coordination is at-least-once. A future side-effecting handler must make its downstream operations idempotent and propagate or validate fencing where that downstream system supports it.
 
-## Phase 5 PowerShell security
+## PowerShell process security
 
 - PowerShell runs only as an external `pwsh.exe` process. Production projects contain no `Microsoft.PowerShell.SDK`, `System.Management.Automation`, runspace, `powershell.exe`, command-shell, or execution-policy-bypass dependency.
 - Runtime discovery is deterministic and validates fixed JSON metadata. PowerShell Core, Windows, minimum version, preview policy, and architecture are enforced, and the successful runtime is cached.
-- `TrustedPowerShellScript` has no public constructor. Phase 6 adds a PowerShell-owned factory accessible only to the reviewed Automation assembly; there is no public arbitrary script API.
+- `TrustedPowerShellScript` has no public constructor. A PowerShell-owned factory is accessible only to the reviewed Automation assembly; there is no public arbitrary script API.
 - The script must be an existing canonical local `.ps1` beneath the separator-normalized allowed root. UNC paths, device paths, alternate data streams, traversal, sibling-prefix escapes, and reparse-point components are rejected.
 - SHA-256 is recomputed with a read-only file handle immediately before startup and compared in constant time. A small close-to-process-start time-of-check/time-of-use race remains.
 - Parameter names use a conservative identifier grammar, must belong to the artifact allowlist, and are unique case-insensitively. Count and value length are bounded; null, NUL, leading-hyphen, and sensitive-classified values are rejected.
 - `ArgumentList` supplies `-NoLogo`, `-NoProfile`, `-NonInteractive`, `-File`, the trusted path, and named literal values. No caller value enters `-Command`; no shell quoting heuristic or `ExecutionPolicy Bypass` is used.
-- Command-line arguments are visible to operating-system process inspection. Phase 5 therefore does not accept secret values or perform secret injection.
+- Command-line arguments are visible to operating-system process inspection. The boundary therefore does not accept secret values or perform secret injection.
 - The child environment is cleared and rebuilt from a fixed Windows allowlist plus telemetry/update-check controls. Parent API keys, connection strings, and arbitrary variables are not inherited.
 - Trusted-script and working roots cannot overlap or be nested. Each execution receives a unique directory beneath the configured working root. It is removed after exit, failure, timeout, cancellation, or output overflow.
 - UTF-8 stdout and stderr are drained concurrently into fixed-size, bounded capture. Output text and parameter values are returned only to the caller and never logged; logs contain safe IDs, artifact/runtime metadata, durations, reasons, exit codes, byte counts, and truncation flags.
@@ -71,7 +73,7 @@ Authentication, authorization, executable signing, external credential retrieval
 - Job Objects provide lifetime containment only. They do not restrict filesystem, registry, network, privileges, or the PowerShell language. The immediate post-start assignment has a small race because the process is not created suspended.
 - Web and Worker do not reference PowerShell directly. Only enabled Worker-side Automation composition registers the boundary.
 
-## Phase 6 automation-package security
+## Reviewed automation-package security
 
 - `WindowsScriptRunner.Automation` contains exactly one production `.ps1`: `windows.local-host-inventory` version `1.0.0`.
 - The catalog compile-pins stable definition/version IDs, package name/version, ReadOnly risk, DryRun-only phase, relative path, SHA-256, minimum runtime, timeout, JSON format, and an empty parameter allowlist.
@@ -88,7 +90,7 @@ Authentication, authorization, executable signing, external credential retrieval
 - Raw stdout, stderr, inventory JSON, argument values, script contents, roots, hashes, executable paths, connection strings, and environment values are not written to application logs or audit properties.
 - This read-only operation is externally safe to retry under at-least-once coordination. The system does not claim exactly-once execution.
 
-## Phase 7 report security
+## Typed report security
 
 - Reporting is independent of PowerShell, Infrastructure, EF Core, and SQL client packages. Automation adapts the complete bounded result into a narrow Reporting input; Worker never parses JSON or owns persistence policy.
 - Successful exit code alone is insufficient. The parser also requires untruncated streams, whitespace-only stderr, a valid execution window, strict UTF-8, an 8 KiB maximum document, strict JSON without comments/trailing commas/trailing content, exact case-sensitive properties, no duplicate properties at any level, bounded strings without controls or malformed Unicode, conservative computer-name grammar, supported architecture, invariant versions, PowerShell `>= 7.4.0`, and a round-trip offset timestamp within five seconds of the execution window.

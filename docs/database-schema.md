@@ -1,5 +1,7 @@
 # Database schema
 
+The current schema includes the initial aggregate model, durable worker leases, and the Phase 7 typed local-host inventory report.
+
 The initial migration creates the `wsr` schema and uses `wsr.__EFMigrationsHistory` for migration history.
 
 ## Aggregate tables
@@ -14,7 +16,7 @@ Foreign keys preserve aggregate ownership and use explicit delete behavior. Scri
 
 Unique indexes enforce semantic version uniqueness per script, child-name uniqueness, normalized worker-name uniqueness, credential provider/reference uniqueness, and audit event identity. A filtered unique index permits at most one active execution for each job.
 
-Operational indexes cover job status/update time, job creation time, requester/creation time, pinned script IDs, approval decision time, worker enabled/heartbeat state, and audit queries by time, entity, actor, and event type. Indexes are limited to existing repository and audit access patterns; no Phase 4 claiming or dashboard indexes are added.
+Operational indexes cover job status/update time, job creation time, requester/creation time, pinned script IDs, approval decision time, worker enabled/heartbeat state, and audit queries by time, entity, actor, and event type. Indexes are limited to implemented repository and audit access patterns; speculative dashboard indexes are not added.
 
 Mutable aggregate roots use SQL Server `rowversion` columns. Check constraints enforce defined enum ranges, bounded temporal ordering, policy consistency, execution completion consistency, and other invariants that can be represented declaratively. Triggers enforce cross-table publication rules: a published Execute-capable script version must also support DryRun, and parameter allowed values are restricted to Enum definitions.
 

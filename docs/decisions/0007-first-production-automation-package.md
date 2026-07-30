@@ -45,3 +45,7 @@ On success, atomically complete the read-only DryRun and remove the lease. Map n
 - Configuration-defined manifests, paths, hashes, or parameter allowlists would move trust to mutable runtime state.
 - Putting orchestration in Worker or Web would collapse project boundaries and expose execution to the wrong composition root.
 - Persisting raw stdout as a report would introduce a reporting trust and storage design outside Phase 6.
+
+## Subsequent status
+
+Phase 7 implemented the deferred reporting boundary as ADR 0008. The raw output is still never persisted: strict Reporting validation produces a typed result, and Application atomically stores the immutable report with job completion, lease deletion, and audit.

@@ -14,6 +14,10 @@ Infrastructure implements the Application persistence contracts with EF Core and
 
 Call `services.AddInfrastructure(configuration)` from a composition root. Configure `ConnectionStrings:WindowsScriptRunner`. `Persistence:ApplyMigrationsOnStartup` defaults to `false`; prefer applying reviewed migration artifacts before production startup.
 
-Phase 4 adds `AddWorkerQueueLeases`, `wsr.JobLeases`, and `wsr.JobLeaseFencingSequence`. Queue projections load only identifiers, work kind, and timestamps; the full trusted aggregate is loaded only inside Application command handlers. Repositories and queue sources never call `SaveChanges`; the existing scoped `SqlUnitOfWork` remains the sole production commit boundary.
+The current migration history provides initial persistence, `JobLeases` with `JobLeaseFencingSequence`, and durable reporting through the immutable `JobReports` envelope plus one-to-one typed `LocalHostInventoryReports` detail.
 
-Phase 7 adds `AddDurableLocalHostInventoryReports`, the immutable `wsr.JobReports` envelope, and one-to-one typed `wsr.LocalHostInventoryReports` detail. `SqlJobReportRepository` supports only add and bounded lookup by report ID or job ID; no update method exists. The schema stores no raw stdout, stderr, or JSON payload and independently enforces exact report metadata, provenance relationships, typed bounds, deterministic uniqueness, and supported architecture.
+Queue projections load only bounded identifiers and routing metadata; full trusted aggregates are loaded inside Application handlers. Repositories and queue sources never commit. `SqlUnitOfWork` remains the single production `SaveChangesAsync` boundary.
+
+`SqlJobReportRepository` supports only add and bounded lookup by report ID or job ID; no update method exists. The report schema stores no raw stdout, stderr, or JSON payload and independently enforces metadata, provenance, typed bounds, deterministic uniqueness, and supported architecture.
+
+See [SQL Server persistence](../../docs/sql-server-persistence.md), [database schema](../../docs/database-schema.md), and [database migrations](../../docs/database-migrations.md).

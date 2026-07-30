@@ -1574,3 +1574,22 @@ Known limitations and residual risks:
 - Phase 5 process-containment, filesystem TOCTOU, and lack-of-OS-sandbox limitations remain unchanged.
 
 No deployment, push, or pull request was performed.
+
+## Phase 7 documentation consolidation
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Audited all 39 first-party Markdown files; the vendored jquery-validation license was intentionally left unchanged.
+- Replaced the root README with a current implementation, validation, operational-default, limitation, and documentation overview.
+- Added a documentation index and a Web project README.
+- Reconciled both roadmaps: Phases 1–5 are merged, Phase 6 is pushed for review, Phase 7 is pushed on its dependent branch, Phase 8 is the authenticated portal and approval boundary, and Phase 9 owns production deployment.
+- Updated every project README plus the deployment placeholders for the actual Worker, PowerShell, SQL, IIS, and Windows Service state.
+- Reconciled architecture, Application contracts, Domain/report model, lifecycle, queue, leases, PowerShell, persistence, schema, migrations, security, and affected ADR follow-up status with the Phase 7 implementation.
+- Local Markdown-link validation passed with no broken relative links.
+- Targeted stale-claim validation found no remaining statement that queueing, PowerShell execution, or Phase 7 report persistence is unimplemented.
+- `git diff --check`: exit 0.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.
+- The test suite was not rerun because this consolidation changes documentation only. The validated Phase 7 baseline immediately above remains 649 passed, 0 failed, and 0 skipped.
+
+No deployment, commit, push, or pull request was performed as part of the documentation consolidation.

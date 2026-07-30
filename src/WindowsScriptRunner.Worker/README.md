@@ -1,6 +1,6 @@
 # Worker
 
-The Worker coordinates durable queue leases. Phase 6 can register one production `IJobWorkHandler` through `WindowsScriptRunner.Automation`, but both package enablement and bootstrap registration are disabled by default.
+The Worker coordinates durable fenced queue leases and can register one reviewed production `IJobWorkHandler` through Automation. Package enablement and bootstrap registration are disabled by default.
 
 Startup requires `ConnectionStrings:WindowsScriptRunner` and a stable `Worker:NodeId` unless the development-only `Worker:AllowEphemeralNodeId` switch is explicitly enabled. The complete option reference is in `docs/worker-queue.md`.
 
@@ -15,4 +15,8 @@ Apply the reviewed database migrations before startup. `Persistence:ApplyMigrati
 
 To enable the reviewed `windows.local-host-inventory` `1.0.0` package, set `Automation:LocalHostInventory:Enabled=true`, optionally set `RegisterOnStartup=true`, and configure absolute, non-overlapping `PowerShellExecution:AllowedScriptRoot` and `WorkingRoot` directories. The allowed root contains the deterministically copied `windows.local-host-inventory\1.0.0\Collect-LocalHostInventory.ps1`. The SQL candidate query advertises only its pinned DryRun/script-version route; unknown versions are never claimed.
 
-In Phase 7, the Automation handler—not Worker—passes code-zero output to Reporting. Valid typed inventory goes to the atomic Application report completion handler; malformed or untrusted success output becomes a controlled failure with no report. Worker contains no inventory JSON parser and no report persistence policy.
+The Automation handler—not Worker—passes code-zero output to Reporting. Valid typed inventory goes to the atomic Application report completion handler; malformed or untrusted success output becomes a controlled failure with no report. Worker contains no inventory JSON parser and no report persistence policy.
+
+Worker has no HTTP endpoint, service installer, or production hosting integration. Windows Service packaging belongs to Phase 9.
+
+See [Worker queue](../../docs/worker-queue.md), [Worker leases](../../docs/worker-leases.md), and [Windows Service deployment status](../../deployment/windows-service/README.md).

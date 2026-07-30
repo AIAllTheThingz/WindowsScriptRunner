@@ -1,5 +1,19 @@
 # Domain
 
-Contains the independent Phase 2 domain model: strongly typed ID classes, value objects, script and job aggregates, explicit binding-only job parameters with aggregate-controlled idempotent clearing, atomic validation-before-mutation rules, requested-phase lifecycle policy, execution-outcome terminalization, defined-enum guards, worker metadata, audit events, and credential references. Null, empty, and whitespace parameter values are represented by no explicit binding. It has no infrastructure dependency.
+Domain is the independent policy core and has no solution-project or infrastructure dependency.
 
-Phase 7 adds the immutable `JobReport` envelope and typed `LocalHostInventoryReportPayload`. Construction enforces the only supported package/type/schema/format, provenance identifiers, positive fencing, timestamp ordering, bounded typed inventory, supported architecture and versions, lowercase SHA-256, and deterministic `JobReportId`. Domain remains independent of all outer projects.
+It owns:
+
+- strongly typed identifiers and validated value objects;
+- script definitions, immutable published versions, and parameter definitions;
+- the Job aggregate, targets, explicit parameter bindings, policy snapshots, approvals, executions, status transitions, and fenced leases;
+- Worker nodes and capabilities;
+- credential references that contain no raw credential material;
+- bounded audit events; and
+- the immutable `JobReport` envelope with typed `LocalHostInventoryReportPayload`.
+
+All aggregate operations validate proposed state before mutation. Null, empty, and whitespace parameter input means no explicit binding. Active execution attempts cannot be orphaned by generic terminal transitions.
+
+Report construction enforces the only supported package/type/schema/format, provenance identifiers, positive fencing, timestamp ordering, bounded typed inventory, supported architecture and versions, lowercase SHA-256, and deterministic `JobReportId`.
+
+See [Domain model](../../docs/domain-model.md) and [Job lifecycle](../../docs/job-lifecycle.md).

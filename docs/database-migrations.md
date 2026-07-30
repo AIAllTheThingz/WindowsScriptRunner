@@ -24,7 +24,7 @@ dotnet ef migrations has-pending-model-changes `
 
 `InitialSqlServerPersistence` is the first migration. Generate the deployment artifact at `artifacts/sql/WindowsScriptRunner-idempotent.sql`. The repository policy ignores generated `artifacts/`, so the SQL file is intentionally not committed. Tests generate the same idempotent SQL from the migration assembly, apply it twice to real SQL Server, and verify that it contains no environment-specific connection string or credential.
 
-Create a future migration only after the EF model is stable:
+Create a migration only after the EF model is stable:
 
 ```powershell
 dotnet ef migrations add <MigrationName> `

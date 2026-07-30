@@ -1,6 +1,6 @@
 # Worker queue
 
-Phase 4 provides durable lease coordination. When enabled, Phase 6 registers exactly one production handler for the pinned `windows.local-host-inventory` `1.0.0` DryRun route. Registration is disabled by default; with the package disabled, the supported route set is empty, candidate discovery is skipped, and no queued job is leased.
+The Worker provides durable lease coordination and, when enabled, exactly one production handler for the pinned `windows.local-host-inventory` `1.0.0` DryRun route. Valid output is persisted only as the Phase 7 typed report. Registration is disabled by default; with the package disabled, the supported route set is empty, candidate discovery is skipped, and no queued job is leased.
 
 ## Startup and liveness
 
@@ -32,7 +32,7 @@ Eligible work is:
 - without an active lease; and
 - with a `ScriptVersionId` in the exact handler-supported route set.
 
-The Phase 6 production registry contains only `(DryRun, windows.local-host-inventory 1.0.0 version ID)`. Unsupported versions are excluded by SQL rather than claimed and released repeatedly. Ordering is FIFO-like and deterministic: `UpdatedUtc`, `CreatedUtc`, then `JobId`. No priority or scheduling model is added.
+The production registry contains only `(DryRun, windows.local-host-inventory 1.0.0 version ID)`. Unsupported versions are excluded by SQL rather than claimed and released repeatedly. Ordering is FIFO-like and deterministic: `UpdatedUtc`, `CreatedUtc`, then `JobId`. No priority or scheduling model is added.
 
 ## Backoff and concurrency
 
@@ -75,7 +75,7 @@ Host cancellation stops polling and acquisition first, signals all tracked handl
 | `AllowEphemeralNodeId` | false | Development-only explicit opt-in |
 | `Capabilities` | empty | Unique case-insensitive names |
 
-Phase 6 adds two disabled-by-default package flags outside the Worker section:
+Automation composition adds two disabled-by-default package flags outside the Worker section:
 
 | Option | Default | Rule |
 |---|---:|---|

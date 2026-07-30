@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 5 establishes one secure process-lifetime boundary for PowerShell 7 on Windows and is merged. Phase 6 reuses it for exactly one production artifact, `windows.local-host-inventory` `1.0.0`, while retaining the controlled integration fixture. The boundary still does not select arbitrary scripts, accept command text, retrieve credentials, perform remoting, or persist reports.
+The secure process-lifetime boundary for PowerShell 7 on Windows is reused by exactly one production artifact, `windows.local-host-inventory` `1.0.0`, while retaining the controlled integration fixture. The boundary does not select arbitrary scripts, accept command text, retrieve credentials, perform remoting, or persist reports itself. After successful execution, separate Reporting and Application layers validate and persist only the reviewed typed result.
 
 Out-of-process execution keeps PowerShell engine types and runspaces out of the application and gives the boundary operating-system process handles, separate pipes, exit codes, time limits, and tree termination. Windows PowerShell 5.1 is rejected: only a compatible PowerShell Core `pwsh.exe` is accepted.
 
@@ -68,10 +68,10 @@ The single fixture uses strict mode and fixed parameters. Its allowlisted modes 
 
 Injection tests include whitespace, quotes, semicolons, ampersands, pipes, backticks, `$()`, `${}`, wildcards, redirection, Unicode, newlines, empty strings, and a recognizable command marker. Every value round-trips literally; no marker executes.
 
-## Logging and Phase 6 integration
+## Logging and production integration
 
 Logs may contain execution ID, artifact name, PowerShell version, timestamps, duration, exit code, termination reason, byte counts, and truncation state. They omit the executable path, parameter values, stdout, stderr, script contents, complete command lines, environment values, connection strings, credential identifiers, and secrets.
 
-The Phase 6 Automation handler preserves this request model and supplies an empty argument list because the reviewed package has no parameters. It derives a deterministic execution ID from `JobId`, invokes only `IPowerShellExecutionBoundary`, and maps structured termination metadata without logging or persisting stdout/stderr. The boundary revalidates the pinned script immediately before launch. Web does not reference or register PowerShell; only enabled Worker-side Automation composition does.
+The Automation handler preserves this request model and supplies an empty argument list because the reviewed package has no parameters. It derives a deterministic execution ID from `JobId`, invokes only `IPowerShellExecutionBoundary`, and maps structured termination metadata without logging or directly persisting stdout/stderr. The boundary revalidates the pinned script immediately before launch. Web does not reference or register PowerShell; only enabled Worker-side Automation composition does.
 
-The package script emits one compressed JSON object containing only `schemaVersion`, `computerName`, OS description/version/architecture, PowerShell version, and `collectedUtc`. It performs no remoting, network access, registry or file writes, installation, credential use, or expansive enumeration. Output is discarded after lifecycle mapping; Phase 7 may add reviewed report persistence.
+The package script emits one compressed JSON object containing only `schemaVersion`, `computerName`, OS description/version/architecture, PowerShell version, and `collectedUtc`. It performs no remoting, network access, registry or file writes, installation, credential use, or expansive enumeration. Reporting validates and canonicalizes the bounded in-memory output, Application atomically persists only the typed fields with lifecycle completion, and the raw output is discarded.
