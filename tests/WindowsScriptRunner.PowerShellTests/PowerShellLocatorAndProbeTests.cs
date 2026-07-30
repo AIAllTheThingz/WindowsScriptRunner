@@ -83,6 +83,19 @@ public sealed class PowerShellLocatorAndProbeTests : IDisposable
     }
 
     [Fact]
+    public void StandardLocationEnumerationFailureReturnsNoCandidates()
+    {
+        var programFiles = Path.Combine(_root, "program-files");
+        Directory.CreateDirectory(Path.Combine(programFiles, "PowerShell"));
+
+        var candidates = PowerShellCandidateSource.EnumerateStandardCandidates(
+            programFiles,
+            _ => throw new IOException("Injected standard-location failure."));
+
+        Assert.Empty(candidates);
+    }
+
+    [Fact]
     public async Task PathAndStandardLocationsAreSearchedAndDeduplicated()
     {
         var pathCandidate = CreateExecutable("path");

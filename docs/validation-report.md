@@ -1497,3 +1497,14 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T14:29:25.3983295-05:00` to `14:30:06.0307342-05:00`, exit 0, 553 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 104.
 - `dotnet format --verify-no-changes --no-restore`: `2026-07-30T14:30:25.4108148-05:00` to `14:30:54.3266631-05:00`, exit 0.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 standard-location isolation correction
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Automatic discovery now treats `IOException` and `UnauthorizedAccessException` while enumerating `%ProgramFiles%\PowerShell` as that lower-priority source being unavailable, allowing already constructed PATH candidates to proceed.
+- Focused standard-location failure-isolation regression: 1 passed, 0 failed, 0 skipped.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T15:04:41.3352382-05:00` to `15:04:51.4022473-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T15:04:51.4194014-05:00` to `15:05:30.2625816-05:00`, exit 0, 554 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 105.
+- `dotnet format --verify-no-changes --no-restore`: `2026-07-30T15:05:55.1703692-05:00` to `15:06:21.7275571-05:00`, exit 0.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.

@@ -49,19 +49,36 @@ internal sealed class PowerShellCandidateSource : IPowerShellCandidateSource
         var standardCandidates = new List<string>();
         if (!string.IsNullOrWhiteSpace(programFiles))
         {
-            var powerShellRoot = Path.Combine(programFiles, "PowerShell");
-            if (Directory.Exists(powerShellRoot))
-            {
-                standardCandidates.AddRange(
-                    Directory.EnumerateDirectories(powerShellRoot)
-                        .Select(directory => Path.Combine(directory, "pwsh.exe")));
-            }
+            standardCandidates.AddRange(EnumerateStandardCandidates(programFiles));
         }
 
         return new PowerShellCandidateSet(
             null,
             pathCandidates,
             standardCandidates);
+    }
+
+    internal static IReadOnlyList<string> EnumerateStandardCandidates(
+        string programFiles,
+        Func<string, IEnumerable<string>>? enumerateDirectories = null)
+    {
+        var powerShellRoot = Path.Combine(programFiles, "PowerShell");
+        if (!Directory.Exists(powerShellRoot))
+        {
+            return [];
+        }
+
+        try
+        {
+            return (enumerateDirectories ?? Directory.EnumerateDirectories)(powerShellRoot)
+                .Select(directory => Path.Combine(directory, "pwsh.exe"))
+                .ToArray();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 }
 
