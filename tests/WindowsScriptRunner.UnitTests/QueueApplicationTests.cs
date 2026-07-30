@@ -413,6 +413,12 @@ public sealed class QueueApplicationTests
             Job = job;
             return Task.CompletedTask;
         }
+
+        public Task<bool> TryRefreshLeaseAsync(
+            JobId jobId,
+            JobLeaseCredentials credentials,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 
     private sealed class FakeWorkerRepository : IWorkerNodeRepository

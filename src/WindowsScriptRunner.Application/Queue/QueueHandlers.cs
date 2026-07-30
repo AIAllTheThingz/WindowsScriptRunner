@@ -297,15 +297,17 @@ public sealed class CompleteLeasedDryRunHandler(
             cancellationToken);
         var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
         job.CompleteDryRun(command.Credentials, command.ActingUser, now);
-        await QueueHandlerSupport.CommitJobAuditAsync(
+        await QueueHandlerSupport.CommitTerminalJobAuditAsync(
             jobRepository,
             auditWriter,
             unitOfWork,
             job,
+            command.Credentials,
             "DryRunCompleted",
             command.ActingUser,
             now,
             "The leased dry-run work completed and resolved its lease.",
+            null,
             cancellationToken);
     }
 }
@@ -397,15 +399,17 @@ public sealed class RecordLeasedExecutionOutcomeHandler(
             command.Summary,
             command.ActingUser,
             now);
-        await QueueHandlerSupport.CommitJobAuditAsync(
+        await QueueHandlerSupport.CommitTerminalJobAuditAsync(
             jobRepository,
             auditWriter,
             unitOfWork,
             job,
+            command.Credentials,
             "ExecutionOutcomeRecorded",
             command.ActingUser,
             now,
             "The leased execution attempt completed and resolved its lease.",
+            null,
             cancellationToken);
         return execution;
     }
@@ -488,5 +492,54 @@ internal static class QueueHandlerSupport
                 summary),
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
+    }
+
+    internal static async Task CommitTerminalJobAuditAsync(
+        IJobRepository jobRepository,
+        IAuditWriter auditWriter,
+        IUnitOfWork unitOfWork,
+        Job job,
+        JobLeaseCredentials credentials,
+        string eventType,
+        UserIdentity actor,
+        DateTimeOffset occurredUtc,
+        string summary,
+        IReadOnlyDictionary<string, string>? properties,
+        CancellationToken cancellationToken)
+    {
+        const int maximumCommitAttempts = 3;
+        await jobRepository.UpdateAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            new AuditEvent(
+                AuditEventId.New(),
+                eventType,
+                nameof(Job),
+                job.Id.ToString(),
+                actor,
+                occurredUtc,
+                summary,
+                properties),
+            cancellationToken);
+
+        for (var attempt = 1; attempt <= maximumCommitAttempts; attempt++)
+        {
+            try
+            {
+                await unitOfWork.CommitAsync(cancellationToken);
+                return;
+            }
+            catch (ApplicationConflictException)
+                when (attempt < maximumCommitAttempts)
+            {
+                var refreshed = await jobRepository.TryRefreshLeaseAsync(
+                    job.Id,
+                    credentials,
+                    cancellationToken);
+                if (!refreshed)
+                {
+                    throw;
+                }
+            }
+        }
     }
 }

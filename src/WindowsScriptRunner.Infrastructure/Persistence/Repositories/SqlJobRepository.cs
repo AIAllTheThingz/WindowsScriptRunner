@@ -143,6 +143,62 @@ public sealed class SqlJobRepository(
         return Task.CompletedTask;
     }
 
+    public async Task<bool> TryRefreshLeaseAsync(
+        JobId jobId,
+        JobLeaseCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(jobId);
+        ArgumentNullException.ThrowIfNull(credentials);
+        cancellationToken.ThrowIfCancellationRequested();
+        dbContext.ChangeTracker.DetectChanges();
+        var jobEntry = dbContext.ChangeTracker
+            .Entries<JobEntity>()
+            .SingleOrDefault(entry => entry.Entity.Id == jobId.Value);
+        var leaseEntry = dbContext.ChangeTracker
+            .Entries<JobLeaseEntity>()
+            .SingleOrDefault(entry =>
+                entry.Entity.JobId == jobId.Value &&
+                entry.Entity.LeaseId == credentials.LeaseId.Value &&
+                entry.Entity.WorkerNodeId == credentials.WorkerNodeId.Value &&
+                entry.Entity.FencingToken == credentials.FencingToken &&
+                entry.State == EntityState.Deleted);
+        if (jobEntry is null || leaseEntry is null)
+        {
+            return false;
+        }
+
+        var current = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.JobLeases
+                .AsNoTracking()
+                .Where(entity =>
+                    entity.JobId == jobId.Value &&
+                    entity.LeaseId == credentials.LeaseId.Value &&
+                    entity.WorkerNodeId == credentials.WorkerNodeId.Value &&
+                    entity.FencingToken == credentials.FencingToken)
+                .Select(entity => new LeaseRetrySnapshot(
+                    entity.Job.RowVersion,
+                    entity.RowVersion))
+                .SingleOrDefaultAsync(cancellationToken),
+            logger);
+        var originalJobRowVersion = jobEntry.OriginalValues
+            .GetValue<byte[]>(nameof(JobEntity.RowVersion));
+        if (current is null ||
+            !current.JobRowVersion.AsSpan().SequenceEqual(originalJobRowVersion))
+        {
+            return false;
+        }
+
+        leaseEntry.Property(entity => entity.RowVersion).OriginalValue =
+            current.LeaseRowVersion;
+        leaseEntry.Property(entity => entity.RowVersion).CurrentValue =
+            current.LeaseRowVersion;
+        logger.LogDebug(
+            "Refreshed the current lease concurrency token for terminal retry on job {JobId}.",
+            jobId);
+        return true;
+    }
+
     private JobEntity? FindTracked(Guid id) =>
         dbContext.ChangeTracker
             .Entries<JobEntity>()
@@ -157,4 +213,8 @@ public sealed class SqlJobRepository(
                 "A job with the same identifier is already tracked in this persistence scope.");
         }
     }
+
+    private sealed record LeaseRetrySnapshot(
+        byte[] JobRowVersion,
+        byte[] LeaseRowVersion);
 }

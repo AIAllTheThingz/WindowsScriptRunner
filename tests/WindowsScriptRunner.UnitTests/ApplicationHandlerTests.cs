@@ -714,6 +714,31 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(["JobSubmitted", "JobStatusChanged"], fixture.Audits.Events.Select(item => item.EventType));
     }
 
+    [Fact]
+    public async Task QueueEntryTransitionUsesCoordinationClockWhenLocalClockIsAhead()
+    {
+        var fixture = HandlerFixture.WithSubmittedJob(
+            requestedPhase: ExecutionPhase.DryRun);
+        var job = fixture.Jobs.Job!;
+        job.MarkValidated(
+            TestDomainFactory.OtherUser,
+            job.UpdatedUtc.AddMinutes(1));
+        var queuedUtc = job.UpdatedUtc.AddMinutes(1);
+        fixture.Clock.UtcNow = queuedUtc.AddHours(1);
+        fixture.Clock.CoordinationUtcNow = queuedUtc;
+
+        await fixture.TransitionHandler.HandleAsync(
+            new TransitionJobCommand(
+                job.Id,
+                JobStatus.DryRunQueued,
+                TestDomainFactory.OtherUser),
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.DryRunQueued, job.Status);
+        Assert.Equal(queuedUtc, job.UpdatedUtc);
+        Assert.Equal(1, fixture.Clock.CoordinationReadCount);
+    }
+
     [Theory]
     [InlineData(JobStatus.Draft)]
     [InlineData(JobStatus.Submitted)]
@@ -1374,7 +1399,11 @@ public sealed class ApplicationHandlerTests
                 UnitOfWork,
                 Clock);
             SubmitHandler = new SubmitJobHandler(Jobs, Scripts, Audits, UnitOfWork, Clock);
-            TransitionHandler = new TransitionJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            TransitionHandler = new TransitionJobHandler(
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock);
             ApproveHandler = new ApproveJobHandler(Jobs, Audits, UnitOfWork, Clock);
             RejectHandler = new RejectJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
@@ -1568,6 +1597,12 @@ public sealed class ApplicationHandlerTests
 
         public Task UpdateLeaseAsync(Job job, CancellationToken cancellationToken) =>
             UpdateAsync(job, cancellationToken);
+
+        public Task<bool> TryRefreshLeaseAsync(
+            JobId jobId,
+            JobLeaseCredentials credentials,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 
     private sealed class FakeScriptRepository : IScriptDefinitionRepository
