@@ -10,6 +10,7 @@ using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
+using WindowsScriptRunner.PowerShell;
 
 namespace WindowsScriptRunner.SecurityTests;
 
@@ -30,14 +31,7 @@ public sealed class ProjectBoundaryTests
                 "WindowsScriptRunner.Domain",
             ]
         },
-        {
-            "WindowsScriptRunner.PowerShell",
-            [
-                "WindowsScriptRunner.Application",
-                "WindowsScriptRunner.Contracts",
-                "WindowsScriptRunner.Domain",
-            ]
-        },
+        { "WindowsScriptRunner.PowerShell", [] },
         {
             "WindowsScriptRunner.Reporting",
             [
@@ -343,6 +337,119 @@ public sealed class ProjectBoundaryTests
         Assert.DoesNotContain("System.Diagnostics.Process", source, StringComparison.Ordinal);
         Assert.DoesNotContain("System.Management.Automation", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WindowsScriptRunner.PowerShell", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProcessApisAreConfinedToPowerShellProject()
+    {
+        var files = ReadSourceFiles()
+            .Where(file =>
+                file.Content.Contains("ProcessStartInfo", StringComparison.Ordinal) ||
+                file.Content.Contains("System.Diagnostics.Process", StringComparison.Ordinal) ||
+                file.Content.Contains("new Process", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.NotEmpty(files);
+        Assert.All(
+            files,
+            file => Assert.Contains(
+                "WindowsScriptRunner.PowerShell",
+                file.Path,
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NativeInteropIsConfinedToPowerShellBoundaryComponents()
+    {
+        var files = ReadSourceFiles()
+            .Where(file =>
+                file.Content.Contains("LibraryImport", StringComparison.Ordinal) ||
+                file.Content.Contains("DllImport", StringComparison.Ordinal) ||
+                file.Content.Contains("JobObject", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(
+            ["ExecutionWorkingDirectory.cs", "ProcessTreeController.cs"],
+            files.Select(file => Path.GetFileName(file.Path))
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+    }
+
+    [Fact]
+    public void ProductionProjectsContainNoInProcessPowerShellDependency()
+    {
+        var packages = ReadSourcePackageReferences();
+        var source = string.Join(
+            Environment.NewLine,
+            ReadSourceFiles().Select(file => file.Content));
+
+        Assert.DoesNotContain(
+            packages,
+            reference => reference.PackageName == "Microsoft.PowerShell.SDK");
+        Assert.DoesNotContain(
+            "System.Management.Automation",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Runspace", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PowerShell.Create", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublicBoundaryAcceptsOnlyTrustedRequest()
+    {
+        var execute = Assert.Single(typeof(IPowerShellExecutionBoundary).GetMethods());
+        var parameters = execute.GetParameters();
+
+        Assert.Equal(typeof(PowerShellExecutionRequest), parameters[0].ParameterType);
+        Assert.DoesNotContain(
+            parameters,
+            parameter => parameter.ParameterType == typeof(string));
+        Assert.Empty(typeof(TrustedPowerShellScript).GetConstructors());
+    }
+
+    [Fact]
+    public void PowerShellSourceUsesOnlySafeProcessConstruction()
+    {
+        var source = ReadProjectSource("WindowsScriptRunner.PowerShell");
+
+        Assert.Contains("ArgumentList", source, StringComparison.Ordinal);
+        Assert.Contains("UseShellExecute = false", source, StringComparison.Ordinal);
+        Assert.Contains("RedirectStandardInput = false", source, StringComparison.Ordinal);
+        Assert.Contains("Environment.Clear()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ProcessStartInfo.Arguments", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseShellExecute = true", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("powershell.exe", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("cmd.exe", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Invoke-Expression", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("-ExecutionPolicy", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("-EncodedCommand", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("GetEnvironmentVariables", source, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            source.Split("\"-Command\"", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void WebAndWorkerDoNotRegisterOrReferenceBoundary()
+    {
+        var webSource = ReadProjectSource("WindowsScriptRunner.Web");
+        var workerSource = ReadProjectSource("WindowsScriptRunner.Worker");
+
+        Assert.DoesNotContain(
+            "AddPowerShellExecutionBoundary",
+            webSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AddPowerShellExecutionBoundary",
+            workerSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "IPowerShellExecutionBoundary",
+            workerSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "WindowsScriptRunner.PowerShell",
+            ReadProjectReferences("WindowsScriptRunner.Worker"));
     }
 
     [Theory]
