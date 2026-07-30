@@ -289,6 +289,64 @@ public sealed class PowerShellExecutionIntegrationTests(
     }
 
     [Fact]
+    public async Task TimeoutRemainsActiveAfterRootExitsWhileChildHoldsOutputPipes()
+    {
+        var executionId = PowerShellExecutionId.New();
+        var result = await fixture.Boundary.ExecuteAsync(
+            new PowerShellExecutionRequest(
+                executionId,
+                fixture.TrustedScript,
+                [
+                    new PowerShellArgument("Mode", "SpawnChild"),
+                    new PowerShellArgument("SleepSeconds", "0"),
+                ],
+                TimeSpan.FromSeconds(1)),
+            CancellationToken.None);
+        var parentId = ProcessTest.ParseProcessId(result.StandardOutput, "PARENT_PID");
+        var childId = ProcessTest.ParseProcessId(result.StandardOutput, "CHILD_PID");
+
+        Assert.Equal(PowerShellTerminationReason.TimedOut, result.TerminationReason);
+        Assert.Null(result.ExitCode);
+        Assert.InRange(result.Duration, TimeSpan.Zero, TimeSpan.FromSeconds(6));
+        Assert.False(
+            Directory.Exists(Path.Combine(fixture.WorkingRoot, executionId.ToString())));
+        await ProcessTest.AssertExitedAsync(parentId);
+        await ProcessTest.AssertExitedAsync(childId);
+    }
+
+    [Fact]
+    public async Task ShortLivedOutputBeyondLimitIsClassifiedAsExceeded()
+    {
+        var boundary = fixture.CreateBoundary(
+            options =>
+            {
+                options.MaximumStandardOutputBytes = 1;
+                options.MaximumStandardErrorBytes = 1024;
+                options.MaximumCombinedOutputBytes = 1024;
+            });
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var executionId = PowerShellExecutionId.New();
+            var result = await boundary.Boundary.ExecuteAsync(
+                boundary.Request(
+                    executionId,
+                    "ExitCode",
+                    TimeSpan.FromSeconds(10)),
+                CancellationToken.None);
+
+            Assert.Equal(
+                PowerShellTerminationReason.OutputLimitExceeded,
+                result.TerminationReason);
+            Assert.Null(result.ExitCode);
+            Assert.True(result.StandardOutputTruncated);
+            Assert.False(
+                Directory.Exists(
+                    Path.Combine(boundary.Options.WorkingRoot!, executionId.ToString())));
+        }
+    }
+
+    [Fact]
     public async Task TerminationFailureIsPreservedAfterOutputPumpsAreObserved()
     {
         var controller = new FailingAfterKillProcessTreeController();

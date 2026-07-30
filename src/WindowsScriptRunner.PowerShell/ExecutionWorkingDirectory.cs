@@ -26,18 +26,46 @@ internal sealed class ExecutionWorkingDirectory(
         RejectReparsePoints(_workingRoot);
 
         var path = Path.Combine(_workingRoot, executionId.ToString());
-        if (Directory.Exists(path) || File.Exists(path))
+        var reservationPath = GetReservationPath(path);
+        var reservationCreated = false;
+        try
         {
-            throw new PowerShellExecutionException(
-                "The PowerShell execution working directory already exists.");
-        }
+            using (new FileStream(
+                       reservationPath,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None))
+            {
+                reservationCreated = true;
+            }
 
-        Directory.CreateDirectory(path);
-        return path;
+            if (Directory.Exists(path) || File.Exists(path))
+            {
+                throw new PowerShellExecutionException(
+                    "The PowerShell execution working directory already exists.");
+            }
+
+            Directory.CreateDirectory(path);
+            return path;
+        }
+        catch (PowerShellExecutionException)
+        {
+            DeleteReservationAfterFailedCreate(reservationPath, reservationCreated);
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            DeleteReservationAfterFailedCreate(reservationPath, reservationCreated);
+            throw new PowerShellExecutionException(
+                "The PowerShell execution working directory could not be reserved.",
+                exception);
+        }
     }
 
     public async Task DeleteAsync(string path)
     {
+        var reservationPath = GetReservationPath(path);
         for (var attempt = 1; attempt <= 3; attempt++)
         {
             try
@@ -45,6 +73,11 @@ internal sealed class ExecutionWorkingDirectory(
                 if (Directory.Exists(path))
                 {
                     Directory.Delete(path, recursive: true);
+                }
+
+                if (File.Exists(reservationPath))
+                {
+                    File.Delete(reservationPath);
                 }
 
                 return;
@@ -62,6 +95,31 @@ internal sealed class ExecutionWorkingDirectory(
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100)).ConfigureAwait(false);
             }
+        }
+    }
+
+    private static string GetReservationPath(string path) => path + ".reservation";
+
+    private void DeleteReservationAfterFailedCreate(
+        string reservationPath,
+        bool reservationCreated)
+    {
+        if (!reservationCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(reservationPath);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(
+                "PowerShell working-directory reservation cleanup failed for " +
+                "{WorkingDirectoryName}.",
+                Path.GetFileNameWithoutExtension(reservationPath));
         }
     }
 

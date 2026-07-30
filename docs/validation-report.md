@@ -1387,3 +1387,23 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet test --configuration Release --no-build`: `2026-07-30T08:43:51.8284079-05:00` to `08:44:24.2637894-05:00`, exit 0, the same 536 tests passed.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes ...`: `2026-07-30T08:44:24.2647168-05:00` to `08:44:33.4747390-05:00`, exit 0, no pending model changes.
 - No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+
+## PR #5 lifecycle and reservation corrections
+
+Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
+
+- Kept timeout, cancellation, and output-limit enforcement active after the root process exits until both redirected output pumps reach end-of-stream. A real `SpawnChild` regression verifies that a descendant holding inherited pipe handles is terminated at timeout instead of delaying completion.
+- Rechecked output-limit state after the pumps finish. Five consecutive short-lived real-process executions exceeding a one-byte stdout limit returned `OutputLimitExceeded`, a null exit code, and truncated output.
+- Added an atomic per-execution reservation file created with exclusive create semantics. The reservation persists until cleanup, prevents duplicate execution IDs from sharing a directory, and is removed with the directory.
+- Focused regressions: 3 passed, 0 failed, 0 skipped.
+- PowerShell focused suite: 90 passed, 0 failed, 0 skipped against the actual runtime.
+- `dotnet tool restore`: `2026-07-30T09:13:14.6976596-05:00` to `09:13:15.2499436-05:00`, exit 0, dotnet-ef 10.0.10.
+- `dotnet restore`: `2026-07-30T09:13:20.3469001-05:00` to `09:13:22.3450569-05:00`, exit 0.
+- `dotnet build --configuration Release`: `2026-07-30T09:13:28.5945295-05:00` to `09:13:32.8254757-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release`: `2026-07-30T09:13:40.3423507-05:00` to `09:14:17.2697070-05:00`, exit 0, 539 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 90.
+- `dotnet format`: `2026-07-30T09:14:27.2131920-05:00` to `09:14:54.0223289-05:00`, exit 0.
+- `dotnet format --verify-no-changes`: `2026-07-30T09:14:59.0957773-05:00` to `09:15:25.6423054-05:00`, exit 0.
+- `dotnet build --configuration Release --no-restore`: `2026-07-30T09:15:31.4630746-05:00` to `09:15:34.7977644-05:00`, exit 0, 0 warnings/errors.
+- `dotnet test --configuration Release --no-build`: `2026-07-30T09:15:39.7673781-05:00` to `09:16:13.9489827-05:00`, exit 0, the same 539 tests passed.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes ... --no-build`: `2026-07-30T09:16:21.4074661-05:00` to `09:16:26.3402788-05:00`, exit 0, no pending model changes.
+- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.

@@ -97,6 +97,7 @@ internal sealed class PowerShellExecutionBoundary(
             capture.PumpStandardOutputAsync(process.StandardOutput.BaseStream);
         var standardErrorTask =
             capture.PumpStandardErrorAsync(process.StandardError.BaseStream);
+        var outputPumpsTask = Task.WhenAll(standardOutputTask, standardErrorTask);
         var exitTask = process.WaitForExitAsync(CancellationToken.None);
         using var timeoutCancellation = new CancellationTokenSource();
         var timeoutTask = Task.Delay(timeout, timeoutCancellation.Token);
@@ -111,13 +112,23 @@ internal sealed class PowerShellExecutionBoundary(
                 capture.LimitExceeded,
                 cancellationSignal.Task)
             .ConfigureAwait(false);
+        if (completed == exitTask)
+        {
+            completed = await Task.WhenAny(
+                    outputPumpsTask,
+                    timeoutTask,
+                    capture.LimitExceeded,
+                    cancellationSignal.Task)
+                .ConfigureAwait(false);
+        }
+
         timeoutCancellation.Cancel();
 
         var callerCancelled =
             completed == cancellationSignal.Task && cancellationToken.IsCancellationRequested;
         PowerShellTerminationReason terminationReason;
         int? exitCode;
-        if (completed == exitTask && !capture.LimitExceeded.IsCompleted)
+        if (completed == outputPumpsTask && !capture.LimitExceeded.IsCompleted)
         {
             terminationReason = PowerShellTerminationReason.Exited;
             exitCode = process.ExitCode;
@@ -158,7 +169,14 @@ internal sealed class PowerShellExecutionBoundary(
             }
         }
 
-        await Task.WhenAll(standardOutputTask, standardErrorTask).ConfigureAwait(false);
+        await outputPumpsTask.ConfigureAwait(false);
+        if (terminationReason == PowerShellTerminationReason.Exited &&
+            capture.LimitExceeded.IsCompleted)
+        {
+            terminationReason = PowerShellTerminationReason.OutputLimitExceeded;
+            exitCode = null;
+        }
+
         if (callerCancelled)
         {
             throw new OperationCanceledException(cancellationToken);

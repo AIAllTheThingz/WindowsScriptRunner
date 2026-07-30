@@ -43,11 +43,11 @@ No command-line string, shell, `Invoke-Expression`, encoded caller command, stop
 
 ## Isolation and lifecycle
 
-The configured trusted-script and working roots cannot be equal or nested within each other. Each execution creates `<working-root>\<execution-id>` and starts there with `UseShellExecute=false`, redirected UTF-8 stdout/stderr, no redirected stdin, no console window, and the trusted runtime path. The directory is removed after success, nonzero exit, startup/trust failure, timeout, output overflow, or cancellation. Output and script copies are not retained.
+The configured trusted-script and working roots cannot be equal or nested within each other. Each execution atomically reserves its ID, creates `<working-root>\<execution-id>`, and starts there with `UseShellExecute=false`, redirected UTF-8 stdout/stderr, no redirected stdin, no console window, and the trusted runtime path. The reservation and directory are removed after success, nonzero exit, startup/trust failure, timeout, output overflow, or cancellation. Output and script copies are not retained.
 
 The inherited environment is cleared. Only the fixed Windows runtime allowlist is copied, then `POWERSHELL_TELEMETRY_OPTOUT=1` and `POWERSHELL_UPDATECHECK=Off` are set. Arbitrary parent variables, API keys, connection strings, cloud credentials, and test sentinels do not cross the boundary.
 
-Stdout and stderr are drained concurrently from process start with fixed-size buffers. Separate and combined byte limits bound stored content. A limit breach marks truncation, stops further storage while continuing to drain, terminates the tree, and returns `OutputLimitExceeded`. Output text never enters automatic logs.
+Stdout and stderr are drained concurrently from process start with fixed-size buffers. Separate and combined byte limits bound stored content. Root-process exit is not treated as normal completion until both redirected pipes reach end-of-stream, so the timeout remains active while descendants can still hold inherited pipe handles. A limit breach marks truncation, stops further storage while continuing to drain, terminates the tree, and returns `OutputLimitExceeded`; the limit state is checked again after the pumps finish so a short-lived process cannot be misclassified as a normal exit. Output text never enters automatic logs.
 
 A normal process exit returns its exact exit code, including nonzero codes. Timeout returns `TimedOut` and does not masquerade as caller cancellation. In-flight caller cancellation stops capture, terminates and drains the tree, cleans the directory, and throws `OperationCanceledException`.
 
