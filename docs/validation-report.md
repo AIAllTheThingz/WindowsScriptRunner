@@ -1646,7 +1646,7 @@ Required commands, final run:
 - `dotnet tool restore`: exit 0; dotnet-ef `10.0.10` restored.
 - `dotnet restore`: exit 0; all projects up to date.
 - `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors (3.11 seconds elapsed).
-- `dotnet test --configuration Release --no-build`: exit 0; 731 passed, 0 failed, 0 skipped: Unit 406, Security 107, SQL Server 54, Worker 51, PowerShell boundary 110, Integration 3.
+- `dotnet test --configuration Release --no-build`: exit 0; 732 passed, 0 failed, 0 skipped: Unit 406, Security 108, SQL Server 54, Worker 51, PowerShell boundary 110, Integration 3.
 - `dotnet format`: exit 0; formatting applied before the final verification.
 - `dotnet format --verify-no-changes --no-restore`: exit 0.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes.

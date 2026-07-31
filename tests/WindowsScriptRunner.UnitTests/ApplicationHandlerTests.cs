@@ -1703,6 +1703,9 @@ public sealed class ApplicationHandlerTests
             CallCount++;
             return Task.FromResult(Fingerprint);
         }
+
+        public bool IsExpectedFingerprintCurrent(string? expectedFingerprint, string currentFingerprint) =>
+            string.Equals(expectedFingerprint, currentFingerprint, StringComparison.Ordinal);
     }
 
     private sealed class FakeJobRepository : IJobRepository

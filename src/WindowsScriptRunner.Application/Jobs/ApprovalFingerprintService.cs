@@ -67,7 +67,7 @@ public sealed class ApprovalFingerprintService(IScriptDefinitionRepository scrip
         return Convert.ToHexStringLower(SHA256.HashData(canonical.ToUtf8Bytes()));
     }
 
-    public static bool IsExpectedFingerprintCurrent(string? expectedFingerprint, string currentFingerprint)
+    public bool IsExpectedFingerprintCurrent(string? expectedFingerprint, string currentFingerprint)
     {
         if (expectedFingerprint is not { } expected ||
             !IsLowercaseHexFingerprint(expected) ||

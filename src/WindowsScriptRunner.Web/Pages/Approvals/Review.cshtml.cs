@@ -23,8 +23,11 @@ public sealed class ReviewModel(
 
     public ApprovalReviewResponse Review { get; private set; } = null!;
 
-    public Task<IActionResult> OnGetAsync(Guid jobId, CancellationToken cancellationToken) =>
-        LoadReviewAsync(jobId, cancellationToken);
+    public async Task<IActionResult> OnGetAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        var (loaded, failure) = await TryLoadReviewAsync(jobId, cancellationToken);
+        return loaded ? Page() : failure!;
+    }
 
     public Task<IActionResult> OnPostApproveAsync(
         [FromRoute] Guid jobId,
@@ -44,10 +47,10 @@ public sealed class ReviewModel(
         bool approve,
         CancellationToken cancellationToken)
     {
-        var loaded = await LoadReviewAsync(jobId, cancellationToken);
-        if (loaded is not PageResult)
+        var (loaded, failure) = await TryLoadReviewAsync(jobId, cancellationToken);
+        if (!loaded)
         {
-            return loaded;
+            return failure!;
         }
 
         if (!ModelState.IsValid)
@@ -73,13 +76,16 @@ public sealed class ReviewModel(
         catch (ApplicationConflictException)
         {
             ModelState.AddModelError(string.Empty, "The reviewed job changed or cannot be decided. Review the current state before trying again.");
-            return await LoadReviewAsync(jobId, cancellationToken);
+            var (reloaded, reloadFailure) = await TryLoadReviewAsync(jobId, cancellationToken);
+            return reloaded ? Page() : reloadFailure!;
         }
 
         return RedirectToPage("/Approvals/Index");
     }
 
-    private async Task<IActionResult> LoadReviewAsync(Guid jobId, CancellationToken cancellationToken)
+    private async Task<(bool Loaded, IActionResult? Failure)> TryLoadReviewAsync(
+        Guid jobId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -89,17 +95,17 @@ public sealed class ReviewModel(
         }
         catch (EntityNotFoundException)
         {
-            return NotFound();
+            return (false, NotFound());
         }
         catch (ApplicationConflictException)
         {
-            return NotFound();
+            return (false, NotFound());
         }
 
         var authorization = await authorizationService.AuthorizeAsync(
             User,
             Review.Job,
             [new ReviewApprovalRequirement(), new DecideApprovalRequirement()]);
-        return authorization.Succeeded ? Page() : Forbid();
+        return authorization.Succeeded ? (true, null) : (false, Forbid());
     }
 }

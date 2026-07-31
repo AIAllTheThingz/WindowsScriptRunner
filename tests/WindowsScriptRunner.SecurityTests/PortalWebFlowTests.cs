@@ -761,5 +761,8 @@ public sealed class PortalWebFlowTests
     {
         public Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken) =>
             Task.FromResult(PortalState.Fingerprint);
+
+        public bool IsExpectedFingerprintCurrent(string? expectedFingerprint, string currentFingerprint) =>
+            string.Equals(expectedFingerprint, currentFingerprint, StringComparison.Ordinal);
     }
 }

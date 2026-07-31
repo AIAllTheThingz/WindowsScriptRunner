@@ -52,6 +52,20 @@ public sealed class JobResourceAuthorizationTests
     }
 
     [Fact]
+    public async Task OperatorCannotViewAnotherRequestersJob()
+    {
+        var job = CreateJob(nameof(JobStatus.Completed), $"sid:{RequesterSid}");
+
+        var result = await AuthorizeAsync(
+            new ViewJobRequirement(),
+            CreatePrincipal(OtherUserSid, [OperatorGroupSid]),
+            job);
+
+        Assert.False(result.HasSucceeded);
+        Assert.False(result.HasFailed);
+    }
+
+    [Fact]
     public async Task OperatorCanModifyOnlyTheirOwnDraftAndAdministratorCannotCrossUserMutate()
     {
         var draft = CreateJob(nameof(JobStatus.Draft), $"sid:{RequesterSid}");
@@ -187,19 +201,19 @@ public sealed class JobResourceAuthorizationTests
 
     private static JobDetailResponse CreateJob(string status, string requestedBy) =>
         new(
-            Guid.Parse("66666666-6666-6666-6666-666666666666"),
-            Guid.Parse("77777777-7777-7777-7777-777777777777"),
-            Guid.Parse("88888888-8888-8888-8888-888888888888"),
-            nameof(ExecutionPhase.Execute),
-            status,
-            requestedBy,
-            new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
-            null,
-            null,
-            [],
-            [],
-            [],
-            []);
+            Id: Guid.Parse("66666666-6666-6666-6666-666666666666"),
+            ScriptDefinitionId: Guid.Parse("77777777-7777-7777-7777-777777777777"),
+            ScriptVersionId: Guid.Parse("88888888-8888-8888-8888-888888888888"),
+            RequestedPhase: nameof(ExecutionPhase.Execute),
+            Status: status,
+            RequestedBy: requestedBy,
+            CreatedUtc: new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
+            UpdatedUtc: new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
+            SubmittedUtc: new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
+            Description: null,
+            ChangeReference: null,
+            Targets: [],
+            Parameters: [],
+            Executions: [],
+            Approvals: []);
 }

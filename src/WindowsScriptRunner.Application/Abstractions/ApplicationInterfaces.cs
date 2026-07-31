@@ -102,6 +102,8 @@ public interface IUnitOfWork
 public interface IJobFingerprintService
 {
     Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken);
+
+    bool IsExpectedFingerprintCurrent(string? expectedFingerprint, string currentFingerprint);
 }
 
 public interface IJobQueueCandidateSource

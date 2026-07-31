@@ -433,7 +433,7 @@ public sealed class ApproveJobHandler(
             command.JobId,
             cancellationToken);
         var fingerprint = await fingerprintService.CreateFingerprintAsync(job, cancellationToken);
-        if (!ApprovalFingerprintService.IsExpectedFingerprintCurrent(
+        if (!fingerprintService.IsExpectedFingerprintCurrent(
                 command.ExpectedFingerprint,
                 fingerprint))
         {
@@ -485,7 +485,7 @@ public sealed class RejectJobHandler(
             command.JobId,
             cancellationToken);
         var fingerprint = await fingerprintService.CreateFingerprintAsync(job, cancellationToken);
-        if (!ApprovalFingerprintService.IsExpectedFingerprintCurrent(
+        if (!fingerprintService.IsExpectedFingerprintCurrent(
                 command.ExpectedFingerprint,
                 fingerprint))
         {

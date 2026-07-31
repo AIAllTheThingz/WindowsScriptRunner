@@ -81,18 +81,20 @@ public sealed class ApprovalFingerprintServiceTests
     [InlineData("bbbb")]
     public void ExpectedFingerprintComparisonRejectsMalformedAndStaleValues(string? expected)
     {
+        var fixture = CreateFixture();
         var current = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-        Assert.False(ApprovalFingerprintService.IsExpectedFingerprintCurrent(expected, current));
+        Assert.False(fixture.Service.IsExpectedFingerprintCurrent(expected, current));
     }
 
     [Fact]
     public void ExpectedFingerprintComparisonAcceptsOnlyTheExactLowercaseSha256Value()
     {
+        var fixture = CreateFixture();
         var fingerprint = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-        Assert.True(ApprovalFingerprintService.IsExpectedFingerprintCurrent(fingerprint, fingerprint));
-        Assert.False(ApprovalFingerprintService.IsExpectedFingerprintCurrent(
+        Assert.True(fixture.Service.IsExpectedFingerprintCurrent(fingerprint, fingerprint));
+        Assert.False(fixture.Service.IsExpectedFingerprintCurrent(
             fingerprint.ToUpperInvariant(),
             fingerprint));
 

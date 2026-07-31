@@ -54,20 +54,8 @@ public sealed class JobResourceAuthorizationHandler(
                     WindowsAuthorizationCapability.Administrator):
                     context.Succeed(requirement);
                     break;
-                case ReviewApprovalRequirement when
-                    string.Equals(job.Status, nameof(JobStatus.AwaitingApproval), StringComparison.Ordinal) &&
-                    HasAnyCapability(
-                        principal,
-                        WindowsAuthorizationCapability.Approver,
-                        WindowsAuthorizationCapability.Administrator):
-                    context.Succeed(requirement);
-                    break;
-                case DecideApprovalRequirement when
-                    string.Equals(job.Status, nameof(JobStatus.AwaitingApproval), StringComparison.Ordinal) &&
-                    HasAnyCapability(
-                        principal,
-                        WindowsAuthorizationCapability.Approver,
-                        WindowsAuthorizationCapability.Administrator):
+                case ReviewApprovalRequirement when CanActOnApproval(principal, job):
+                case DecideApprovalRequirement when CanActOnApproval(principal, job):
                     context.Succeed(requirement);
                     break;
             }
@@ -99,6 +87,13 @@ public sealed class JobResourceAuthorizationHandler(
             capabilities);
         return principal.GroupSids.Overlaps(configuredGroupSids);
     }
+
+    private bool CanActOnApproval(AuthenticatedPrincipal principal, IJobAuthorizationResource job) =>
+        string.Equals(job.Status, nameof(JobStatus.AwaitingApproval), StringComparison.Ordinal) &&
+        HasAnyCapability(
+            principal,
+            WindowsAuthorizationCapability.Approver,
+            WindowsAuthorizationCapability.Administrator);
 
     private static bool IsRequester(AuthenticatedPrincipal principal, IJobAuthorizationResource job) =>
         StringComparer.OrdinalIgnoreCase.Equals(principal.User.Value, job.RequestedBy);
