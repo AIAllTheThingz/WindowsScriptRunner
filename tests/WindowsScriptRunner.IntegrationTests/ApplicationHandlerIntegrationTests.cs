@@ -18,7 +18,7 @@ public sealed class ApplicationHandlerIntegrationTests
         var auditWriter = new RecordingAuditWriter();
         var unitOfWork = new RecordingUnitOfWork();
         var clock = new FixedClock(new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero));
-        var actor = new UserIdentity("DOMAIN\\integration-user");
+        var actor = new UserIdentity("sid:S-1-5-21-1001-1002-1003-1004");
         var version = new ScriptVersion(
             ScriptVersionId.New(),
             ScriptVersionNumber.Parse("1.0.0"),
@@ -46,14 +46,14 @@ public sealed class ApplicationHandlerIntegrationTests
             repository,
             auditWriter,
             unitOfWork,
-            clock);
+            clock,
+            new FixedCurrentUser(actor));
 
         var id = await handler.HandleAsync(
             new CreateDraftJobCommand(
                 script.Id,
                 version.Id,
-                ExecutionPhase.Validation,
-                actor),
+                ExecutionPhase.Validation),
             CancellationToken.None);
 
         Assert.Equal(id, repository.Job?.Id);
@@ -72,6 +72,11 @@ public sealed class ApplicationHandlerIntegrationTests
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(UtcNow);
         }
+    }
+
+    private sealed class FixedCurrentUser(UserIdentity user) : ICurrentUser
+    {
+        public UserIdentity User { get; } = user;
     }
 
     private sealed class InMemoryJobRepository : IJobRepository

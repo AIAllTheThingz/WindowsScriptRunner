@@ -686,6 +686,7 @@ public sealed class Job
     public void RequireApproval(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can require approval.");
+        RequireStableApprovalRequester();
         RequireAcceptedDryRunEvidence();
         ApplyTransition(JobStatus.AwaitingApproval, actingUser, updatedUtc);
     }
@@ -780,6 +781,7 @@ public sealed class Job
         DateTimeOffset decisionUtc)
     {
         var policy = RequirePolicySnapshot();
+        RequireStableApprovalRequester();
         RequireAcceptedDryRunEvidence();
         ValidateTransition(JobStatus.Approved, approver, decisionUtc);
         if (policy.RiskLevel is RiskLevel.Medium or RiskLevel.High or RiskLevel.Critical &&
@@ -807,6 +809,7 @@ public sealed class Job
         DateTimeOffset decisionUtc)
     {
         _ = RequirePolicySnapshot();
+        RequireStableApprovalRequester();
         RequireAcceptedDryRunEvidence();
         ValidateTransition(JobStatus.Rejected, approver, decisionUtc);
         var rejection = new JobApproval(
@@ -1110,6 +1113,16 @@ public sealed class Job
         {
             throw new DomainValidationException(
                 "Approval decisions require accepted DryRun evidence.");
+        }
+    }
+
+    private void RequireStableApprovalRequester()
+    {
+        const string StableSidPrefix = "sid:S-1-";
+        if (!RequestedBy.Value.StartsWith(StableSidPrefix, StringComparison.Ordinal))
+        {
+            throw new DomainValidationException(
+                "Execute approval requires a requester identity mapped from a canonical Windows SID.");
         }
     }
 

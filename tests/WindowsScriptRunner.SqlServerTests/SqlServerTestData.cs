@@ -13,8 +13,8 @@ internal static class SqlServerTestData
 {
     public static readonly DateTimeOffset Time =
         new(2026, 7, 29, 12, 0, 0, TimeSpan.Zero);
-    public static readonly UserIdentity Requester = new("DOMAIN\\requester");
-    public static readonly UserIdentity Approver = new("DOMAIN\\approver");
+    public static readonly UserIdentity Requester = new("sid:S-1-5-21-1001-1002-1003-1004");
+    public static readonly UserIdentity Approver = new("sid:S-1-5-21-1001-1002-1003-1005");
     public static readonly string Fingerprint = new('b', 64);
 
     public static IReadOnlySet<JobWorkRoute> Routes(

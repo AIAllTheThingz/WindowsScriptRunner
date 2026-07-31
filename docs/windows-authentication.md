@@ -14,6 +14,8 @@ The mapper accepts exactly one user SID in this order:
 
 Ambiguous, malformed, missing, control-character, or built-in-group user SIDs fail closed. Display name is presentation-only and is not used for ownership or approval decisions.
 
+`CreateDraftJobHandler` obtains `RequestedBy` only from this mapped `ICurrentUser`; the create command has no requester field. Execute approval, rejection, and entry into the approval state additionally require the persisted requester to use the canonical `sid:S-1-...` representation. The evidence migration terminalizes legacy pending Execute jobs instead of allowing a historical non-SID requester representation to bypass separation of duties.
+
 Group membership is a set of canonical Windows SIDs. Valid authenticated `GroupSid` claims are combined with `WindowsIdentity.Groups` from the authenticated Windows token. The token-group fallback is Windows-only, excludes the user SID, and does not use names. Invalid claims and a claim equal to the user SID grant nothing.
 
 ## Group configuration

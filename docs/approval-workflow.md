@@ -16,7 +16,7 @@ Replaying a completed decision cannot record a second approval: the job is no lo
 
 ## Separation of duties
 
-`RequestedBy` is persisted from a stable SID identity. `ApproveJobHandler` does not accept an actor in its command and obtains the current authenticated identity through `ICurrentUser`. Domain rejects approval by the requester for Medium, High, and Critical policy snapshots. A user cannot change this outcome by posting a different requester, approver, role, risk, or separation-of-duties field.
+`RequestedBy` is persisted only from the stable SID identity supplied by `ICurrentUser` at draft creation; the create command has no requester field. `ApproveJobHandler` does not accept an actor in its command and obtains the current authenticated identity through `ICurrentUser`. Domain requires the persisted Execute requester to be in canonical `sid:S-1-...` form before it can enter or receive an approval decision, and rejects approval by the requester for Medium, High, and Critical policy snapshots. A user cannot change this outcome by posting a different requester, approver, role, risk, or separation-of-duties field.
 
 The Domain rule remains authoritative because its policy snapshot was captured from the pinned published script at submission. Web group membership only grants permission to attempt review or decision; it does not rewrite policy or prove independence.
 

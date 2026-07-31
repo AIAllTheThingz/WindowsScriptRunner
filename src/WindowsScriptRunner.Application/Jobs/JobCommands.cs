@@ -9,7 +9,6 @@ public sealed record CreateDraftJobCommand(
     ScriptDefinitionId ScriptDefinitionId,
     ScriptVersionId ScriptVersionId,
     ExecutionPhase RequestedPhase,
-    UserIdentity RequestedBy,
     string? Description = null,
     ChangeReference? ChangeReference = null);
 

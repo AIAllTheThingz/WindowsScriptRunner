@@ -45,12 +45,12 @@ public sealed class ApplicationHandlerTests
         var command = new CreateDraftJobCommand(
             script.Id,
             version.Id,
-            ExecutionPhase.DryRun,
-            TestDomainFactory.User);
+            ExecutionPhase.DryRun);
 
         var id = await fixture.CreateHandler.HandleAsync(command, source.Token);
 
         Assert.Equal(id, fixture.Jobs.Job?.Id);
+        Assert.Equal(fixture.CurrentUser.User, fixture.Jobs.Job?.RequestedBy);
         Assert.Equal("JobDraftCreated", Assert.Single(fixture.Audits.Events).EventType);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
@@ -66,8 +66,7 @@ public sealed class ApplicationHandlerTests
                 new CreateDraftJobCommand(
                     ScriptDefinitionId.New(),
                     ScriptVersionId.New(),
-                    ExecutionPhase.DryRun,
-                    TestDomainFactory.User),
+                    ExecutionPhase.DryRun),
                 CancellationToken.None));
 
         Assert.Null(fixture.Jobs.Job);
@@ -87,8 +86,7 @@ public sealed class ApplicationHandlerTests
                 new CreateDraftJobCommand(
                     script.Id,
                     ScriptVersionId.New(),
-                    ExecutionPhase.DryRun,
-                    TestDomainFactory.User),
+                    ExecutionPhase.DryRun),
                 CancellationToken.None));
 
         Assert.Null(fixture.Jobs.Job);
@@ -113,8 +111,7 @@ public sealed class ApplicationHandlerTests
                 new CreateDraftJobCommand(
                     script.Id,
                     version.Id,
-                    requestedPhase,
-                    TestDomainFactory.User),
+                    requestedPhase),
                 CancellationToken.None));
 
         Assert.Null(fixture.Jobs.Job);
@@ -137,8 +134,7 @@ public sealed class ApplicationHandlerTests
                 new CreateDraftJobCommand(
                     script.Id,
                     version.Id,
-                    ExecutionPhase.Execute,
-                    TestDomainFactory.User),
+                    ExecutionPhase.Execute),
                 CancellationToken.None));
 
         Assert.Null(fixture.Jobs.Job);
@@ -1493,7 +1489,13 @@ public sealed class ApplicationHandlerTests
     {
         public HandlerFixture()
         {
-            CreateHandler = new CreateDraftJobHandler(Scripts, Jobs, Audits, UnitOfWork, Clock);
+            CreateHandler = new CreateDraftJobHandler(
+                Scripts,
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock,
+                CurrentUser);
             AddTargetHandler = new AddJobTargetHandler(Jobs, Audits, UnitOfWork, Clock);
             SetParameterHandler = new SetJobParameterHandler(
                 Jobs,

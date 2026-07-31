@@ -2,7 +2,7 @@
 
 ## Commands and queries
 
-- `CreateDraftJobCommand` verifies that the selected version belongs to the script, that the requested phase is supported by the current lifecycle and that version, and that Execute capability includes DryRun before it creates, audits, and commits a draft.
+- `CreateDraftJobCommand` contains only script/version/requested-phase selection. Its handler obtains the requester from trusted `ICurrentUser`, then verifies that the selected version belongs to the script, that the requested phase is supported by the current lifecycle and that version, and that Execute capability includes DryRun before it creates, audits, and commits a draft.
 - `AddJobTargetCommand` loads a draft and delegates target invariants to Domain.
 - `SetJobParameterCommand` locates the pinned script version and exact `ScriptParameterDefinition` before interpreting input. Null, empty, and whitespace input is canonical absence: the pinned definition first accepts or rejects that absence, an accepted clear removes the explicit binding, and no type parsing or credential lookup occurs. Present values are validated against the pinned definition; present `SecureReference` values must be canonical non-empty IDs that resolve to enabled credential references. Stored data remains only the canonical name/value binding.
 - `SubmitJobCommand` validates targets, enabled script definition, published version, requested-phase support, Execute-with-DryRun support, and required/typed parameters, then captures trusted script policy.

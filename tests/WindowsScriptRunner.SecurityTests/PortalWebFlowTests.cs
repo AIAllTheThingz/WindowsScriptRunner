@@ -30,6 +30,7 @@ public sealed class PortalWebFlowTests
     private const string RequesterSid = "S-1-5-21-1001-1002-1003-1004";
     private const string OtherUserSid = "S-1-5-21-1001-1002-1003-1005";
     private const string ApproverSid = "S-1-5-21-1001-1002-1003-1006";
+    private const string SecondRequesterSid = "S-1-5-21-1001-1002-1003-1007";
     private const string OperatorGroupSid = "S-1-5-32-547";
     private const string ReportReaderGroupSid = "S-1-5-32-545";
     private const string ApproverGroupSid = "S-1-5-32-546";
@@ -224,6 +225,11 @@ public sealed class PortalWebFlowTests
             HttpMethod.Get,
             lookupPath,
             RequesterSid);
+        var secondRequesterList = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            reportsPath,
+            SecondRequesterSid);
         var unprivilegedList = await SendAsAsync(
             client,
             HttpMethod.Get,
@@ -236,21 +242,36 @@ public sealed class PortalWebFlowTests
             OtherUserSid);
 
         Assert.Equal(HttpStatusCode.OK, requesterList.StatusCode);
+        var requesterMarkup = await requesterList.Content.ReadAsStringAsync();
         Assert.Contains(
             factory.State.Report.Inventory.ComputerName,
-            await requesterList.Content.ReadAsStringAsync(),
+            requesterMarkup,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            factory.State.OtherReport.Inventory.ComputerName,
+            requesterMarkup,
             StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, requesterLookup.StatusCode);
         Assert.Contains(
             factory.State.Report.Inventory.ComputerName,
             await requesterLookup.Content.ReadAsStringAsync(),
             StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.OK, secondRequesterList.StatusCode);
+        var secondRequesterMarkup = await secondRequesterList.Content.ReadAsStringAsync();
+        Assert.Contains(
+            factory.State.OtherReport.Inventory.ComputerName,
+            secondRequesterMarkup,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            factory.State.Report.Inventory.ComputerName,
+            secondRequesterMarkup,
+            StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, unprivilegedList.StatusCode);
         Assert.DoesNotContain(
             factory.State.Report.Inventory.ComputerName,
             await unprivilegedList.Content.ReadAsStringAsync(),
             StringComparison.Ordinal);
-        Assert.Equal(2, factory.State.RequesterReportListCount);
+        Assert.Equal(3, factory.State.RequesterReportListCount);
         Assert.Equal(HttpStatusCode.Forbidden, unprivilegedLookup.StatusCode);
     }
 
@@ -564,17 +585,23 @@ public sealed class PortalWebFlowTests
             Job job,
             ScriptDefinition script,
             JobReport report,
+            JobReport otherReport,
+            UserIdentity otherRequester,
             string secureReference)
         {
             Job = job;
             Script = script;
             Report = report;
+            OtherReport = otherReport;
+            OtherRequester = otherRequester;
             SecureReference = secureReference;
         }
 
         internal Job Job { get; }
         internal ScriptDefinition Script { get; }
         internal JobReport Report { get; }
+        internal JobReport OtherReport { get; }
+        internal UserIdentity OtherRequester { get; }
         internal string SecureReference { get; }
         internal int AuditCount { get; set; }
         internal int RequesterReportListCount { get; set; }
@@ -583,6 +610,7 @@ public sealed class PortalWebFlowTests
         {
             var started = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
             var requester = new UserIdentity($"sid:{RequesterSid}");
+            var otherRequester = new UserIdentity($"sid:{SecondRequesterSid}");
             var system = new UserIdentity("system:portal-test");
             var parameter = new ScriptParameterDefinition(
                 ScriptParameterDefinitionId.New(),
@@ -661,7 +689,30 @@ public sealed class PortalWebFlowTests
                     InventoryOsArchitecture.X64,
                     "7.4.0"),
                 new string('d', 64));
-            return new PortalState(job, script, report, secureReference);
+            var otherReport = JobReport.CreateLocalHostInventory(
+                new JobId(Guid.Parse("57575757-5757-5757-5757-575757575757")),
+                script.Id,
+                version.Id,
+                WorkerNodeId.New(),
+                JobLeaseId.New(),
+                fencingToken: 58,
+                Guid.Parse("58585858-5858-5858-5858-585858585858"),
+                started.AddMinutes(11),
+                started.AddMinutes(11),
+                new LocalHostInventoryReportPayload(
+                    "PORTAL-02",
+                    "Microsoft Windows Server 2025",
+                    "10.0.26100",
+                    InventoryOsArchitecture.X64,
+                    "7.4.0"),
+                new string('e', 64));
+            return new PortalState(
+                job,
+                script,
+                report,
+                otherReport,
+                otherRequester,
+                secureReference);
         }
     }
 
@@ -718,28 +769,48 @@ public sealed class PortalWebFlowTests
     {
         public Task<IReadOnlyList<JobAuthorizationResourceResponse>> ListAsync(
             IReadOnlyCollection<JobId> jobIds,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<JobAuthorizationResourceResponse>>(
-                jobIds.Contains(state.Job.Id)
-                    ? [new JobAuthorizationResourceResponse(
-                        state.Job.Id.Value,
-                        state.Job.Status.ToString(),
-                        state.Job.RequestedBy.Value)]
-                    : []);
+            CancellationToken cancellationToken)
+        {
+            var resources = new List<JobAuthorizationResourceResponse>();
+            if (jobIds.Contains(state.Job.Id))
+            {
+                resources.Add(new JobAuthorizationResourceResponse(
+                    state.Job.Id.Value,
+                    state.Job.Status.ToString(),
+                    state.Job.RequestedBy.Value));
+            }
+
+            if (jobIds.Contains(state.OtherReport.JobId))
+            {
+                resources.Add(new JobAuthorizationResourceResponse(
+                    state.OtherReport.JobId.Value,
+                    nameof(JobStatus.Completed),
+                    state.OtherRequester.Value));
+            }
+
+            return Task.FromResult<IReadOnlyList<JobAuthorizationResourceResponse>>(resources);
+        }
     }
 
     private sealed class PortalReportRepository(PortalState state) : IJobReportRepository
     {
         public Task<JobReport?> GetByIdAsync(JobReportId id, CancellationToken cancellationToken) =>
-            Task.FromResult<JobReport?>(state.Report.Id == id ? state.Report : null);
+            Task.FromResult<JobReport?>(
+                state.Report.Id == id
+                    ? state.Report
+                    : state.OtherReport.Id == id ? state.OtherReport : null);
 
         public Task<JobReport?> GetByJobIdAsync(JobId id, CancellationToken cancellationToken) =>
-            Task.FromResult<JobReport?>(state.Report.JobId == id ? state.Report : null);
+            Task.FromResult<JobReport?>(
+                state.Report.JobId == id
+                    ? state.Report
+                    : state.OtherReport.JobId == id ? state.OtherReport : null);
 
         public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryAsync(
             int maximumCount,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<JobReport>>(maximumCount > 0 ? [state.Report] : []);
+            Task.FromResult<IReadOnlyList<JobReport>>(
+                maximumCount > 0 ? [state.Report, state.OtherReport] : []);
 
         public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
             UserIdentity requester,
@@ -748,8 +819,12 @@ public sealed class PortalWebFlowTests
         {
             ArgumentNullException.ThrowIfNull(requester);
             state.RequesterReportListCount++;
-            return Task.FromResult<IReadOnlyList<JobReport>>(
-                maximumCount > 0 && requester == state.Job.RequestedBy ? [state.Report] : []);
+            IReadOnlyList<JobReport> reports = maximumCount > 0
+                ? requester == state.Job.RequestedBy
+                    ? [state.Report]
+                    : requester == state.OtherRequester ? [state.OtherReport] : []
+                : [];
+            return Task.FromResult(reports);
         }
 
         public Task AddAsync(JobReport report, CancellationToken cancellationToken) =>

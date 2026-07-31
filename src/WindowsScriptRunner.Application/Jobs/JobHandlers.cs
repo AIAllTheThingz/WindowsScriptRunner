@@ -17,7 +17,8 @@ public sealed class CreateDraftJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IWorkerCoordinationClock coordinationClock)
+    IWorkerCoordinationClock coordinationClock,
+    ICurrentUser currentUser)
 {
     public async Task<JobId> HandleAsync(
         CreateDraftJobCommand command,
@@ -34,12 +35,13 @@ public sealed class CreateDraftJobHandler(
         ValidateRequestedPhase(version, command.RequestedPhase);
 
         var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
+        var requester = currentUser.User;
         var job = Job.CreateDraft(
             JobId.New(),
             command.ScriptDefinitionId,
             command.ScriptVersionId,
             command.RequestedPhase,
-            command.RequestedBy,
+            requester,
             now,
             command.Description,
             command.ChangeReference);
@@ -49,7 +51,7 @@ public sealed class CreateDraftJobHandler(
             CreateAudit(
                 "JobDraftCreated",
                 job,
-                command.RequestedBy,
+                requester,
                 now,
                 "A draft job was created."),
             cancellationToken);

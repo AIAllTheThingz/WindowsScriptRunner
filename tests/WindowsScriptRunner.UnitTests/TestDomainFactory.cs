@@ -9,8 +9,8 @@ namespace WindowsScriptRunner.UnitTests;
 internal static class TestDomainFactory
 {
     public static readonly DateTimeOffset Time = new(2026, 7, 28, 12, 0, 0, TimeSpan.Zero);
-    public static readonly UserIdentity User = new("DOMAIN\\requester");
-    public static readonly UserIdentity OtherUser = new("DOMAIN\\approver");
+    public static readonly UserIdentity User = new("sid:S-1-5-21-1001-1002-1003-1004");
+    public static readonly UserIdentity OtherUser = new("sid:S-1-5-21-1001-1002-1003-1005");
     public static readonly string Fingerprint = new('b', 64);
 
     public static ScriptParameterDefinition Parameter(
