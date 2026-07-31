@@ -1551,3 +1551,81 @@ Validation date: 2026-07-30, America/Chicago.
 - `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
 - `dotnet test --configuration Release --no-build`: exit 0; 592 passed, 0 failed, 0 skipped: Unit 333, PowerShell 110, Security 54, Worker 48, SQL Server 44, Integration 3.
 - `dotnet format --verify-no-changes --no-restore`: exit 0.
+
+## Phase 7 typed durable inventory reporting
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Source-control preflight fetched all remotes. Phase 6 commit `c21f758fd68eee7298cdb49081c8feebc474984f` was not an ancestor of `origin/main`, so `codex/phase-7-durable-reporting` was created from `origin/codex/phase-6-first-automation-package`. Phase 7 therefore depends on that unmerged branch.
+- Reporting now strictly validates only `windows.local-host-inventory` `1.0.0` schema `1.0`: successful exited code zero, untruncated streams, whitespace-only stderr, consistent execution window, at most 8 KiB/8,192 characters of strict UTF-8, exact duplicate-free JSON, bounded safe typed values, supported architecture, invariant versions with PowerShell `>= 7.4.0`, and an offset-bearing collection timestamp within five seconds of process start/completion.
+- Application owns one package-specific atomic completion command. It revalidates the exact pinned Phase 6 IDs/path/hash/runtime/timeout/phase/format, current DryRun lease ID/worker/fencing/work kind/expiration, job state, and execution ID using SQL coordination time.
+- Deterministic report identity and canonical SHA-256 make exact post-commit retries idempotent. Wrong job/version/worker/lease/fencing/execution/schema/content/digest fails closed and never overwrites.
+- `20260730221709_AddDurableLocalHostInventoryReports` creates only `wsr.JobReports` and `wsr.LocalHostInventoryReports`. SQL checks, restrictive provenance foreign keys, one-to-one typed detail, and unique job/package/schema, lease, and PowerShell execution indexes independently protect the model. No seed or raw-output/JSON column exists.
+- SQL Server tests migrated a clean database, upgraded the exact Phase 6 migration, reapplied latest migrations, rolled Phase 7 back to Phase 6 and reapplied it, rolled to zero and restored an idempotent script, enforced constraints/uniqueness, exercised concurrent duplicates and transaction rollback, and failed closed on a missing typed detail row.
+- The real SQL Server plus real PowerShell end-to-end test covers reviewed registration, job queueing, route discovery, fenced lease acquisition, actual package execution, strict parsing, typed persistence, completed job state, lease removal, safe typed retrieval, and absence of inventory values from logs/audit.
+- Raw stdout, stderr, arbitrary JSON, rejected values, and inventory values are not persisted or logged. Audit metadata is limited to report identity/type/schema/format, script version, worker, and created status.
+- Web has no Reporting reference, endpoint, Razor Page, download, or anonymous report surface. Phase 8 is identity, authentication, authorization, and approval workflow.
+
+Required commands:
+
+- `dotnet tool restore`: exit 0; dotnet-ef `10.0.10` restored.
+- `dotnet restore`: exit 0; all projects up to date.
+- `dotnet build --configuration Release`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release`: exit 0; 649 passed, 0 failed, 0 skipped: Unit 379, PowerShell 109, Security 57, Worker 51, SQL Server 50, Integration 3.
+- `dotnet format`: exit 0.
+- `dotnet format --verify-no-changes`: exit 0.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes.
+- Post-format `dotnet build --configuration Release --no-restore` and `dotnet test --configuration Release --no-build`: exit 0; 0 warnings/errors and the same 649 tests passed.
+
+Known limitations and residual risks:
+
+- Only the reviewed Local Host Inventory package/schema is supported; there is no generic reporting, upload, CSV, HTML, text, arbitrary JSON, or report mutation path.
+- PowerShell execution remains at least once. Phase 7 guarantees at most one accepted durable report, not exactly-once process execution.
+- Web report presentation is intentionally unavailable until authentication and authorization are implemented.
+- SQL/database deployment, production backup rehearsal, IIS/Windows Service installation, and production migration rollout were not performed.
+- Phase 5 process-containment, filesystem TOCTOU, and lack-of-OS-sandbox limitations remain unchanged.
+
+No deployment, push, or pull request was performed.
+
+## Phase 7 documentation consolidation
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Audited all 39 first-party Markdown files; the vendored jquery-validation license was intentionally left unchanged.
+- Replaced the root README with a current implementation, validation, operational-default, limitation, and documentation overview.
+- Added a documentation index and a Web project README.
+- Reconciled both roadmaps: Phases 1–5 are merged, Phase 6 is pushed for review, Phase 7 is pushed on its dependent branch, Phase 8 is the authenticated portal and approval boundary, and Phase 9 owns production deployment.
+- Updated every project README plus the deployment placeholders for the actual Worker, PowerShell, SQL, IIS, and Windows Service state.
+- Reconciled architecture, Application contracts, Domain/report model, lifecycle, queue, leases, PowerShell, persistence, schema, migrations, security, and affected ADR follow-up status with the Phase 7 implementation.
+- Local Markdown-link validation passed with no broken relative links.
+- Targeted stale-claim validation found no remaining statement that queueing, PowerShell execution, or Phase 7 report persistence is unimplemented.
+- `git diff --check`: exit 0.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.
+- The test suite was not rerun because this consolidation changes documentation only. The validated Phase 7 baseline immediately above remains 649 passed, 0 failed, and 0 skipped.
+
+No deployment, commit, push, or pull request was performed as part of the documentation consolidation.
+
+## Phase 7 pull-request review remediation
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Corrected deterministic report IDs to use the UUID version 8 marker at the byte required by .NET `Guid` ordering and added a regression assertion.
+- Exact replay is now recognized before mutable script-definition enablement is checked, so a retry after an uncertain successful commit remains idempotent even if the definition is subsequently disabled.
+- Persistence now recomputes the canonical report digest from rehydrated typed content and provenance. A valid-looking but altered digest or typed inventory value fails closed.
+- Updated Domain documentation to distinguish exact idempotent replay from conflicting duplicate completion.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build`: exit 0; 652 passed, 0 failed, 0 skipped: Unit 380, PowerShell 109, Security 57, Worker 51, SQL Server 52, Integration 3.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.
+
+## Phase 6-to-Phase 7 reviewed-baseline integration
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Phase 6 PR #8 passed review with every conversation resolved and merged into `main` as `98688d615992d5bfcaafac689271761a7460cabb`.
+- Phase 7 integrated that reviewed `main` baseline while preserving its typed report parser and the corrected scoped package registrar.
+- Current-status documentation records the dependency-safe merge order: Phase 6 through PR #8, followed by Phase 7 through PR #7.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build`: exit 0; 654 passed, 0 failed, 0 skipped: Unit 381, PowerShell 110, Security 57, Worker 51, SQL Server 52, Integration 3.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes.

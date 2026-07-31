@@ -2,19 +2,22 @@ using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.PowerShell;
+using WindowsScriptRunner.Reporting;
 
 namespace WindowsScriptRunner.Automation;
 
 internal sealed class LocalHostInventoryJobWorkHandler(
     IServiceScopeFactory scopeFactory,
     LocalHostInventoryArtifactCatalog catalog,
-    IPowerShellExecutionBoundary executionBoundary) : IJobWorkHandler
+    IPowerShellExecutionBoundary executionBoundary,
+    LocalHostInventoryReportParser reportParser) : IJobWorkHandler
 {
     public IReadOnlySet<JobWorkRoute> SupportedRoutes =>
         LocalHostInventoryPackageMetadata.SupportedRoutes;
@@ -34,7 +37,8 @@ internal sealed class LocalHostInventoryJobWorkHandler(
             var mapping = LocalHostInventoryResultMapper.Map(result);
             if (mapping.Succeeded)
             {
-                await CompleteAsync(work, cancellationToken);
+                var inventory = reportParser.Parse(ToReportingResult(result));
+                await CompleteAsync(work, inventory, cancellationToken);
                 return;
             }
 
@@ -78,6 +82,10 @@ internal sealed class LocalHostInventoryJobWorkHandler(
             await TerminateAsync(work, ExecutionOutcome.NotRun, CancellationToken.None);
         }
         catch (PowerShellExecutionException)
+        {
+            await TerminateAsync(work, ExecutionOutcome.Failed, CancellationToken.None);
+        }
+        catch (LocalHostInventoryReportValidationException)
         {
             await TerminateAsync(work, ExecutionOutcome.Failed, CancellationToken.None);
         }
@@ -157,17 +165,31 @@ internal sealed class LocalHostInventoryJobWorkHandler(
 
     private async Task CompleteAsync(
         ClaimedJobWork work,
+        ValidatedLocalHostInventoryReport inventory,
         CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        await scope.ServiceProvider
-            .GetRequiredService<CompleteLeasedReadOnlyDryRunHandler>()
-            .HandleAsync(
-                new CompleteLeasedReadOnlyDryRunCommand(
-                    work.JobId,
-                    work.Credentials,
-                    Actor(work)),
-                cancellationToken);
+        const int maximumAttempts = 3;
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            try
+            {
+                _ = await scope.ServiceProvider
+                    .GetRequiredService<CompleteLocalHostInventoryDryRunHandler>()
+                    .HandleAsync(
+                        new CompleteLocalHostInventoryDryRunCommand(
+                            work.JobId,
+                            work.Credentials,
+                            inventory,
+                            Actor(work)),
+                        cancellationToken);
+                return;
+            }
+            catch (ApplicationConflictException) when (attempt < maximumAttempts)
+            {
+                continue;
+            }
+        }
     }
 
     private async Task TerminateAsync(
@@ -210,4 +232,17 @@ internal sealed class LocalHostInventoryJobWorkHandler(
 
     private static UserIdentity Actor(ClaimedJobWork work) =>
         new($"worker:{work.WorkerNodeId}");
+
+    private static LocalHostInventoryProcessResult ToReportingResult(
+        PowerShellExecutionResult result) =>
+        new(
+            result.ExecutionId.Value,
+            result.StartedUtc,
+            result.CompletedUtc,
+            result.ExitCode,
+            result.StandardOutput,
+            result.StandardError,
+            result.StandardOutputTruncated,
+            result.StandardErrorTruncated,
+            result.TerminationReason == PowerShellTerminationReason.Exited);
 }

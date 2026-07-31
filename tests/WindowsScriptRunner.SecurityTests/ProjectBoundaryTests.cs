@@ -4,6 +4,7 @@ using System.Xml.Linq;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Credentials;
@@ -13,6 +14,7 @@ using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.PowerShell;
+using WindowsScriptRunner.Reporting;
 
 namespace WindowsScriptRunner.SecurityTests;
 
@@ -24,7 +26,11 @@ public sealed class ProjectBoundaryTests
         { "WindowsScriptRunner.Contracts", [] },
         {
             "WindowsScriptRunner.Application",
-            ["WindowsScriptRunner.Contracts", "WindowsScriptRunner.Domain"]
+            [
+                "WindowsScriptRunner.Contracts",
+                "WindowsScriptRunner.Domain",
+                "WindowsScriptRunner.Reporting",
+            ]
         },
         {
             "WindowsScriptRunner.Automation",
@@ -32,6 +38,7 @@ public sealed class ProjectBoundaryTests
                 "WindowsScriptRunner.Application",
                 "WindowsScriptRunner.Domain",
                 "WindowsScriptRunner.PowerShell",
+                "WindowsScriptRunner.Reporting",
             ]
         },
         {
@@ -42,21 +49,13 @@ public sealed class ProjectBoundaryTests
             ]
         },
         { "WindowsScriptRunner.PowerShell", [] },
-        {
-            "WindowsScriptRunner.Reporting",
-            [
-                "WindowsScriptRunner.Application",
-                "WindowsScriptRunner.Contracts",
-                "WindowsScriptRunner.Domain",
-            ]
-        },
+        { "WindowsScriptRunner.Reporting", [] },
         {
             "WindowsScriptRunner.Web",
             [
                 "WindowsScriptRunner.Application",
                 "WindowsScriptRunner.Contracts",
                 "WindowsScriptRunner.Infrastructure",
-                "WindowsScriptRunner.Reporting",
             ]
         },
         {
@@ -67,7 +66,6 @@ public sealed class ProjectBoundaryTests
                 "WindowsScriptRunner.Contracts",
                 "WindowsScriptRunner.Domain",
                 "WindowsScriptRunner.Infrastructure",
-                "WindowsScriptRunner.Reporting",
             ]
         },
     };
@@ -82,6 +80,8 @@ public sealed class ProjectBoundaryTests
         { "WindowsScriptRunner.Domain", "WindowsScriptRunner.Worker" },
         { "WindowsScriptRunner.Domain", "WindowsScriptRunner.PowerShell" },
         { "WindowsScriptRunner.Domain", "WindowsScriptRunner.Reporting" },
+        { "WindowsScriptRunner.Reporting", "WindowsScriptRunner.PowerShell" },
+        { "WindowsScriptRunner.Reporting", "WindowsScriptRunner.Infrastructure" },
     };
 
     [Theory]
@@ -674,11 +674,53 @@ public sealed class ProjectBoundaryTests
                 "LocalHostInventoryResultMapper.cs",
             }.Select(file => File.ReadAllText(Path.Combine(automationRoot, file))));
 
-        Assert.DoesNotContain(".StandardOutput", source, StringComparison.Ordinal);
-        Assert.DoesNotContain(".StandardError", source, StringComparison.Ordinal);
+        var handler = File.ReadAllText(
+            Path.Combine(
+                automationRoot,
+                "LocalHostInventoryJobWorkHandler.cs"));
+        Assert.DoesNotContain("ILogger", handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("IAuditWriter", handler, StringComparison.Ordinal);
         Assert.DoesNotContain("SerializedValue", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Environment.MachineName", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetEnvironmentVariables", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReportWriteBoundaryAcceptsOnlyTheValidatedPackageSpecificType()
+    {
+        var commandProperties =
+            typeof(CompleteLocalHostInventoryDryRunCommand).GetProperties();
+        var processProperties =
+            typeof(LocalHostInventoryProcessResult).GetProperties();
+        var webSource = ReadProjectSource("WindowsScriptRunner.Web");
+
+        Assert.Contains(
+            commandProperties,
+            property =>
+                property.PropertyType ==
+                typeof(ValidatedLocalHostInventoryReport));
+        Assert.DoesNotContain(
+            commandProperties,
+            property =>
+                property.PropertyType == typeof(string) ||
+                property.Name.Contains("Schema", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("ReportType", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("Sensitivity", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("Risk", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            processProperties,
+            property =>
+                property.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("Schema", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("ReportType", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            nameof(GetLocalHostInventoryReportHandler),
+            webSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "LocalHostInventoryReportResponse",
+            webSource,
+            StringComparison.Ordinal);
     }
 
     private static ScriptVersion CreateVersion(string path) =>

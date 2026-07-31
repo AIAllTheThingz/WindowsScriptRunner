@@ -4,6 +4,7 @@ using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Reports;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.Domain.Workers;
@@ -61,6 +62,17 @@ public interface ICredentialReferenceRepository
         CancellationToken cancellationToken);
     Task AddAsync(CredentialReference credentialReference, CancellationToken cancellationToken);
     Task UpdateAsync(CredentialReference credentialReference, CancellationToken cancellationToken);
+}
+
+public interface IJobReportRepository
+{
+    Task<JobReport?> GetByIdAsync(
+        JobReportId id,
+        CancellationToken cancellationToken);
+    Task<JobReport?> GetByJobIdAsync(
+        JobId jobId,
+        CancellationToken cancellationToken);
+    Task AddAsync(JobReport report, CancellationToken cancellationToken);
 }
 
 public interface IAuditWriter

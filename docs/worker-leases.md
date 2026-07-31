@@ -58,16 +58,18 @@ Recovery writes `JobLeaseExpired` and `JobLeaseRecovered` in the same transactio
 
 Lease audit properties are bounded to work kind, worker ID, lease ID, fencing token, expiration, and recovery disposition. Fencing tokens are non-secret coordination numbers. Parameter values, credential-reference IDs, external credential identifiers, script content, approval comments, and connection data are prohibited.
 
-## Phase 6 production handler contract
+## Production handler and report contract
 
-When the reviewed inventory package is enabled, Phase 6 registers one production handler for its exact `(DryRun, ScriptVersionId)` route. That handler must:
+When the reviewed inventory package is enabled, the Worker registers one production handler for its exact `(DryRun, ScriptVersionId)` route. That handler must:
 
 1. accept only the supplied `ClaimedJobWork`;
 2. use its worker identity and fencing token without replacement;
 3. honor cancellation on lease loss and shutdown;
 4. resolve the lease through lease-aware Application commands in fresh scopes;
 5. treat the local read-only operation as safe to retry under at-least-once delivery;
-6. never load or log parameters, secrets, stdout, stderr, or machine inventory through the queue descriptor; and
-7. never resolve terminal state with stale lease credentials.
+6. never load or log parameters, secrets, stdout, stderr, or machine inventory through the queue descriptor;
+7. treat a code-zero process result as incomplete until Reporting validates the expected schema;
+8. atomically persist the immutable typed report with the lifecycle, lease, and audit changes; and
+9. never resolve terminal state with stale lease credentials.
 
-With the package disabled, the Worker advertises no route, leases no job, and does not launch PowerShell.
+An existing exact report may prove an uncertain retry already committed; mismatched report content or provenance remains a conflict. With the package disabled, the Worker advertises no route, leases no job, and does not launch PowerShell.

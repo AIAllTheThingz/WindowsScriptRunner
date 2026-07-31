@@ -25,6 +25,8 @@ Leases are renewed periodically. Unstarted work can release safely. Expired acti
 - Future handlers must be cancellation-aware and make downstream effects idempotent or fenced.
 - Production only processes routes deliberately registered by reviewed Worker-side composition.
 
+Subsequent status: Phase 7 retains the fenced lease through report validation and commits the immutable typed report, job completion, lease deletion, and audit event atomically. Exact report replay is idempotent; a conflicting replay fails closed.
+
 ## Alternatives not selected
 
 - Database row locks held for the full work duration would couple execution to a fragile long transaction.

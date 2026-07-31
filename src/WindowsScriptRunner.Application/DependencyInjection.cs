@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Application.Time;
 using WindowsScriptRunner.Application.Workers;
 
@@ -26,6 +27,8 @@ public static class DependencyInjection
         services.AddTransient<StartLeasedExecutionHandler>();
         services.AddTransient<BeginLeasedPostValidationHandler>();
         services.AddTransient<RecordLeasedExecutionOutcomeHandler>();
+        services.AddTransient<CompleteLocalHostInventoryDryRunHandler>();
+        services.AddTransient<GetLocalHostInventoryReportHandler>();
         return services;
     }
 }

@@ -1,6 +1,6 @@
 # SQL Server persistence
 
-Phase 3 implements the existing Application persistence contracts in `WindowsScriptRunner.Infrastructure` with EF Core and SQL Server.
+`WindowsScriptRunner.Infrastructure` implements the Application persistence contracts with EF Core and SQL Server. The schema currently includes domain aggregates, audit records, durable worker leases, and immutable typed job reports.
 
 ## Configuration
 
@@ -42,6 +42,8 @@ $env:ConnectionStrings__WindowsScriptRunner = '<connection string supplied exter
 
 One scoped `WindowsScriptRunnerDbContext` is shared by the repositories, `SqlAuditWriter`, and `SqlUnitOfWork`. Repositories load tracked aggregates with cancellation support and stage graph changes without saving. When an operation uses unchanged aggregate roots as validation dependencies, the unit of work rowversion-revalidates them and commits aggregate and audit changes together with one `SaveChangesAsync` call inside a serializable transaction. Other commits retain the normal `SaveChangesAsync` transaction. Validation dependencies are protected without unchanged writes or rowversion churn.
 
+The reviewed local-host inventory completion stages the typed report, job lifecycle change, lease deletion, and audit event in the same unit of work. Report persistence has no update path. Query reconstruction requires one consistent typed detail row and fails closed on missing, duplicate, or mismatched data. Raw PowerShell stdout and stderr are never stored.
+
 Mutable root rows have SQL Server rowversion tokens. Stale updates and changed validation dependencies become bounded concurrency exceptions. The serializable commit transaction runs inside the configured SQL Server execution strategy. Transient provider failures, including nested retry-exhaustion shapes, are translated without exposing connection strings, SQL text, parameter values, or raw provider messages.
 
 Large aggregate loads use split queries to avoid cartesian result growth. EF parameterizes values rather than concatenating caller input.
@@ -59,4 +61,4 @@ Startup migration is registered behind `Persistence:ApplyMigrationsOnStartup`, w
 
 Tests use `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` when supplied. Otherwise they use the installed `MSSQLLocalDB` instance. Every test creates a unique disposable database, applies migrations, and deletes the database afterward. SQLite and EF InMemory are not used as SQL Server evidence.
 
-Phase 4 polling, claiming, scheduling, and PowerShell execution remain unimplemented.
+Durable polling, fenced claiming, lease recovery, the reviewed PowerShell package, and typed local-host inventory reporting are implemented. Production migration orchestration, backup/restore procedures, least-privilege database identities, and rollback runbooks remain Phase 9 deployment work.

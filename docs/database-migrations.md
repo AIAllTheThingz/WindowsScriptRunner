@@ -24,7 +24,7 @@ dotnet ef migrations has-pending-model-changes `
 
 `InitialSqlServerPersistence` is the first migration. Generate the deployment artifact at `artifacts/sql/WindowsScriptRunner-idempotent.sql`. The repository policy ignores generated `artifacts/`, so the SQL file is intentionally not committed. Tests generate the same idempotent SQL from the migration assembly, apply it twice to real SQL Server, and verify that it contains no environment-specific connection string or credential.
 
-Create a future migration only after the EF model is stable:
+Create a migration only after the EF model is stable:
 
 ```powershell
 dotnet ef migrations add <MigrationName> `
@@ -55,3 +55,19 @@ Production processes do not apply migrations by default. Apply the reviewed arti
 Before adding the required lease invariant, the migration normalizes possible pre-lease worker states. Unstarted `Claimed` jobs return to `ExecutionQueued`. `DryRunRunning`, active `Claimed`, `Executing`, and `PostValidation` jobs become `TimedOut`; active execution rows receive a matching timed-out outcome. Each affected job receives a bounded `LegacyWorkerStateRecovered` audit event with actor `system:migration`. No parameter, credential, or script content is copied.
 
 The down migration removes the lease table and sequence and restores the prior audit-key constraint. Real SQL tests apply both migrations, roll back Phase 4 to the Phase 3 migration, reapply Phase 4, and apply the generated idempotent script twice. Production rollback still requires a reviewed backup/rehearsal plan because down migration cannot reconstruct leases that did not exist in Phase 3.
+
+## Phase 7 migration
+
+`20260730221709_AddDurableLocalHostInventoryReports` / `AddDurableLocalHostInventoryReports` creates `wsr.JobReports` and `wsr.LocalHostInventoryReports`. It adds only typed report columns, exact-type/check constraints, restrictive provenance foreign keys, the one-to-one typed-detail cascade, and deterministic uniqueness indexes. It contains no data seeding, data copy, generic JSON column, stdout/stderr column, or unrelated schema change.
+
+The down migration drops the typed detail before the envelope and otherwise leaves the Phase 6 schema unchanged. Real SQL Server tests cover:
+
+- migration from an empty database;
+- migration from `20260729224310_AddWorkerQueueLeases`, the Phase 6 schema;
+- idempotent reapplication at the latest version;
+- rollback from Phase 7 to Phase 6 and reapplication;
+- rollback to zero and restoration with the idempotent script;
+- foreign-key, check, and uniqueness enforcement; and
+- no pending EF model changes.
+
+Dropping Phase 7 destroys durable reports, so a production rollback requires a reviewed backup and explicit data-retention decision even though the structural down migration is correct.

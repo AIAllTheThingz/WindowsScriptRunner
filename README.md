@@ -1,65 +1,84 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application foundation for controlled automation. **Phases 1–5 are complete and merged. Phase 6 adds the first reviewed production automation package.**
+Windows Script Runner is a Windows-hosted .NET application for controlled automation. Implementation and validation are complete through Phase 7.
 
-## Status
+## Current status
 
-The solution contains the validated Domain, Application, SQL Server persistence, lease-backed Worker, and isolated PowerShell 7 boundary. Phase 6 adds exactly one production package: `windows.local-host-inventory` version `1.0.0`, a ReadOnly, local-worker, DryRun-only inventory collector. The package and its idempotent registration are disabled by default.
+The solution includes:
 
-Production startup does not apply migrations by default. Operators must deploy the reviewed migration artifact or explicitly opt into startup migration for a controlled environment.
+- an independent Domain model and Application use cases;
+- SQL Server persistence, migrations, health checks, and transactional auditing;
+- a fenced, lease-backed Worker queue with SQL-authoritative coordination time;
+- an isolated PowerShell 7 child-process boundary;
+- one reviewed, hash-pinned production package, `windows.local-host-inventory` version `1.0.0`; and
+- strict Local Host Inventory parsing with immutable typed report persistence.
+
+The inventory package is ReadOnly, local-only, parameterless, and DryRun-only. Its successful result is validated against the exact schema and stored as one typed SQL report in the same transaction that completes the job, removes the lease, and records bounded audit metadata. Raw stdout, stderr, and arbitrary JSON are not persisted.
+
+Phases 1–7 are implemented, validated, and merged into `main`. Phase 6 was merged first through PR #8, then Phase 7 through PR #7.
+
+Phase 8 is next: identity, authentication, authorization, trusted approval fingerprints, and approval workflow composition. Phase 9 is production hardening and deployment.
 
 ## Solution structure
 
-- `src/WindowsScriptRunner.Web` — Razor Pages UI and health endpoint
-- `src/WindowsScriptRunner.Worker` — durable registration, heartbeat, lease recovery, and handler-gated queue coordination
-- `src/WindowsScriptRunner.Application` — use-case handlers and persistence/audit abstractions
-- `src/WindowsScriptRunner.Automation` — the reviewed, hash-pinned production package, catalog, registration, and Worker handler
-- `src/WindowsScriptRunner.Domain` — independent aggregates, lifecycle rules, and value objects
-- `src/WindowsScriptRunner.Infrastructure` — EF Core SQL Server persistence, repositories, migrations, health checks, and composition
-- `src/WindowsScriptRunner.Contracts` — shared public request and response contracts
-- `src/WindowsScriptRunner.PowerShell` — isolated, bounded PowerShell 7 child-process boundary
-- `src/WindowsScriptRunner.Reporting` — future report generation
-- `tests` — unit, integration scaffold, real SQL Server, worker, security, and PowerShell boundary tests
-- `automation`, `deployment`, `docs` — operational placeholders and documentation
+- `src/WindowsScriptRunner.Web` — Razor Pages shell and liveness/readiness endpoints
+- `src/WindowsScriptRunner.Worker` — registration, heartbeat, queue polling, lease renewal/recovery, and dispatch
+- `src/WindowsScriptRunner.Application` — use-case handlers and persistence, audit, clock, and report abstractions
+- `src/WindowsScriptRunner.Automation` — reviewed package catalog, registration, PowerShell orchestration, and production handler
+- `src/WindowsScriptRunner.Domain` — aggregates, lifecycle rules, identifiers, and immutable report model
+- `src/WindowsScriptRunner.Infrastructure` — EF Core SQL Server persistence, repositories, migrations, and health checks
+- `src/WindowsScriptRunner.Contracts` — immutable transport DTOs
+- `src/WindowsScriptRunner.PowerShell` — bounded out-of-process PowerShell 7 execution
+- `src/WindowsScriptRunner.Reporting` — strict inventory parsing, validation, canonicalization, and digest calculation
+- `tests` — unit, security, Worker, SQL Server, integration, and real PowerShell tests
+- `automation` — reserved repository-maintenance automation area
+- `deployment` — Phase 9 deployment planning and status
+- `docs` — architecture, security, operations, ADRs, roadmap, and validation evidence
 
 ## Prerequisites
 
 - Git
 - Stable .NET 10 SDK
-- PowerShell 7
+- PowerShell 7.4 or later for real execution tests and the reviewed package
 - SQL Server; SQL Server LocalDB is supported for development and tests
 
-## Commands
+## Validate the solution
 
 ```powershell
 dotnet tool restore
 dotnet restore
 dotnet build --configuration Release
 dotnet test --configuration Release
-dotnet format
 dotnet format --verify-no-changes
-dotnet ef database update --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj
-dotnet run --project .\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj
-dotnet run --project .\src\WindowsScriptRunner.Worker\WindowsScriptRunner.Worker.csproj
+dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build
 ```
+
+The merged Phase 7 baseline is 654 passing tests with zero failures or required skips.
+
+See [development setup](docs/development-setup.md) for local configuration and startup instructions.
+
+## Operational defaults
+
+- `Persistence:ApplyMigrationsOnStartup` is `false`.
+- `Automation:LocalHostInventory:Enabled` is `false`.
+- `Automation:LocalHostInventory:RegisterOnStartup` is `false`.
+- Production Worker identity requires a stable non-empty `Worker:NodeId`.
+- The trusted script root and execution working root must be absolute, local, and non-overlapping.
+
+Apply reviewed migrations before production startup. Startup migration is an explicit controlled-environment option, not the production default.
 
 ## Current limitations
 
-- Only `windows.local-host-inventory` version `1.0.0` is a production automation package. It has no parameters, no remoting, no credentials, no network calls, and no side effects.
-- The package supports only `ExecutionPhase.DryRun`. Its successful read-only dry run moves directly to `Completed`; it does not use approval or Execute states.
-- `Automation:LocalHostInventory:Enabled` and `RegisterOnStartup` both default to `false`. Enabling requires explicit, fully qualified non-overlapping `PowerShellExecution:AllowedScriptRoot` and `WorkingRoot` values.
-- Candidate discovery is constrained by `(JobWorkKind, ScriptVersionId)`. Unsupported versions remain queued and are not repeatedly claimed.
-- The inventory JSON is bounded process output only. It is neither logged nor persisted; durable report storage and rich reporting are later work.
-- No authentication or authorization model is complete.
-- Approval fingerprints are supplied and validated structurally, but trusted fingerprint calculation is future work.
-- Windows identities compare case-insensitively in Phase 2; future authentication should map users to stable SIDs or equivalent principal identifiers.
-- Secure parameters store only credential-reference IDs. External credential lookup and secret retrieval remain future Infrastructure work.
-- Credential-reference persistence stores a provider-scoped external identifier and a SHA-256 lookup hash, never raw credential material.
-- Job parameter type and sensitivity are never trusted from stored job-parameter metadata; responses and audit classification derive from the pinned immutable `ScriptParameterDefinition`.
-- Null, empty, and whitespace parameter input is one canonical absent value. If the pinned definition permits absence, the draft removes the explicit binding, leaves any definition-owned default in place, skips credential lookup, and writes a bounded `JobParameterCleared` audit event without the prior value.
-- Domain aggregate operations validate every proposed value before changing scalar, collection, timestamp, or child state. In particular, `ScriptDefinition.UpdateDetails` applies display name, description, and timestamp atomically.
-- Deployment documentation is planning-only.
-- No authentication, authorization, production deployment, service installation, external secret retrieval, report persistence, or operating-system sandbox is provided by Phase 6.
-- The project is not production-ready.
+- Only `windows.local-host-inventory` version `1.0.0` is executable.
+- The package has no parameters, credentials, remoting, network access, or side effects.
+- Queue routing is constrained to the exact `(JobWorkKind, ScriptVersionId)` supported route.
+- Typed report queries exist, but Web intentionally exposes no report page, endpoint, or download before authentication and authorization.
+- Authentication, authorization, trusted identity mapping, and trusted approval-fingerprint calculation are not implemented.
+- External secret retrieval and injection are not implemented.
+- There is no generic package discovery, arbitrary script upload, generic reporting, or operating-system sandbox.
+- IIS configuration, Windows Service installation, production SQL rollout, backup rehearsal, and operational deployment automation are not implemented.
+- The product is not production-ready.
 
-See the [architecture](docs/architecture.md), [PowerShell execution boundary](docs/powershell-execution-boundary.md), [worker queue](docs/worker-queue.md), [worker leases](docs/worker-leases.md), [security properties](docs/security.md), and [ADR 0007](docs/decisions/0007-first-production-automation-package.md).
+## Documentation
+
+Start with the [documentation index](docs/README.md), [roadmap](docs/roadmap.md), [architecture](docs/architecture.md), [security model](docs/security.md), and [validation report](docs/validation-report.md).

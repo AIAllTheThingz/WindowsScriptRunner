@@ -8,9 +8,11 @@ using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Reports;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.PowerShell;
+using WindowsScriptRunner.Reporting;
 
 namespace WindowsScriptRunner.WorkerTests;
 
@@ -64,7 +66,8 @@ public sealed class ProductionAutomationHandlerTests
     {
         using var fixture = new AutomationHandlerFixture(
             SuccessfulResult(
-                standardOutput: "inventory-value-that-must-not-be-persisted"));
+                standardOutput: InventoryJson(
+                    "inventory-value-that-must-not-be-persisted")));
 
         await fixture.Handler.HandleAsync(
             fixture.Work,
@@ -76,11 +79,51 @@ public sealed class ProductionAutomationHandlerTests
         Assert.Equal(fixture.Job.Id.Value, fixture.Boundary.LastRequest!.ExecutionId.Value);
         Assert.Empty(fixture.Boundary.LastRequest.Arguments);
         Assert.True(fixture.ScopeFactory.ScopeCount >= 3);
+        var report = Assert.IsType<JobReport>(fixture.Reports.Report);
+        Assert.Equal(
+            "inventory-value-that-must-not-be-persisted",
+            report.Inventory.ComputerName);
         Assert.DoesNotContain(
             fixture.Audits.Events.SelectMany(audit =>
                 audit.Properties.Values.Append(audit.Summary)),
             value => value.Contains(
                 "inventory-value-that-must-not-be-persisted",
+                StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("malformed")]
+    [InlineData("truncated")]
+    [InlineData("stderr")]
+    public async Task UntrustedSuccessfulOutputFailsWithoutAReport(string failure)
+    {
+        var result = failure switch
+        {
+            "malformed" => SuccessfulResult(standardOutput: "{}"),
+            "truncated" => SuccessfulResult() with
+            {
+                StandardOutputTruncated = true,
+            },
+            "stderr" => SuccessfulResult() with
+            {
+                StandardError = "unexpected error output",
+            },
+            _ => throw new InvalidOperationException(),
+        };
+        using var fixture = new AutomationHandlerFixture(result);
+
+        await fixture.Handler.HandleAsync(
+            fixture.Work,
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Failed, fixture.Job.Status);
+        Assert.Null(fixture.Job.Lease);
+        Assert.Null(fixture.Reports.Report);
+        Assert.DoesNotContain(
+            fixture.Audits.Events.SelectMany(audit =>
+                audit.Properties.Values.Append(audit.Summary)),
+            value => value.Contains(
+                "unexpected error output",
                 StringComparison.Ordinal));
     }
 
@@ -193,18 +236,19 @@ public sealed class ProductionAutomationHandlerTests
     }
 
     [Fact]
-    public async Task TerminalPersistenceFailureIsPropagatedWithoutFabricatedSuccess()
+    public async Task UncertainCommitIsRecognizedAsAnExactReplay()
     {
         using var fixture = new AutomationHandlerFixture(
             SuccessfulResult(),
             failCommitNumber: 2);
 
-        await Assert.ThrowsAsync<ApplicationConflictException>(
-            () => fixture.Handler.HandleAsync(
-                fixture.Work,
-                CancellationToken.None));
+        await fixture.Handler.HandleAsync(
+            fixture.Work,
+            CancellationToken.None);
 
         Assert.Equal(1, fixture.Boundary.CallCount);
+        Assert.Equal(JobStatus.Completed, fixture.Job.Status);
+        Assert.NotNull(fixture.Reports.Report);
     }
 
     private MutableClock? fixtureClock;
@@ -214,8 +258,18 @@ public sealed class ProductionAutomationHandlerTests
     private static PowerShellExecutionResult SuccessfulResult(
         PowerShellTerminationReason reason = PowerShellTerminationReason.Exited,
         int? exitCode = 0,
-        string standardOutput = "{}") =>
-        new(
+        string? standardOutput = null)
+    {
+        var startedUtc = new DateTimeOffset(
+            2026,
+            7,
+            30,
+            12,
+            0,
+            0,
+            TimeSpan.Zero);
+        standardOutput ??= InventoryJson();
+        return new(
             PowerShellExecutionId.New(),
             new PowerShellRuntimeInfo(
                 "omitted",
@@ -225,9 +279,9 @@ public sealed class ProductionAutomationHandlerTests
                 "Windows",
                 "X64",
                 false),
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow,
-            TimeSpan.Zero,
+            startedUtc,
+            startedUtc.AddSeconds(1),
+            TimeSpan.FromSeconds(1),
             exitCode,
             standardOutput,
             string.Empty,
@@ -236,6 +290,12 @@ public sealed class ProductionAutomationHandlerTests
             false,
             false,
             reason);
+    }
+
+    private static string InventoryJson(string computerName = "WORKER-01") =>
+        $$"""
+        {"schemaVersion":"1.0","computerName":"{{computerName}}","os":{"description":"Microsoft Windows 11","version":"10.0.26100","architecture":"X64"},"powerShell":{"version":"7.4.0"},"collectedUtc":"2026-07-30T12:00:00.5000000+00:00"}
+        """;
 
     private sealed class AutomationHandlerFixture : IDisposable
     {
@@ -292,6 +352,7 @@ public sealed class ProductionAutomationHandlerTests
             Jobs = new FakeJobRepository();
             Scripts = new FakeScriptRepository();
             Audits = new FakeAuditWriter();
+            Reports = new FakeReportRepository();
             Boundary = new RecordingBoundary(execute);
             var services = new ServiceCollection();
             services.AddApplication();
@@ -299,6 +360,7 @@ public sealed class ProductionAutomationHandlerTests
             services.AddSingleton<IJobRepository>(Jobs);
             services.AddSingleton<IScriptDefinitionRepository>(Scripts);
             services.AddSingleton<IAuditWriter>(Audits);
+            services.AddSingleton<IJobReportRepository>(Reports);
             services.AddSingleton<IUnitOfWork>(
                 new FailingCommitUnitOfWork(failCommitNumber));
             services.AddSingleton<IWorkerCoordinationClock>(Clock);
@@ -347,7 +409,8 @@ public sealed class ProductionAutomationHandlerTests
             Handler = new LocalHostInventoryJobWorkHandler(
                 ScopeFactory,
                 Provider.GetRequiredService<LocalHostInventoryArtifactCatalog>(),
-                Boundary);
+                Boundary,
+                Provider.GetRequiredService<LocalHostInventoryReportParser>());
         }
 
         internal ServiceProvider Provider { get; }
@@ -355,6 +418,7 @@ public sealed class ProductionAutomationHandlerTests
         internal FakeJobRepository Jobs { get; }
         internal FakeScriptRepository Scripts { get; }
         internal FakeAuditWriter Audits { get; }
+        internal FakeReportRepository Reports { get; }
         internal RecordingBoundary Boundary { get; }
         internal CountingScopeFactory ScopeFactory { get; }
         internal LocalHostInventoryJobWorkHandler Handler { get; }
@@ -394,6 +458,42 @@ public sealed class ProductionAutomationHandlerTests
 
             throw new FileNotFoundException(
                 "Could not locate the reviewed Phase 6 artifact.");
+        }
+    }
+
+    private sealed class FakeReportRepository : IJobReportRepository
+    {
+        internal JobReport? Report { get; private set; }
+
+        public Task<JobReport?> GetByIdAsync(
+            JobReportId id,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(Report?.Id == id ? Report : null);
+        }
+
+        public Task<JobReport?> GetByJobIdAsync(
+            JobId jobId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(Report?.JobId == jobId ? Report : null);
+        }
+
+        public Task AddAsync(
+            JobReport report,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Report is not null)
+            {
+                throw new ApplicationConflictException(
+                    "A report already exists.");
+            }
+
+            Report = report;
+            return Task.CompletedTask;
         }
     }
 
@@ -447,13 +547,17 @@ public sealed class ProductionAutomationHandlerTests
         internal int CallCount { get; private set; }
         internal PowerShellExecutionRequest? LastRequest { get; private set; }
 
-        public Task<PowerShellExecutionResult> ExecuteAsync(
+        public async Task<PowerShellExecutionResult> ExecuteAsync(
             PowerShellExecutionRequest request,
             CancellationToken cancellationToken)
         {
             CallCount++;
             LastRequest = request;
-            return execute(request, cancellationToken);
+            var result = await execute(request, cancellationToken);
+            return result with
+            {
+                ExecutionId = request.ExecutionId,
+            };
         }
     }
 }

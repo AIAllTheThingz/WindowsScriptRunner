@@ -162,6 +162,42 @@ internal sealed class JobLeaseEntity
     public JobEntity Job { get; set; } = null!;
 }
 
+internal sealed class JobReportEntity
+{
+    public Guid Id { get; set; }
+    public Guid JobId { get; set; }
+    public Guid ScriptDefinitionId { get; set; }
+    public Guid ScriptVersionId { get; set; }
+    public string PackageId { get; set; } = string.Empty;
+    public string PackageVersion { get; set; } = string.Empty;
+    public string ReportType { get; set; } = string.Empty;
+    public string SchemaVersion { get; set; } = string.Empty;
+    public string Format { get; set; } = string.Empty;
+    public Guid WorkerNodeId { get; set; }
+    public Guid LeaseId { get; set; }
+    public long FencingToken { get; set; }
+    public Guid PowerShellExecutionId { get; set; }
+    public DateTimeOffset CreatedUtc { get; set; }
+    public DateTimeOffset CollectedUtc { get; set; }
+    public string Sha256 { get; set; } = string.Empty;
+    public JobEntity Job { get; set; } = null!;
+    public ScriptDefinitionEntity ScriptDefinition { get; set; } = null!;
+    public ScriptVersionEntity ScriptVersion { get; set; } = null!;
+    public WorkerNodeEntity WorkerNode { get; set; } = null!;
+    public LocalHostInventoryReportEntity Inventory { get; set; } = null!;
+}
+
+internal sealed class LocalHostInventoryReportEntity
+{
+    public Guid ReportId { get; set; }
+    public string ComputerName { get; set; } = string.Empty;
+    public string OsDescription { get; set; } = string.Empty;
+    public string OsVersion { get; set; } = string.Empty;
+    public string OsArchitecture { get; set; } = string.Empty;
+    public string PowerShellVersion { get; set; } = string.Empty;
+    public JobReportEntity Report { get; set; } = null!;
+}
+
 internal sealed class WorkerNodeEntity
 {
     public Guid Id { get; set; }

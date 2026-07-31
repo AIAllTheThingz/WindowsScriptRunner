@@ -469,6 +469,99 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobReportEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CollectedUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<long>("FencingToken")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LeaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PackageId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PackageVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("PowerShellExecutionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReportType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("SchemaVersion")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("ScriptDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ScriptVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("char(64)");
+
+                    b.Property<Guid>("WorkerNodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeaseId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_JobReports_LeaseId");
+
+                    b.HasIndex("PowerShellExecutionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_JobReports_PowerShellExecutionId");
+
+                    b.HasIndex("WorkerNodeId");
+
+                    b.HasIndex("ScriptDefinitionId", "ScriptVersionId");
+
+                    b.HasIndex("JobId", "PackageId", "SchemaVersion")
+                        .IsUnique()
+                        .HasDatabaseName("UX_JobReports_Job_Package_Schema");
+
+                    b.ToTable("JobReports", "wsr", t =>
+                        {
+                            t.HasCheckConstraint("CK_JobReports_FencingToken", "[FencingToken] > 0");
+
+                            t.HasCheckConstraint("CK_JobReports_Identifiers", "[Id] <> '00000000-0000-0000-0000-000000000000' AND [JobId] <> '00000000-0000-0000-0000-000000000000' AND [ScriptDefinitionId] <> '00000000-0000-0000-0000-000000000000' AND [ScriptVersionId] <> '00000000-0000-0000-0000-000000000000' AND [WorkerNodeId] <> '00000000-0000-0000-0000-000000000000' AND [LeaseId] <> '00000000-0000-0000-0000-000000000000' AND [PowerShellExecutionId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_JobReports_Sha256", "LEN([Sha256]) = 64 AND [Sha256] NOT LIKE '%[^0-9a-f]%' COLLATE Latin1_General_100_BIN2");
+
+                            t.HasCheckConstraint("CK_JobReports_SupportedType", "[PackageId] COLLATE Latin1_General_100_BIN2 = 'windows.local-host-inventory' AND [PackageVersion] COLLATE Latin1_General_100_BIN2 = '1.0.0' AND [ReportType] COLLATE Latin1_General_100_BIN2 = 'LocalHostInventory' AND [SchemaVersion] COLLATE Latin1_General_100_BIN2 = '1.0' AND [Format] COLLATE Latin1_General_100_BIN2 = 'Json'");
+
+                            t.HasCheckConstraint("CK_JobReports_Timestamps", "[CollectedUtc] <= DATEADD(second, 5, [CreatedUtc])");
+                        });
+                });
+
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobTargetEntity", b =>
                 {
                     b.Property<Guid>("JobId")
@@ -494,6 +587,52 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.HasKey("JobId", "NormalizedName");
 
                     b.ToTable("JobTargets", "wsr");
+                });
+
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.LocalHostInventoryReportEntity", b =>
+                {
+                    b.Property<Guid>("ReportId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ComputerName")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.Property<string>("OsArchitecture")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("OsDescription")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("OsVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("PowerShellVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("ReportId");
+
+                    b.ToTable("LocalHostInventoryReports", "wsr", t =>
+                        {
+                            t.HasCheckConstraint("CK_LocalHostInventoryReports_Architecture", "[OsArchitecture] COLLATE Latin1_General_100_BIN2 IN ('X86','X64','Arm','Arm64')");
+
+                            t.HasCheckConstraint("CK_LocalHostInventoryReports_ComputerName", "LEN([ComputerName]) BETWEEN 1 AND 63 AND [ComputerName] NOT LIKE '%[^A-Za-z0-9-]%' COLLATE Latin1_General_100_BIN2 AND [ComputerName] NOT LIKE '-%' AND [ComputerName] NOT LIKE '%-'");
+
+                            t.HasCheckConstraint("CK_LocalHostInventoryReports_OsDescription", "LEN([OsDescription]) BETWEEN 1 AND 256");
+
+                            t.HasCheckConstraint("CK_LocalHostInventoryReports_ReportId", "[ReportId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_LocalHostInventoryReports_Versions", "LEN([OsVersion]) BETWEEN 5 AND 32 AND LEN([PowerShellVersion]) BETWEEN 5 AND 32 AND [OsVersion] NOT LIKE '%[^0-9.]%' AND [PowerShellVersion] NOT LIKE '%[^0-9.]%' AND [OsVersion] NOT LIKE '.%' AND [OsVersion] NOT LIKE '%.' AND [PowerShellVersion] NOT LIKE '.%' AND [PowerShellVersion] NOT LIKE '%.' AND [OsVersion] NOT LIKE '%..%' AND [PowerShellVersion] NOT LIKE '%..%'");
+                        });
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptDefinitionEntity", b =>
@@ -910,6 +1049,42 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.Navigation("Job");
                 });
 
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobReportEntity", b =>
+                {
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobEntity", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptDefinitionEntity", "ScriptDefinition")
+                        .WithMany()
+                        .HasForeignKey("ScriptDefinitionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.WorkerNodeEntity", "WorkerNode")
+                        .WithMany()
+                        .HasForeignKey("WorkerNodeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptVersionEntity", "ScriptVersion")
+                        .WithMany()
+                        .HasForeignKey("ScriptDefinitionId", "ScriptVersionId")
+                        .HasPrincipalKey("ScriptDefinitionId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+
+                    b.Navigation("ScriptDefinition");
+
+                    b.Navigation("ScriptVersion");
+
+                    b.Navigation("WorkerNode");
+                });
+
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobTargetEntity", b =>
                 {
                     b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobEntity", "Job")
@@ -919,6 +1094,17 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.LocalHostInventoryReportEntity", b =>
+                {
+                    b.HasOne("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobReportEntity", "Report")
+                        .WithOne("Inventory")
+                        .HasForeignKey("WindowsScriptRunner.Infrastructure.Persistence.Entities.LocalHostInventoryReportEntity", "ReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Report");
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptParameterAllowedValueEntity", b =>
@@ -1003,6 +1189,12 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.Navigation("Parameters");
 
                     b.Navigation("Targets");
+                });
+
+            modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.JobReportEntity", b =>
+                {
+                    b.Navigation("Inventory")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("WindowsScriptRunner.Infrastructure.Persistence.Entities.ScriptDefinitionEntity", b =>
