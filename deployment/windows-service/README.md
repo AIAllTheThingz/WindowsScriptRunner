@@ -9,6 +9,8 @@ The repository now provides:
 - `Install-WindowsScriptRunnerWorker.ps1` with explicit service identity, publish-root validation, automatic restart actions, ACL setup, upgrade protection, and `-WhatIf` support; and
 - `Verify-WindowsScriptRunnerWorker.ps1` for installed path, automatic-start, and optional running-state checks.
 
+The installer accepts only the matching virtual service account (`NT SERVICE\WindowsScriptRunner.Worker`) or a pre-provisioned group Managed Service Account (`DOMAIN\name$`). Ordinary user accounts and built-in service identities are rejected; the selected identity must already have its approved rights before installation.
+
 The production rollout still requires:
 
 - a representative Windows Server installation and clean install/upgrade/rollback rehearsal;

@@ -4,6 +4,8 @@
 
 The EF Core SQL Server model and reviewed migrations are implemented through durable Phase 8 reporting. Phase 9 has added `Invoke-ReviewedMigration.ps1` for an explicit, Windows-integrated rollout path. It creates a `COPY_ONLY` backup before applying a reviewed idempotent script and supports `-WhatIf`. No production database has been changed by this repository work.
 
+`Invoke-ReviewedMigration.ps1` intentionally supports only a local SQL Server host or instance and a local absolute backup path. The SQL Server service account must have write access to the local backup directory before the migration is attempted.
+
 Migration source is owned by:
 
 `src/WindowsScriptRunner.Infrastructure/Persistence/Migrations`

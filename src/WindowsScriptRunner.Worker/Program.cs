@@ -7,7 +7,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddWindowsService(options =>
 {
-    options.ServiceName = "WindowsScriptRunner Worker";
+    options.ServiceName = "WindowsScriptRunner.Worker";
 });
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);

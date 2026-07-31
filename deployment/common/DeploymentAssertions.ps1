@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 function Assert-WindowsDeploymentHost {
     if (-not [OperatingSystem]::IsWindows()) {
@@ -34,6 +35,30 @@ function Resolve-DeploymentAbsolutePath {
     }
 
     return $resolved
+}
+
+function Assert-DeploymentPathsDoNotOverlap {
+    param(
+        [Parameter(Mandatory)]
+        [string]$FirstPath,
+
+        [Parameter(Mandatory)]
+        [string]$FirstDescription,
+
+        [Parameter(Mandatory)]
+        [string]$SecondPath,
+
+        [Parameter(Mandatory)]
+        [string]$SecondDescription
+    )
+
+    $first = $FirstPath.TrimEnd('\')
+    $second = $SecondPath.TrimEnd('\')
+    if ($first.Equals($second, [StringComparison]::OrdinalIgnoreCase) -or
+        $first.StartsWith("$second\", [StringComparison]::OrdinalIgnoreCase) -or
+        $second.StartsWith("$first\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$FirstDescription and $SecondDescription must not overlap: '$FirstPath' and '$SecondPath'."
+    }
 }
 
 function Assert-DeploymentDirectory {

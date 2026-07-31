@@ -27,6 +27,21 @@ Assert-DeploymentFile $resolvedSqlScriptPath 'SQL migration script'
 if ([string]::IsNullOrWhiteSpace($ServerInstance) -or $ServerInstance -match '[\r\n]') {
     throw 'ServerInstance must be a non-empty server/instance name without control characters.'
 }
+$serverInstancePattern = '^(?<host>[^\s\\,]+)(?:(?<instance>\\[^\s\\,]+)|(?<port>,[0-9]{1,5}))?$'
+if ($ServerInstance -notmatch $serverInstancePattern) {
+    throw 'ServerInstance must be a local SQL Server host with an optional instance or port suffix.'
+}
+$serverHost = $Matches['host']
+$localServerHosts = @('.', '(local)', 'localhost', '127.0.0.1', '::1', [Environment]::MachineName)
+if ($serverHost -notin $localServerHosts) {
+    throw "ServerInstance '$ServerInstance' is remote. This rollout script supports only local SQL Server topologies."
+}
+if ($Matches['port']) {
+    $serverPort = [int]$Matches['port'].Substring(1)
+    if ($serverPort -notin 1..65535) {
+        throw 'ServerInstance port must be between 1 and 65535.'
+    }
+}
 if ([string]::IsNullOrWhiteSpace($Database) -or $Database -notmatch '^[A-Za-z0-9_][A-Za-z0-9_$-]{0,127}$') {
     throw 'Database must be a simple SQL identifier without quoting or control characters.'
 }
@@ -59,6 +74,9 @@ if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Create COPY_ONLY SQL b
 }
 
 if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Apply reviewed idempotent migration $resolvedSqlScriptPath")) {
+    if (-not $backupCreated -and -not $WhatIfPreference) {
+        throw 'Migration cannot run until the backup completes successfully.'
+    }
     Invoke-DeploymentNativeCommand $sqlcmd.Source @(
         '-S', $ServerInstance,
         '-d', $Database,

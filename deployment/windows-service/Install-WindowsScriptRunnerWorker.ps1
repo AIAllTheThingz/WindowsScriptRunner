@@ -32,15 +32,20 @@ if ([string]::IsNullOrWhiteSpace($ServiceName) -or
 }
 
 if ([string]::IsNullOrWhiteSpace($ServiceAccount) -or
-    $ServiceAccount -match '[\r\n"]' -or
-    $ServiceAccount -in @(
+    $ServiceAccount -match '[\r\n"]') {
+    throw 'ServiceAccount must be a non-empty account name without control characters.'
+}
+$virtualServiceAccount = "NT SERVICE\$ServiceName"
+$isVirtualServiceAccount = $ServiceAccount.Equals($virtualServiceAccount, [StringComparison]::OrdinalIgnoreCase)
+$isGmsa = $ServiceAccount -match '^[^\\\s/"]+\\[^\\\s/"]+\$$'
+if ($ServiceAccount -in @(
         'LocalSystem',
         'LocalService',
         'NetworkService',
         'NT AUTHORITY\LocalService',
         'NT AUTHORITY\NetworkService'
-    )) {
-    throw 'ServiceAccount must be an explicit dedicated virtual account, gMSA, or domain account.'
+    ) -or (-not $isVirtualServiceAccount -and -not $isGmsa)) {
+    throw "ServiceAccount must be the matching virtual account ('$virtualServiceAccount') or a validated gMSA ('DOMAIN\name$')."
 }
 
 $existingService = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'"
@@ -62,6 +67,7 @@ if ($PSCmdlet.ShouldProcess($ServiceName, "$serviceAction Windows Service using 
             "binPath= $quotedExecutable",
             'start= auto',
             "obj= $ServiceAccount",
+            'password= ""',
             "DisplayName= $DisplayName"
         )
     }
@@ -71,6 +77,7 @@ if ($PSCmdlet.ShouldProcess($ServiceName, "$serviceAction Windows Service using 
             "binPath= $quotedExecutable",
             'start= auto',
             "obj= $ServiceAccount",
+            'password= ""',
             "DisplayName= $DisplayName"
         )
     }

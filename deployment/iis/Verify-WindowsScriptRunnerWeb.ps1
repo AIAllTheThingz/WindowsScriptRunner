@@ -23,6 +23,15 @@ $site = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
 if ($null -eq $site) {
     throw "IIS site '$SiteName' is not installed."
 }
+$configuredPhysicalPath = ([IO.Path]::GetFullPath([string]$site.PhysicalPath)).TrimEnd('\')
+$expectedPhysicalPath = $resolvedPublishRoot.TrimEnd('\')
+if (-not $configuredPhysicalPath.Equals($expectedPhysicalPath, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "IIS site '$SiteName' points to '$($site.PhysicalPath)' instead of the expected PublishRoot '$resolvedPublishRoot'."
+}
+$configuredAppPool = [string]$site.ApplicationPool
+if (-not $configuredAppPool.Equals($AppPoolName, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "IIS site '$SiteName' uses application pool '$configuredAppPool' instead of '$AppPoolName'."
+}
 if ($site.State -ne 'Started') {
     throw "IIS site '$SiteName' is not started; current state is '$($site.State)'."
 }

@@ -13,6 +13,7 @@ param(
 )
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\common\DeploymentAssertions.ps1')
 
 Assert-WindowsDeploymentHost

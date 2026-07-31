@@ -38,8 +38,10 @@ or other secrets into the repository or publish directory.
    automation package.
 
 Every mutating script supports `-WhatIf`. The SQL script uses Windows-integrated `sqlcmd`, takes a
-`COPY_ONLY` backup, and does not attempt an automatic rollback. A rollback restores the approved
-backup and then repeats readiness and migration-state verification.
+`COPY_ONLY` backup against a local SQL Server topology and a local absolute backup path, and does not
+attempt an automatic rollback. Confirm that the SQL Server service account can write to the backup
+directory before execution. A rollback restores the approved backup and then repeats readiness and
+migration-state verification.
 
 ## Phase 9 boundary still outstanding
 

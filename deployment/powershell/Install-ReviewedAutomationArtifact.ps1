@@ -24,9 +24,11 @@ $resolvedPublishRoot = Resolve-DeploymentAbsolutePath $PublishRoot 'PublishRoot'
 $resolvedInstallRoot = Resolve-DeploymentAbsolutePath $InstallRoot 'InstallRoot'
 Assert-DeploymentDirectory $resolvedPublishRoot 'PublishRoot'
 
-if ($resolvedPublishRoot.TrimEnd('\').Equals($resolvedInstallRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'InstallRoot must be separate from PublishRoot.'
-}
+Assert-DeploymentPathsDoNotOverlap `
+    $resolvedPublishRoot `
+    'PublishRoot' `
+    $resolvedInstallRoot `
+    'InstallRoot'
 if ([string]::IsNullOrWhiteSpace($ServiceAccount) -or $ServiceAccount -match '[\r\n"]') {
     throw 'ServiceAccount must be a non-empty account name without control characters.'
 }
