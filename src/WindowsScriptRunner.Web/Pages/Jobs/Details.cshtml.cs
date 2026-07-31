@@ -18,6 +18,11 @@ public sealed class DetailsModel(
 
     public async Task<IActionResult> OnGetAsync(Guid jobId, CancellationToken cancellationToken)
     {
+        if (jobId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
         try
         {
             Job = await getJobHandler.HandleAsync(

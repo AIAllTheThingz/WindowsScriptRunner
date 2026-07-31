@@ -78,6 +78,21 @@ public sealed class MigrationTests
             WHERE [object_id] = OBJECT_ID(N'[wsr].[JobExecutions]')
               AND [name] = N'UX_JobExecutions_OneActivePerJob'
             """).SingleAsync();
+        var reportIndexOrdering = await context.Database.SqlQueryRaw<string>(
+            """
+            SELECT CONCAT([columns].[name], N':', CONVERT(nvarchar(1), [indexColumns].[is_descending_key])) AS [Value]
+            FROM [sys].[index_columns] AS [indexColumns]
+            INNER JOIN [sys].[columns] AS [columns]
+                ON [columns].[object_id] = [indexColumns].[object_id]
+               AND [columns].[column_id] = [indexColumns].[column_id]
+            INNER JOIN [sys].[indexes] AS [indexes]
+                ON [indexes].[object_id] = [indexColumns].[object_id]
+               AND [indexes].[index_id] = [indexColumns].[index_id]
+            WHERE [indexColumns].[object_id] = OBJECT_ID(N'[wsr].[JobReports]')
+              AND [indexes].[name] = N'IX_JobReports_ReportType_CreatedUtc_Id'
+              AND [indexColumns].[key_ordinal] > 0
+            ORDER BY [indexColumns].[key_ordinal]
+            """).ToListAsync();
         var rowVersionTables = await context.Database.SqlQueryRaw<string>(
             """
             SELECT OBJECT_NAME([object_id], DB_ID()) AS [Value]
@@ -146,6 +161,7 @@ public sealed class MigrationTests
         Assert.Contains("UX_ScriptDefinitions_NormalizedName", indexes);
         Assert.Contains("UX_WorkerNodes_NormalizedName", indexes);
         Assert.Contains("IX_JobReports_ReportType_CreatedUtc_Id", indexes);
+        Assert.Equal(["ReportType:0", "CreatedUtc:1", "Id:0"], reportIndexOrdering);
         Assert.Equal(
             "([StartedUtc] IS NOT NULL AND [CompletedUtc] IS NULL)",
             filteredIndex);

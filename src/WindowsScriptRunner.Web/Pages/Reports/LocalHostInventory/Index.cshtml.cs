@@ -29,6 +29,11 @@ public sealed class IndexModel(
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        if (JobId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
         if (JobId is not null)
         {
             try

@@ -87,6 +87,11 @@ public sealed class ReviewModel(
         Guid jobId,
         CancellationToken cancellationToken)
     {
+        if (jobId == Guid.Empty)
+        {
+            return (false, NotFound());
+        }
+
         try
         {
             Review = await getApprovalReviewHandler.HandleAsync(

@@ -160,6 +160,40 @@ public sealed class PortalWebFlowTests
     }
 
     [Fact]
+    public async Task EmptyPortalIdentifiersReturnNotFound()
+    {
+        using var factory = new PortalWebApplicationFactory();
+        using var client = factory.CreateClient();
+        const string EmptyGuid = "00000000-0000-0000-0000-000000000000";
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsAsync(client, HttpMethod.Get, $"/Jobs/Details/{EmptyGuid}", RequesterSid)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsAsync(
+                client,
+                HttpMethod.Get,
+                $"/Reports/LocalHostInventory/Details/{EmptyGuid}",
+                RequesterSid)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsAsync(
+                client,
+                HttpMethod.Get,
+                $"/Reports/LocalHostInventory?JobId={EmptyGuid}",
+                RequesterSid)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsAsync(
+                client,
+                HttpMethod.Get,
+                $"/Approvals/Review/{EmptyGuid}",
+                ApproverSid,
+                ApproverGroupSid)).StatusCode);
+    }
+
+    [Fact]
     public async Task ApprovalReviewDisplaysThePinnedScriptPolicyAndAcceptedDryRunEvidence()
     {
         using var factory = new PortalWebApplicationFactory();

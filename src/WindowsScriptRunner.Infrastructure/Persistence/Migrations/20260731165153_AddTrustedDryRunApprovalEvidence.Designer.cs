@@ -577,6 +577,7 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_JobReports_Job_Package_Schema");
 
                     b.HasIndex("ReportType", "CreatedUtc", "Id")
+                        .IsDescending(false, true, false)
                         .HasDatabaseName("IX_JobReports_ReportType_CreatedUtc_Id");
 
                     b.ToTable("JobReports", "wsr", t =>

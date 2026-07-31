@@ -69,7 +69,9 @@ internal sealed class JobReportConfiguration :
             entity.ReportType,
             entity.CreatedUtc,
             entity.Id,
-        }).HasDatabaseName("IX_JobReports_ReportType_CreatedUtc_Id");
+        })
+            .IsDescending(false, true, false)
+            .HasDatabaseName("IX_JobReports_ReportType_CreatedUtc_Id");
         builder.HasOne(entity => entity.Job)
             .WithMany()
             .HasForeignKey(entity => entity.JobId)

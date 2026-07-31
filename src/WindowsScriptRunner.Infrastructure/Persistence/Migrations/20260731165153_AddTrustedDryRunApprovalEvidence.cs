@@ -110,7 +110,8 @@ public partial class AddTrustedDryRunApprovalEvidence : Migration
             name: "IX_JobReports_ReportType_CreatedUtc_Id",
             schema: "wsr",
             table: "JobReports",
-            columns: new[] { "ReportType", "CreatedUtc", "Id" });
+            columns: new[] { "ReportType", "CreatedUtc", "Id" },
+            descending: new[] { false, true, false });
     }
 
     /// <inheritdoc />

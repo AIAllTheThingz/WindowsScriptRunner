@@ -19,6 +19,11 @@ public sealed class DetailsModel(
 
     public async Task<IActionResult> OnGetAsync(Guid reportId, CancellationToken cancellationToken)
     {
+        if (reportId == Guid.Empty)
+        {
+            return NotFound();
+        }
+
         try
         {
             var response = await getReportHandler.HandleAsync(
