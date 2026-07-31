@@ -27,13 +27,13 @@ public sealed class ReviewModel(
         LoadReviewAsync(jobId, cancellationToken);
 
     public Task<IActionResult> OnPostApproveAsync(
-        Guid jobId,
+        [FromRoute] Guid jobId,
         string? expectedFingerprint,
         CancellationToken cancellationToken) =>
         DecideAsync(jobId, expectedFingerprint, approve: true, cancellationToken);
 
     public Task<IActionResult> OnPostRejectAsync(
-        Guid jobId,
+        [FromRoute] Guid jobId,
         string? expectedFingerprint,
         CancellationToken cancellationToken) =>
         DecideAsync(jobId, expectedFingerprint, approve: false, cancellationToken);
@@ -73,7 +73,7 @@ public sealed class ReviewModel(
         catch (ApplicationConflictException)
         {
             ModelState.AddModelError(string.Empty, "The reviewed job changed or cannot be decided. Review the current state before trying again.");
-            return Page();
+            return await LoadReviewAsync(jobId, cancellationToken);
         }
 
         return RedirectToPage("/Approvals/Index");

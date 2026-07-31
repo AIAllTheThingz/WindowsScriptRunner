@@ -1,5 +1,6 @@
 @page
 @model WindowsScriptRunner.Web.Pages.Reports.LocalHostInventory.IndexModel
+@using System.Globalization
 @{
     ViewData["Title"] = "Local Host Inventory reports";
 }
@@ -18,7 +19,7 @@
     {
         <tr>
             <td>@report.ComputerName</td>
-            <td>@report.CollectedUtc.UtcDateTime</td>
+            <td>@report.CollectedUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture)</td>
             <td>@report.OsDescription</td>
             <td><a asp-page="/Reports/LocalHostInventory/Details" asp-route-reportId="@report.ReportId">Details</a></td>
         </tr>

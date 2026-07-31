@@ -13,6 +13,7 @@ namespace WindowsScriptRunner.Web.Pages.Reports.LocalHostInventory;
 public sealed class IndexModel(
     GetLocalHostInventoryReportHandler getReportHandler,
     ListLocalHostInventoryReportsHandler listReportsHandler,
+    ListJobAuthorizationResourcesHandler listAuthorizationResourcesHandler,
     GetJobHandler getJobHandler,
     IAuthorizationService authorizationService) : PageModel
 {
@@ -50,10 +51,24 @@ public sealed class IndexModel(
         var reports = await listReportsHandler.HandleAsync(
             new ListLocalHostInventoryReportsQuery(MaximumReportCount),
             cancellationToken);
+        if (reports.Count == 0)
+        {
+            return Page();
+        }
+
+        var authorizationResources = (await listAuthorizationResourcesHandler.HandleAsync(
+                new ListJobAuthorizationResourcesQuery(
+                    reports.Select(report => new JobId(report.JobId)).ToArray()),
+                cancellationToken))
+            .ToDictionary(resource => resource.Id);
         var authorizedReports = new List<LocalHostInventoryReportView>();
         foreach (var report in reports)
         {
-            if (await AuthorizeReportAsync(report.JobId, cancellationToken))
+            if (authorizationResources.TryGetValue(report.JobId, out var resource) &&
+                (await authorizationService.AuthorizeAsync(
+                    User,
+                    resource,
+                    [new ViewReportRequirement()])).Succeeded)
             {
                 authorizedReports.Add(LocalHostInventoryReportView.FromResponse(report));
             }

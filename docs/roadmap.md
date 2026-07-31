@@ -16,7 +16,7 @@ The dependency order was preserved: Phase 6 was reviewed and merged first, then 
 
 8. Identity, authentication, authorization, and approval workflow.
 
-Phase 8 establishes Negotiate-authenticated principals and stable SID mapping before exposing the safe typed Local Host Inventory views or approval actions through Web. It replaces browser authority with a trusted calculation bound to the pinned script version, requested phase, targets, parameters, execution window, and accepted dry-run evidence. It retains Domain separation-of-duties and Application audit/lease/state boundaries. The local implementation has not been committed, deployed, or rolled out.
+Phase 8 establishes Negotiate-authenticated principals and stable SID mapping before exposing the safe typed Local Host Inventory views or approval actions through Web. It replaces browser authority with a trusted calculation bound to the pinned script version, requested phase, targets, parameters, execution window, and accepted dry-run evidence. It retains Domain separation-of-duties and Application audit/lease/state boundaries. The implementation is committed on its review branch, pending review, and has not been deployed or rolled out.
 
 ## Production readiness
 

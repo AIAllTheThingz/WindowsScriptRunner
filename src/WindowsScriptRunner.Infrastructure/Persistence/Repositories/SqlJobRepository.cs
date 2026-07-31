@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
@@ -14,7 +15,7 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Repositories;
 
 public sealed class SqlJobRepository(
     WindowsScriptRunnerDbContext dbContext,
-    ILogger<SqlJobRepository> logger) : IJobRepository
+    ILogger<SqlJobRepository> logger) : IJobRepository, IJobAuthorizationResourceReader
 {
     public async Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken)
     {
@@ -92,20 +93,31 @@ public sealed class SqlJobRepository(
         }
 
         var stopwatch = Stopwatch.StartNew();
+        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
         var entities = await SqlExceptionTranslator.ExecuteAsync(
-            () => dbContext.Jobs
-                .Where(item => item.Status == nameof(JobStatus.AwaitingApproval))
-                .OrderBy(item => item.UpdatedUtc)
-                .ThenBy(item => item.Id)
-                .Take(maximumCount)
-                .Include(item => item.Targets)
-                .Include(item => item.Parameters)
-                .Include(item => item.Executions)
-                .Include(item => item.Approvals)
-                .Include(item => item.Lease)
-                .AsNoTrackingWithIdentityResolution()
-                .AsSplitQuery()
-                .ToListAsync(cancellationToken),
+            () => executionStrategy.ExecuteAsync(
+                async strategyCancellationToken =>
+                {
+                    await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                        IsolationLevel.Serializable,
+                        strategyCancellationToken);
+                    var result = await dbContext.Jobs
+                        .Where(item => item.Status == nameof(JobStatus.AwaitingApproval))
+                        .OrderBy(item => item.UpdatedUtc)
+                        .ThenBy(item => item.Id)
+                        .Take(maximumCount)
+                        .Include(item => item.Targets)
+                        .Include(item => item.Parameters)
+                        .Include(item => item.Executions)
+                        .Include(item => item.Approvals)
+                        .Include(item => item.Lease)
+                        .AsNoTrackingWithIdentityResolution()
+                        .AsSplitQuery()
+                        .ToListAsync(strategyCancellationToken);
+                    await transaction.CommitAsync(strategyCancellationToken);
+                    return result;
+                },
+                cancellationToken),
             logger);
         logger.LogDebug(
             "Repository operation {Operation} completed in {DurationMs} ms with {ResultCount} results.",
@@ -113,6 +125,33 @@ public sealed class SqlJobRepository(
             stopwatch.ElapsedMilliseconds,
             entities.Count);
         return entities.Select(PersistenceMapper.ToDomain).ToArray();
+    }
+
+    public async Task<IReadOnlyList<JobAuthorizationResourceResponse>> ListAsync(
+        IReadOnlyCollection<JobId> jobIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(jobIds);
+        var ids = jobIds.Select(id =>
+        {
+            ArgumentNullException.ThrowIfNull(id);
+            return id.Value;
+        }).Distinct().ToArray();
+        if (ids.Length is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(jobIds));
+        }
+
+        return await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.Jobs
+                .AsNoTracking()
+                .Where(item => ids.Contains(item.Id))
+                .Select(item => new JobAuthorizationResourceResponse(
+                    item.Id,
+                    item.Status,
+                    item.RequestedBy))
+                .ToListAsync(cancellationToken),
+            logger);
     }
 
     public Task AddAsync(Job job, CancellationToken cancellationToken)

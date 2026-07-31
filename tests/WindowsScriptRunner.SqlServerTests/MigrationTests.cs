@@ -60,6 +60,7 @@ public sealed class MigrationTests
             WHERE [object_id] IN
             (
                 OBJECT_ID(N'[wsr].[JobExecutions]'),
+                OBJECT_ID(N'[wsr].[JobReports]'),
                 OBJECT_ID(N'[wsr].[Jobs]'),
                 OBJECT_ID(N'[wsr].[JobLeases]'),
                 OBJECT_ID(N'[wsr].[ScriptDefinitions]'),
@@ -125,8 +126,15 @@ public sealed class MigrationTests
             WHERE OBJECT_SCHEMA_NAME([object_id]) = N'wsr'
             ORDER BY [name]
             """).ToListAsync();
+        var acceptedDryRunEvidenceConstraintCount = await context.Database.SqlQueryRaw<int>(
+            """
+            SELECT COUNT(*) AS [Value]
+            FROM [sys].[check_constraints]
+            WHERE [parent_object_id] = OBJECT_ID(N'[wsr].[Jobs]')
+              AND [name] = N'CK_Jobs_AcceptedDryRunEvidence'
+            """).SingleAsync();
 
-        Assert.Equal(3, appliedBefore.Count());
+        Assert.Equal(4, appliedBefore.Count());
         Assert.Equal(appliedBefore, appliedAfter);
         Assert.Equal(ExpectedTables, tables);
         Assert.Equal("wsr", historySchema);
@@ -134,6 +142,7 @@ public sealed class MigrationTests
         Assert.Contains("IX_Jobs_Status_UpdatedUtc", indexes);
         Assert.Contains("UX_ScriptDefinitions_NormalizedName", indexes);
         Assert.Contains("UX_WorkerNodes_NormalizedName", indexes);
+        Assert.Contains("IX_JobReports_ReportType_CreatedUtc_Id", indexes);
         Assert.Equal(
             "([StartedUtc] IS NOT NULL AND [CompletedUtc] IS NULL)",
             filteredIndex);
@@ -144,6 +153,7 @@ public sealed class MigrationTests
         Assert.Equal(1, scriptNoActionCount);
         Assert.Equal(1, pinnedVersionNoActionCount);
         Assert.Equal(1, workerNoActionCount);
+        Assert.Equal(1, acceptedDryRunEvidenceConstraintCount);
         Assert.Contains(
             "TR_ScriptVersionPhases_RequireDryRunForPublishedExecute",
             triggers);
@@ -175,7 +185,7 @@ public sealed class MigrationTests
         await database.ApplySqlScriptAsync(script);
 
         await using var restoredContext = database.CreateContext();
-        Assert.Equal(3, (await restoredContext.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await restoredContext.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(
             ExpectedTables,
             await restoredContext.Database.SqlQueryRaw<string>(
@@ -323,7 +333,7 @@ public sealed class MigrationTests
                     auditEventId).SingleAsync());
 
             await migrator.MigrateAsync();
-            Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
         }
     }
 }

@@ -75,6 +75,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStatusCodePagesWithReExecute("/AccessDenied", "?statusCode={0}");
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();

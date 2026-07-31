@@ -12,6 +12,7 @@ public sealed class Job
     private readonly List<JobExecution> _executions = [];
     private readonly List<JobApproval> _approvals = [];
     private JobLease? _lease;
+    private JobDryRunEvidence? _acceptedDryRunEvidence;
 
     private Job(
         JobId id,
@@ -54,6 +55,7 @@ public sealed class Job
     public IReadOnlyCollection<JobExecution> Executions => _executions.AsReadOnly();
     public IReadOnlyCollection<JobApproval> Approvals => _approvals.AsReadOnly();
     public JobLease? Lease => _lease;
+    public JobDryRunEvidence? AcceptedDryRunEvidence => _acceptedDryRunEvidence;
 
     public static Job CreateDraft(
         JobId id,
@@ -92,7 +94,8 @@ public sealed class Job
         IEnumerable<JobParameter> parameters,
         IEnumerable<JobExecution> executions,
         IEnumerable<JobApproval> approvals,
-        JobLease? lease = null)
+        JobLease? lease = null,
+        JobDryRunEvidence? acceptedDryRunEvidence = null)
     {
         status = EnumGuard.RequireDefined(status, nameof(JobStatus));
         if (updatedUtc < createdUtc)
@@ -154,8 +157,10 @@ public sealed class Job
         job.RestoreExecutions(executions);
         job.RestoreApprovals(approvals);
         job._lease = lease;
+        job._acceptedDryRunEvidence = acceptedDryRunEvidence;
         job.ValidateRehydratedExecutionState();
         job.ValidateRehydratedLeaseState();
+        job.ValidateRehydratedDryRunEvidenceState();
         if (status != JobStatus.Draft && job._targets.Count == 0)
         {
             throw new DomainValidationException(
@@ -163,6 +168,23 @@ public sealed class Job
         }
 
         return job;
+    }
+
+    private void ValidateRehydratedDryRunEvidenceState()
+    {
+        if (_acceptedDryRunEvidence is null)
+        {
+            return;
+        }
+
+        if (_acceptedDryRunEvidence.ExecutionWindowOpenedUtc < CreatedUtc ||
+            _acceptedDryRunEvidence.CompletedUtc > UpdatedUtc ||
+            Status is JobStatus.Draft or JobStatus.Submitted or JobStatus.Validated or
+                JobStatus.DryRunQueued or JobStatus.DryRunRunning)
+        {
+            throw new DomainValidationException(
+                "Persisted dry-run evidence is inconsistent with the job lifecycle.");
+        }
     }
 
     private void ValidateRehydratedLeaseState()
@@ -580,8 +602,19 @@ public sealed class Job
     internal void StartDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
         ApplyTransition(JobStatus.DryRunRunning, actingUser, updatedUtc);
 
-    internal void CompleteDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc) =>
-        ApplyTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+    internal void CompleteDryRun(UserIdentity actingUser, DateTimeOffset updatedUtc)
+    {
+        ValidateTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+        _acceptedDryRunEvidence = new JobDryRunEvidence(
+            JobWorkKind.DryRun,
+            JobDryRunEvidenceSource.InternalLifecycle,
+            null,
+            null,
+            null,
+            UpdatedUtc,
+            updatedUtc);
+        ApplyValidatedTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+    }
 
     public void StartDryRun(
         JobLeaseCredentials credentials,
@@ -599,6 +632,15 @@ public sealed class Job
     {
         ValidateWorkLease(credentials, JobWorkKind.DryRun, updatedUtc);
         ValidateTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
+        var lease = RequireLease();
+        _acceptedDryRunEvidence = new JobDryRunEvidence(
+            lease.WorkKind,
+            JobDryRunEvidenceSource.LeasedWorker,
+            lease.WorkerNodeId,
+            lease.Id,
+            lease.FencingToken,
+            lease.AcquiredUtc,
+            updatedUtc);
         ApplyValidatedTransition(JobStatus.DryRunCompleted, actingUser, updatedUtc);
         _lease = null;
     }
@@ -644,6 +686,7 @@ public sealed class Job
     public void RequireApproval(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can require approval.");
+        RequireAcceptedDryRunEvidence();
         ApplyTransition(JobStatus.AwaitingApproval, actingUser, updatedUtc);
     }
 
@@ -737,6 +780,7 @@ public sealed class Job
         DateTimeOffset decisionUtc)
     {
         var policy = RequirePolicySnapshot();
+        RequireAcceptedDryRunEvidence();
         ValidateTransition(JobStatus.Approved, approver, decisionUtc);
         if (policy.RiskLevel is RiskLevel.Medium or RiskLevel.High or RiskLevel.Critical &&
             RequestedBy == approver)
@@ -763,6 +807,7 @@ public sealed class Job
         DateTimeOffset decisionUtc)
     {
         _ = RequirePolicySnapshot();
+        RequireAcceptedDryRunEvidence();
         ValidateTransition(JobStatus.Rejected, approver, decisionUtc);
         var rejection = new JobApproval(
             JobApprovalId.New(),
@@ -1055,6 +1100,16 @@ public sealed class Job
         {
             throw new DomainValidationException(
                 "Leased or active work must be completed through a lease-aware operation.");
+        }
+    }
+
+    private void RequireAcceptedDryRunEvidence()
+    {
+        if (_acceptedDryRunEvidence is null ||
+            _acceptedDryRunEvidence.WorkKind != JobWorkKind.DryRun)
+        {
+            throw new DomainValidationException(
+                "Approval decisions require accepted DryRun evidence.");
         }
     }
 

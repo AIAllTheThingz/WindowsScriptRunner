@@ -22,7 +22,7 @@ public sealed class JobResourceAuthorizationHandler(
     public Task HandleAsync(AuthorizationHandlerContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (context.Resource is not JobDetailResponse job || !TryMap(context, out var principal))
+        if (context.Resource is not IJobAuthorizationResource job || !TryMap(context, out var principal))
         {
             return Task.CompletedTask;
         }
@@ -100,6 +100,6 @@ public sealed class JobResourceAuthorizationHandler(
         return principal.GroupSids.Overlaps(configuredGroupSids);
     }
 
-    private static bool IsRequester(AuthenticatedPrincipal principal, JobDetailResponse job) =>
+    private static bool IsRequester(AuthenticatedPrincipal principal, IJobAuthorizationResource job) =>
         StringComparer.OrdinalIgnoreCase.Equals(principal.User.Value, job.RequestedBy);
 }

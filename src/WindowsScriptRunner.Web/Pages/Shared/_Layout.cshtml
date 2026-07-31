@@ -1,3 +1,11 @@
+@using Microsoft.AspNetCore.Authorization
+@using WindowsScriptRunner.Web.Security
+@inject IAuthorizationService AuthorizationService
+@{
+    var canReadReports = (await AuthorizationService.AuthorizeAsync(User, AuthorizationPolicies.ReportReader)).Succeeded;
+    var canReviewApprovals = (await AuthorizationService.AuthorizeAsync(User, AuthorizationPolicies.Approver)).Succeeded;
+    var canAdminister = (await AuthorizationService.AuthorizeAsync(User, AuthorizationPolicies.Administrator)).Succeeded;
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,9 +30,18 @@
                     <ul class="navbar-nav ms-auto">
                         <li class="nav-item"><a class="nav-link" asp-page="/Index">Dashboard</a></li>
                         <li class="nav-item"><a class="nav-link" asp-page="/Jobs">Jobs</a></li>
-                        <li class="nav-item"><a class="nav-link" asp-page="/Reports/LocalHostInventory/Index">Reports</a></li>
-                        <li class="nav-item"><a class="nav-link" asp-page="/Approvals/Index">Approvals</a></li>
-                        <li class="nav-item"><a class="nav-link" asp-page="/Administration">Administration</a></li>
+                        @if (canReadReports)
+                        {
+                            <li class="nav-item"><a class="nav-link" asp-page="/Reports/LocalHostInventory/Index">Reports</a></li>
+                        }
+                        @if (canReviewApprovals)
+                        {
+                            <li class="nav-item"><a class="nav-link" asp-page="/Approvals/Index">Approvals</a></li>
+                        }
+                        @if (canAdminister)
+                        {
+                            <li class="nav-item"><a class="nav-link" asp-page="/Administration">Administration</a></li>
+                        }
                         <li class="nav-item"><a class="nav-link" asp-page="/Account/SignOut">Sign out</a></li>
                     </ul>
                 </div>

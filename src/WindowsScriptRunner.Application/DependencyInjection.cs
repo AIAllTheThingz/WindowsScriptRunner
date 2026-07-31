@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddTransient<ApproveJobHandler>();
         services.AddTransient<RejectJobHandler>();
         services.AddTransient<GetJobHandler>();
+        services.AddTransient<ListJobAuthorizationResourcesHandler>();
         services.AddTransient<ListAwaitingApprovalJobsHandler>();
         services.AddTransient<GetApprovalReviewHandler>();
         services.AddTransient<RegisterWorkerHandler>();

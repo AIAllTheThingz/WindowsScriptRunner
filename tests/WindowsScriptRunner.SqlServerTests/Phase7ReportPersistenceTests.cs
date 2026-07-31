@@ -21,6 +21,8 @@ public sealed class Phase7ReportPersistenceTests
 {
     private const string Phase6Migration =
         "20260729224310_AddWorkerQueueLeases";
+    private const string Phase7Migration =
+        "20260730221709_AddDurableLocalHostInventoryReports";
 
     [Fact]
     public async Task Phase7MigrationUpgradesAndRollsBackThePhase6Schema()
@@ -36,7 +38,7 @@ public sealed class Phase7ReportPersistenceTests
             (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(0, await ReportTableCountAsync(context));
 
-        await migrator.MigrateAsync();
+        await migrator.MigrateAsync(Phase7Migration);
         Assert.Equal(
             3,
             (await context.Database.GetAppliedMigrationsAsync()).Count());

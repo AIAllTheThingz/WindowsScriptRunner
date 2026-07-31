@@ -12,7 +12,7 @@ namespace WindowsScriptRunner.Application.Jobs;
 public sealed class ApprovalFingerprintService(IScriptDefinitionRepository scriptRepository)
     : IJobFingerprintService
 {
-    private const string FormatVersion = "windows-script-runner-approval-v1";
+    private const string FormatVersion = "windows-script-runner-approval-v2";
 
     public async Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken)
     {
@@ -62,7 +62,7 @@ public sealed class ApprovalFingerprintService(IScriptDefinitionRepository scrip
 
         WriteTargets(canonical, job);
         WriteParameters(canonical, job);
-        WriteExecutionEvidence(canonical, job);
+        WriteAcceptedDryRunEvidence(canonical, job.AcceptedDryRunEvidence!);
 
         return Convert.ToHexStringLower(SHA256.HashData(canonical.ToUtf8Bytes()));
     }
@@ -93,7 +93,8 @@ public sealed class ApprovalFingerprintService(IScriptDefinitionRepository scrip
             policy.ScriptDefinitionId != definition.Id ||
             policy.ScriptVersionId != version.Id ||
             !version.IsPublished ||
-            !job.Executions.Any(IsAcceptedDryRunEvidence))
+            job.AcceptedDryRunEvidence is null ||
+            job.AcceptedDryRunEvidence.WorkKind != JobWorkKind.DryRun)
         {
             throw new ApplicationConflictException(
                 "The job does not have current accepted dry-run evidence for approval.");
@@ -129,32 +130,18 @@ public sealed class ApprovalFingerprintService(IScriptDefinitionRepository scrip
         }
     }
 
-    private static void WriteExecutionEvidence(CanonicalApprovalFingerprintWriter canonical, Job job)
+    private static void WriteAcceptedDryRunEvidence(
+        CanonicalApprovalFingerprintWriter canonical,
+        JobDryRunEvidence evidence)
     {
-        var executions = job.Executions
-            .OrderBy(execution => execution.AttemptNumber)
-            .ToArray();
-        canonical.Write("execution-count", executions.Length.ToString(CultureInfo.InvariantCulture));
-        canonical.Write(
-            "accepted-dry-run-evidence-count",
-            executions.Count(IsAcceptedDryRunEvidence).ToString(CultureInfo.InvariantCulture));
-        foreach (var execution in executions)
-        {
-            canonical.Write("execution-id", execution.Id.Value.ToString("D", CultureInfo.InvariantCulture));
-            canonical.Write("execution-attempt", execution.AttemptNumber.ToString(CultureInfo.InvariantCulture));
-            canonical.Write("execution-worker", execution.WorkerNodeId?.Value.ToString("D", CultureInfo.InvariantCulture));
-            canonical.Write("execution-created-utc", FormatTimestamp(execution.CreatedUtc));
-            canonical.Write("execution-started-utc", FormatTimestamp(execution.StartedUtc));
-            canonical.Write("execution-completed-utc", FormatTimestamp(execution.CompletedUtc));
-            canonical.Write("execution-outcome", execution.Outcome?.ToString());
-            canonical.Write("execution-exit-code", execution.ExitCode?.ToString(CultureInfo.InvariantCulture));
-        }
+        canonical.Write("accepted-dry-run-work-kind", evidence.WorkKind.ToString());
+        canonical.Write("accepted-dry-run-source", evidence.Source.ToString());
+        canonical.Write("accepted-dry-run-worker", evidence.WorkerNodeId?.Value.ToString("D", CultureInfo.InvariantCulture));
+        canonical.Write("accepted-dry-run-lease", evidence.LeaseId?.Value.ToString("D", CultureInfo.InvariantCulture));
+        canonical.Write("accepted-dry-run-fencing-token", evidence.FencingToken?.ToString(CultureInfo.InvariantCulture));
+        canonical.Write("accepted-dry-run-window-opened-utc", FormatTimestamp(evidence.ExecutionWindowOpenedUtc));
+        canonical.Write("accepted-dry-run-completed-utc", FormatTimestamp(evidence.CompletedUtc));
     }
-
-    private static bool IsAcceptedDryRunEvidence(JobExecution execution) =>
-        execution.StartedUtc is not null &&
-        execution.CompletedUtc is not null &&
-        execution.Outcome is ExecutionOutcome.Succeeded or ExecutionOutcome.SucceededWithWarnings;
 
     private static string? FormatTimestamp(DateTimeOffset? value) =>
         value?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);

@@ -21,7 +21,7 @@ public sealed class ApprovalFingerprintServiceTests
             CancellationToken.None);
 
         Assert.Equal(
-            "d81f1d0193bd91c3f834fea5bfa025741ff7db0162231e6e814ac038b07c199c",
+            "5a19eef4d4ffb56d594ce261a638cbde4cffb0fb597e4c0fd0a3e791611aa81b",
             fingerprint);
         Assert.Matches("^[0-9a-f]{64}$", fingerprint);
     }
@@ -106,12 +106,49 @@ public sealed class ApprovalFingerprintServiceTests
     }
 
     [Fact]
-    public async Task FingerprintFailsWhenCurrentAcceptedDryRunEvidenceIsAbsent()
+    public async Task FingerprintFailsWhenOnlyAnExecuteAttemptIsPresent()
     {
-        var fixture = CreateFixture(evidenceOutcome: ExecutionOutcome.Failed);
+        var fixture = CreateFixture(includeAcceptedDryRunEvidence: false, includeExecuteAttempt: true);
 
         await Assert.ThrowsAsync<ApplicationConflictException>(
             () => fixture.Service.CreateFingerprintAsync(fixture.Job, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task FingerprintAcceptsEvidenceCreatedByTheLeasedDryRunLifecycle()
+    {
+        var fixture = CreateFixture();
+        var job = Job.CreateDraft(
+            JobId,
+            DefinitionId,
+            VersionId,
+            ExecutionPhase.Execute,
+            Requester,
+            FixedTime);
+        job.AddTarget(new TargetName("server-a"), Requester, FixedTime.AddMinutes(1));
+        job.Submit(fixture.Definition, Requester, FixedTime.AddMinutes(2));
+        job.MarkValidated(Reviewer, FixedTime.AddMinutes(3));
+        job.QueueDryRun(Reviewer, FixedTime.AddMinutes(4));
+        var lease = job.AcquireWorkLease(
+            new JobLeaseId(Guid.Parse("66666666-6666-6666-6666-666666666666")),
+            WorkerId,
+            JobWorkKind.DryRun,
+            7,
+            Reviewer,
+            FixedTime.AddMinutes(5),
+            FixedTime.AddMinutes(15));
+        job.StartDryRun(lease.Credentials, Reviewer, FixedTime.AddMinutes(6));
+        job.CompleteDryRun(lease.Credentials, Reviewer, FixedTime.AddMinutes(7));
+        job.RequireApproval(Reviewer, FixedTime.AddMinutes(8));
+
+        var fingerprint = await fixture.Service.CreateFingerprintAsync(job, CancellationToken.None);
+
+        var evidence = Assert.IsType<JobDryRunEvidence>(job.AcceptedDryRunEvidence);
+        Assert.Equal(JobWorkKind.DryRun, evidence.WorkKind);
+        Assert.Equal(JobDryRunEvidenceSource.LeasedWorker, evidence.Source);
+        Assert.Equal(lease.Id, evidence.LeaseId);
+        Assert.Equal(WorkerId, evidence.WorkerNodeId);
+        Assert.Matches("^[0-9a-f]{64}$", fingerprint);
     }
 
     [Fact]
@@ -140,8 +177,6 @@ public sealed class ApprovalFingerprintServiceTests
         Guid.Parse("22222222-2222-2222-2222-222222222222"));
     private static readonly JobId JobId = new(
         Guid.Parse("33333333-3333-3333-3333-333333333333"));
-    private static readonly JobExecutionId ExecutionId = new(
-        Guid.Parse("44444444-4444-4444-4444-444444444444"));
     private static readonly WorkerNodeId WorkerId = new(
         Guid.Parse("55555555-5555-5555-5555-555555555555"));
 
@@ -151,7 +186,8 @@ public sealed class ApprovalFingerprintServiceTests
         string scriptSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         string secondTargetName = "Server-A",
         DateTimeOffset? evidenceCompletedUtc = null,
-        ExecutionOutcome evidenceOutcome = ExecutionOutcome.Succeeded)
+        bool includeAcceptedDryRunEvidence = true,
+        bool includeExecuteAttempt = false)
     {
         var version = new ScriptVersion(
             VersionId,
@@ -187,16 +223,31 @@ public sealed class ApprovalFingerprintServiceTests
             new JobParameter("Mode", parameterValue),
         };
         var completedUtc = evidenceCompletedUtc ?? FixedTime.AddMinutes(9);
-        var execution = JobExecution.Rehydrate(
-            ExecutionId,
-            1,
-            WorkerId,
-            FixedTime.AddMinutes(7),
-            FixedTime.AddMinutes(8),
-            completedUtc,
-            evidenceOutcome,
-            evidenceOutcome == ExecutionOutcome.Failed ? 1 : 0,
-            "Validated dry run.");
+        var evidence = includeAcceptedDryRunEvidence
+            ? new JobDryRunEvidence(
+                JobWorkKind.DryRun,
+                JobDryRunEvidenceSource.LeasedWorker,
+                WorkerId,
+                new JobLeaseId(Guid.Parse("66666666-6666-6666-6666-666666666666")),
+                7,
+                FixedTime.AddMinutes(7),
+                completedUtc)
+            : null;
+        var executions = includeExecuteAttempt
+            ? new[]
+            {
+                JobExecution.Rehydrate(
+                    new JobExecutionId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
+                    1,
+                    WorkerId,
+                    FixedTime.AddMinutes(7),
+                    FixedTime.AddMinutes(8),
+                    completedUtc,
+                    ExecutionOutcome.Succeeded,
+                    0,
+                    "Execute attempt that cannot substitute for dry-run evidence."),
+            }
+            : [];
         var job = Job.Rehydrate(
             JobId,
             DefinitionId,
@@ -218,11 +269,13 @@ public sealed class ApprovalFingerprintServiceTests
                 supportsPostValidationPhase: false),
             reverseCollections ? targets.Reverse() : targets,
             reverseCollections ? parameters.Reverse() : parameters,
-            [execution],
-            []);
+            executions,
+            [],
+            acceptedDryRunEvidence: evidence);
 
         return new FingerprintFixture(
             job,
+            definition,
             new ApprovalFingerprintService(new FixedScriptRepository(definition)));
     }
 
@@ -242,7 +295,10 @@ public sealed class ApprovalFingerprintServiceTests
         throw new DirectoryNotFoundException("Could not locate the repository root from the test execution directory.");
     }
 
-    private sealed record FingerprintFixture(Job Job, ApprovalFingerprintService Service);
+    private sealed record FingerprintFixture(
+        Job Job,
+        ScriptDefinition Definition,
+        ApprovalFingerprintService Service);
 
     private sealed class FixedScriptRepository(ScriptDefinition definition) : IScriptDefinitionRepository
     {

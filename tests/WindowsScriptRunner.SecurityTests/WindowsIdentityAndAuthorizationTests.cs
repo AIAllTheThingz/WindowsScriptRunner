@@ -68,6 +68,8 @@ public sealed class WindowsIdentityAndAuthorizationTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("DA")]
+    [InlineData("WD")]
     [InlineData("not-a-sid")]
     [InlineData("S-1-5-21-1001-1002-1003-1004\u0001")]
     public void InvalidPrimarySidFailsClosed(string? sid)

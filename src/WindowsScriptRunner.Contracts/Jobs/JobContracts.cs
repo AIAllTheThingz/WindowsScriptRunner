@@ -1,5 +1,11 @@
 namespace WindowsScriptRunner.Contracts.Jobs;
 
+public interface IJobAuthorizationResource
+{
+    string Status { get; }
+    string RequestedBy { get; }
+}
+
 public sealed record CreateJobRequest(
     Guid ScriptDefinitionId,
     Guid ScriptVersionId,
@@ -73,7 +79,12 @@ public sealed record JobDetailResponse(
     IReadOnlyList<JobTargetResponse> Targets,
     IReadOnlyList<JobParameterResponse> Parameters,
     IReadOnlyList<JobExecutionResponse> Executions,
-    IReadOnlyList<JobApprovalResponse> Approvals);
+    IReadOnlyList<JobApprovalResponse> Approvals) : IJobAuthorizationResource;
+
+public sealed record JobAuthorizationResourceResponse(
+    Guid Id,
+    string Status,
+    string RequestedBy) : IJobAuthorizationResource;
 
 public sealed record JobTargetResponse(
     string Name,

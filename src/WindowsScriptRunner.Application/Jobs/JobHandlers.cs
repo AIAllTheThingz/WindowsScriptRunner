@@ -810,16 +810,47 @@ public sealed class ListAwaitingApprovalJobsHandler(
             query.MaximumCount,
             cancellationToken);
         var results = new List<JobDetailResponse>(jobs.Count);
+        var scripts = new Dictionary<ScriptDefinitionId, ScriptDefinition>();
         foreach (var job in jobs)
         {
-            var script = await SetJobParameterHandler.GetScriptAsync(
-                scriptRepository,
-                job.ScriptDefinitionId,
-                cancellationToken);
+            if (!scripts.TryGetValue(job.ScriptDefinitionId, out var script))
+            {
+                script = await SetJobParameterHandler.GetScriptAsync(
+                    scriptRepository,
+                    job.ScriptDefinitionId,
+                    cancellationToken);
+                scripts.Add(job.ScriptDefinitionId, script);
+            }
+
             results.Add(GetJobHandler.Map(job, script));
         }
 
         return results;
+    }
+}
+
+public sealed record ListJobAuthorizationResourcesQuery(
+    IReadOnlyCollection<JobId> JobIds);
+
+public sealed class ListJobAuthorizationResourcesHandler(
+    IJobAuthorizationResourceReader authorizationResourceReader)
+{
+    private const int MaximumResourceCount = 100;
+
+    public async Task<IReadOnlyList<JobAuthorizationResourceResponse>> HandleAsync(
+        ListJobAuthorizationResourcesQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(query.JobIds);
+        var jobIds = query.JobIds.Distinct().ToArray();
+        if (jobIds.Length is < 1 or > MaximumResourceCount)
+        {
+            throw new ApplicationValidationException(
+                $"Job authorization resource count must be between 1 and {MaximumResourceCount}.");
+        }
+
+        return await authorizationResourceReader.ListAsync(jobIds, cancellationToken);
     }
 }
 

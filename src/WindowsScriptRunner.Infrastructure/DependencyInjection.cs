@@ -50,7 +50,10 @@ public static class DependencyInjection
                 options.EnableDetailedErrors(persistence.EnableDetailedErrors);
                 options.EnableSensitiveDataLogging(false);
             });
-        services.AddScoped<IJobRepository, SqlJobRepository>();
+        services.AddScoped<SqlJobRepository>();
+        services.AddScoped<IJobRepository>(provider => provider.GetRequiredService<SqlJobRepository>());
+        services.AddScoped<IJobAuthorizationResourceReader>(provider =>
+            provider.GetRequiredService<SqlJobRepository>());
         services.AddScoped<IScriptDefinitionRepository, SqlScriptDefinitionRepository>();
         services.AddScoped<IWorkerNodeRepository, SqlWorkerNodeRepository>();
         services.AddScoped<ICredentialReferenceRepository, SqlCredentialReferenceRepository>();

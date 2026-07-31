@@ -1,6 +1,6 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application for controlled automation. Phase 8 is implemented locally and awaits review; it has not been committed, deployed, or rolled out.
+Windows Script Runner is a Windows-hosted .NET application for controlled automation. Phase 8 is committed on its review branch and awaits review; it has not been merged into `main`, deployed, or rolled out.
 
 ## Current status
 
@@ -16,7 +16,7 @@ The solution includes:
 
 The inventory package is ReadOnly, local-only, parameterless, and DryRun-only. Its successful result is validated against the exact schema and stored as one typed SQL report in the same transaction that completes the job, removes the lease, and records bounded audit metadata. Raw stdout, stderr, and arbitrary JSON are not persisted.
 
-Phases 1–7 are implemented, validated, and merged into `main`. Phase 8 is locally implemented and validated for review. Phase 9 remains production hardening and deployment.
+Phases 1–7 are implemented, validated, and merged into `main`. Phase 8 is implemented and validated on its review branch. Phase 9 remains production hardening and deployment.
 
 ## Solution structure
 

@@ -7,7 +7,7 @@
 5. **PowerShell execution boundary — Complete and merged**
 6. **First reviewed automation package — Complete and merged**
 7. **Typed durable Local Host Inventory reporting — Complete and merged**
-8. **Identity, authentication, authorization, and approval workflow — Implemented locally; pending review**
+8. **Identity, authentication, authorization, and approval workflow — Committed on review branch; pending review**
 9. **Production hardening and deployment — Planned**
 
 ## Phase 7 result
@@ -18,9 +18,9 @@ No public report UI or endpoint exists because there is no authenticated princip
 
 ## Phase 8 result
 
-Phase 8 adds Negotiate-protected Web composition, stable Windows SID mapping, SID group policies, resource authorization, typed Local Host Inventory list/lookup/detail pages, and bounded approval review/approval/rejection pages. Approval fingerprints are calculated in Application from trusted persisted evidence and validated again at decision time. Authenticated requester identity reaches the existing Domain separation-of-duties rule through `ICurrentUser`; Web cannot provide an actor, role, policy, or fingerprint calculation.
+Phase 8 adds Negotiate-protected Web composition, stable Windows SID mapping, SID group policies, resource authorization, typed Local Host Inventory list/lookup/detail pages, and bounded approval review/approval/rejection pages. Approval fingerprints are calculated in Application from immutable, persisted DryRun evidence and validated again at decision time. Authenticated requester identity reaches the existing Domain separation-of-duties rule through `ICurrentUser`; Web cannot provide an actor, role, policy, or fingerprint calculation.
 
-The implementation adds no EF Core model change or migration. It does not broaden automation execution, script selection, reporting formats, credential access, remoting, or deployment scope. It is locally implemented and validated pending review, not deployed.
+The implementation adds one EF Core migration for immutable accepted DryRun evidence and the bounded report-list index. It does not broaden automation execution, script selection, reporting formats, credential access, remoting, or deployment scope. It is committed on its review branch and pending review, not deployed.
 
 ## Phase 9 boundary
 

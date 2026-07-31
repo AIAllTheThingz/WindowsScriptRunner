@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -130,6 +131,28 @@ public sealed class PortalWebFlowTests
     }
 
     [Fact]
+    public async Task AuthorizationFailuresRenderTheProtectedAccessDeniedPage()
+    {
+        using var factory = new PortalWebApplicationFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+
+        var response = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            $"/Jobs/Details/{factory.State.Job.Id.Value:D}",
+            OtherUserSid);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains(
+            "Access denied",
+            await response.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RenderedInventoryReportContainsOnlyTheTypedSafeSurface()
     {
         using var factory = new PortalWebApplicationFactory();
@@ -157,7 +180,8 @@ public sealed class PortalWebFlowTests
         Assert.DoesNotContain("WorkingDirectory", markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Json", markup, StringComparison.Ordinal);
         Assert.Equal(
-            [
+            new[]
+            {
                 "ReportId",
                 "JobId",
                 "PackageId",
@@ -169,8 +193,11 @@ public sealed class PortalWebFlowTests
                 "OsVersion",
                 "OsArchitecture",
                 "PowerShellVersion",
-            ],
-            typeof(LocalHostInventoryReportView).GetProperties().Select(property => property.Name));
+            }.Order(StringComparer.Ordinal),
+            typeof(LocalHostInventoryReportView)
+                .GetProperties()
+                .Select(property => property.Name)
+                .Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -237,7 +264,7 @@ public sealed class PortalWebFlowTests
             ApproverGroupSid,
             new Dictionary<string, string>
             {
-                ["jobId"] = factory.State.Job.Id.Value.ToString("D"),
+                ["jobId"] = Guid.NewGuid().ToString("D"),
                 ["expectedFingerprint"] = PortalState.Fingerprint,
                 ["Comment"] = "No antiforgery token.",
             });
@@ -267,7 +294,7 @@ public sealed class PortalWebFlowTests
         var form = new Dictionary<string, string>
         {
             ["__RequestVerificationToken"] = antiforgeryToken,
-            ["jobId"] = factory.State.Job.Id.Value.ToString("D"),
+            ["jobId"] = Guid.NewGuid().ToString("D"),
             ["expectedFingerprint"] = PortalState.Fingerprint,
             ["Comment"] = "Approved from the reviewed page.",
             ["requestedBy"] = $"sid:{ApproverSid}",
@@ -437,14 +464,19 @@ public sealed class PortalWebFlowTests
                         .Build());
 
                 services.RemoveAll<IJobRepository>();
+                services.RemoveAll<IJobAuthorizationResourceReader>();
                 services.RemoveAll<IScriptDefinitionRepository>();
                 services.RemoveAll<IJobReportRepository>();
                 services.RemoveAll<IAuditWriter>();
                 services.RemoveAll<IUnitOfWork>();
                 services.RemoveAll<IWorkerCoordinationClock>();
                 services.RemoveAll<IJobFingerprintService>();
+                services.RemoveAll<IAuthenticatedPrincipalMapper>();
+                services.RemoveAll<IValidateOptions<WindowsAuthorizationOptions>>();
                 services.AddSingleton(State);
+                services.AddSingleton<IAuthenticatedPrincipalMapper, PortalPrincipalMapper>();
                 services.AddScoped<IJobRepository, PortalJobRepository>();
+                services.AddScoped<IJobAuthorizationResourceReader, PortalJobAuthorizationResourceReader>();
                 services.AddScoped<IScriptDefinitionRepository, PortalScriptRepository>();
                 services.AddScoped<IJobReportRepository, PortalReportRepository>();
                 services.AddScoped<IAuditWriter, PortalAuditWriter>();
@@ -496,6 +528,25 @@ public sealed class PortalWebFlowTests
     {
         public override Task<IEnumerable<AuthenticationScheme>> GetRequestHandlerSchemesAsync() =>
             Task.FromResult<IEnumerable<AuthenticationScheme>>([]);
+    }
+
+    private sealed class PortalPrincipalMapper : IAuthenticatedPrincipalMapper
+    {
+        public AuthenticatedPrincipal Map(ClaimsPrincipal principal)
+        {
+            ArgumentNullException.ThrowIfNull(principal);
+            var identity = principal.Identities.SingleOrDefault(item => item.IsAuthenticated)
+                ?? throw new AuthenticationMappingException("The test principal must be authenticated.");
+            var userSid = identity.FindFirst(ClaimTypes.PrimarySid)?.Value
+                ?? throw new AuthenticationMappingException("The test principal must contain a primary SID.");
+            var groupSids = identity.FindAll(ClaimTypes.GroupSid)
+                .Select(claim => claim.Value)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return new AuthenticatedPrincipal(
+                new UserIdentity($"sid:{userSid}"),
+                "Portal test user",
+                groupSids);
+        }
     }
 
     private sealed class PortalState
@@ -652,6 +703,21 @@ public sealed class PortalWebFlowTests
 
         public Task UpdateAsync(ScriptDefinition definition, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class PortalJobAuthorizationResourceReader(PortalState state) :
+        IJobAuthorizationResourceReader
+    {
+        public Task<IReadOnlyList<JobAuthorizationResourceResponse>> ListAsync(
+            IReadOnlyCollection<JobId> jobIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<JobAuthorizationResourceResponse>>(
+                jobIds.Contains(state.Job.Id)
+                    ? [new JobAuthorizationResourceResponse(
+                        state.Job.Id.Value,
+                        state.Job.Status.ToString(),
+                        state.Job.RequestedBy.Value)]
+                    : []);
     }
 
     private sealed class PortalReportRepository(PortalState state) : IJobReportRepository

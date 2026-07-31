@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using Microsoft.Extensions.Options;
@@ -85,7 +86,7 @@ public sealed class WindowsAuthorizationOptionsValidator(IHostEnvironment enviro
             {
                 sid = new SecurityIdentifier(value.Trim());
             }
-            catch (ArgumentException)
+            catch (Exception exception) when (exception is ArgumentException or Win32Exception)
             {
                 failures.Add($"{fieldName} contains an invalid SID value.");
                 continue;

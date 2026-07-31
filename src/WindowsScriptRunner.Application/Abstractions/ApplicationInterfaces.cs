@@ -1,4 +1,5 @@
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -39,6 +40,13 @@ public interface IJobRepository
     Task<bool> TryRefreshLeaseAsync(
         JobId jobId,
         JobLeaseCredentials credentials,
+        CancellationToken cancellationToken);
+}
+
+public interface IJobAuthorizationResourceReader
+{
+    Task<IReadOnlyList<JobAuthorizationResourceResponse>> ListAsync(
+        IReadOnlyCollection<JobId> jobIds,
         CancellationToken cancellationToken);
 }
 

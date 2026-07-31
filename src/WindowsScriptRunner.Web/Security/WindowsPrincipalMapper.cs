@@ -178,9 +178,15 @@ public sealed class WindowsPrincipalMapper : IAuthenticatedPrincipalMapper
             return false;
         }
 
+        var normalized = value.Trim();
+        if (!normalized.StartsWith("S-1-", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         try
         {
-            sid = new SecurityIdentifier(value.Trim());
+            sid = new SecurityIdentifier(normalized);
             return true;
         }
         catch (ArgumentException)

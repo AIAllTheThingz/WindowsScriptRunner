@@ -8,13 +8,15 @@ public sealed class HttpContextCurrentUser(
     IHttpContextAccessor httpContextAccessor,
     IAuthenticatedPrincipalMapper principalMapper) : ICurrentUser
 {
+    private UserIdentity? _user;
+
     public UserIdentity User
     {
         get
         {
             var httpContext = httpContextAccessor.HttpContext
                 ?? throw new AuthenticationMappingException("A current HTTP context is required.");
-            return principalMapper.Map(httpContext.User).User;
+            return _user ??= principalMapper.Map(httpContext.User).User;
         }
     }
 }
