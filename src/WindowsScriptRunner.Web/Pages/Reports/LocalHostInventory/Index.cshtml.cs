@@ -29,6 +29,11 @@ public sealed class IndexModel(
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest();
+        }
+
         if (JobId == Guid.Empty)
         {
             return NotFound();

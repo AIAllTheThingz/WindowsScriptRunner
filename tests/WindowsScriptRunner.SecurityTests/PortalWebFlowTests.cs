@@ -185,6 +185,13 @@ public sealed class PortalWebFlowTests
                 $"/Reports/LocalHostInventory?JobId={EmptyGuid}",
                 RequesterSid)).StatusCode);
         Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await SendAsAsync(
+                client,
+                HttpMethod.Get,
+                "/Reports/LocalHostInventory?JobId=not-a-guid",
+                RequesterSid)).StatusCode);
+        Assert.Equal(
             HttpStatusCode.NotFound,
             (await SendAsAsync(
                 client,
