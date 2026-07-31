@@ -160,6 +160,44 @@ public sealed class PortalWebFlowTests
     }
 
     [Fact]
+    public async Task ApprovalReviewDisplaysThePinnedScriptPolicyAndAcceptedDryRunEvidence()
+    {
+        using var factory = new PortalWebApplicationFactory();
+        using var client = factory.CreateClient();
+        var version = factory.State.Script.GetVersion(factory.State.Job.ScriptVersionId);
+        var evidence = factory.State.Job.AcceptedDryRunEvidence!;
+
+        var response = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            $"/Approvals/Review/{factory.State.Job.Id.Value:D}",
+            ApproverSid,
+            ApproverGroupSid);
+        var markup = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(factory.State.Script.Name.Value, markup, StringComparison.Ordinal);
+        Assert.Contains(factory.State.Script.DisplayName, markup, StringComparison.Ordinal);
+        Assert.Contains(version.Version.ToString(), markup, StringComparison.Ordinal);
+        Assert.Contains(version.Sha256, markup, StringComparison.Ordinal);
+        Assert.Contains(nameof(ExecutionPhase.Execute), markup, StringComparison.Ordinal);
+        Assert.Contains(nameof(RiskLevel.Medium), markup, StringComparison.Ordinal);
+        Assert.Contains(nameof(JobWorkKind.DryRun), markup, StringComparison.Ordinal);
+        Assert.Contains(nameof(JobDryRunEvidenceSource.LeasedWorker), markup, StringComparison.Ordinal);
+        Assert.Contains(
+            evidence.ExecutionWindowOpenedUtc.UtcDateTime.ToString("u"),
+            markup,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            evidence.CompletedUtc.UtcDateTime.ToString("u"),
+            markup,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Worker node ID", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Lease ID", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Fencing token", markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RenderedInventoryReportContainsOnlyTheTypedSafeSurface()
     {
         using var factory = new PortalWebApplicationFactory();

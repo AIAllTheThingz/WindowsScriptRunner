@@ -6,7 +6,7 @@ Phase 8 presents the existing Domain/Application approval and rejection workflow
 
 1. Application returns at most 100 jobs whose persisted state is `AwaitingApproval` for `/Approvals`.
 2. An Approver or Administrator requests a review. Web loads the typed job detail and server-calculated expected fingerprint, then applies both Review and Decide resource requirements.
-3. The review view shows the safe job fields, targets, and already-redacted parameter display values. It renders the expected fingerprint only as an antiforgery-protected form value; it does not treat it as browser authority.
+3. The review view shows the safe job fields, pinned script name/version/SHA-256, captured policy risk, requested phase, accepted DryRun work kind/source/execution-window timestamps, targets, and already-redacted parameter display values. It does not show raw output, script content or path, worker/lease/fencing provenance, or secrets. It renders the expected fingerprint only as an antiforgery-protected form value; it does not treat it as browser authority.
 4. An approve or reject POST first reloads and reauthorizes the review. ASP.NET Core antiforgery validation runs before the handler.
 5. Web sends only `JobId`, the browser's expected fingerprint echo, and an optional bounded comment to the Application handler. The authenticated actor comes from `ICurrentUser`, which maps the Negotiate principal's stable SID.
 6. Application reloads the job, recomputes the trusted fingerprint, compares in constant time, and delegates the decision to Domain. It writes the bounded audit event and commits through the existing unit of work.

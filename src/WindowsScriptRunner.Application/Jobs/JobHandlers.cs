@@ -877,6 +877,24 @@ public sealed class GetApprovalReviewHandler(
         var expectedFingerprint = await fingerprintService.CreateFingerprintAsync(
             job,
             cancellationToken);
-        return new ApprovalReviewResponse(GetJobHandler.Map(job, script), expectedFingerprint);
+        var version = script.GetVersion(job.ScriptVersionId);
+        var policy = job.PolicySnapshot ?? throw new ApplicationConflictException(
+            "The job has no captured approval policy.");
+        var evidence = job.AcceptedDryRunEvidence ?? throw new ApplicationConflictException(
+            "The job has no accepted dry-run evidence.");
+        return new ApprovalReviewResponse(
+            GetJobHandler.Map(job, script),
+            new ApprovalReviewScriptResponse(
+                script.Name.Value,
+                script.DisplayName,
+                version.Version.ToString(),
+                version.Sha256),
+            new ApprovalReviewPolicyResponse(policy.RiskLevel.ToString()),
+            new ApprovalReviewDryRunEvidenceResponse(
+                evidence.WorkKind.ToString(),
+                evidence.Source.ToString(),
+                evidence.ExecutionWindowOpenedUtc,
+                evidence.CompletedUtc),
+            expectedFingerprint);
     }
 }

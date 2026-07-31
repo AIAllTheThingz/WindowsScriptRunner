@@ -118,4 +118,21 @@ public sealed record JobApprovalResponse(
 
 public sealed record ApprovalReviewResponse(
     JobDetailResponse Job,
+    ApprovalReviewScriptResponse Script,
+    ApprovalReviewPolicyResponse Policy,
+    ApprovalReviewDryRunEvidenceResponse AcceptedDryRunEvidence,
     string ExpectedFingerprint);
+
+public sealed record ApprovalReviewScriptResponse(
+    string Name,
+    string DisplayName,
+    string Version,
+    string Sha256);
+
+public sealed record ApprovalReviewPolicyResponse(string RiskLevel);
+
+public sealed record ApprovalReviewDryRunEvidenceResponse(
+    string WorkKind,
+    string Source,
+    DateTimeOffset ExecutionWindowOpenedUtc,
+    DateTimeOffset CompletedUtc);

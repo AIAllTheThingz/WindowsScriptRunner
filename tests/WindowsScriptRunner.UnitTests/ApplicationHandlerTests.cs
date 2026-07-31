@@ -923,6 +923,19 @@ public sealed class ApplicationHandlerTests
 
         Assert.Equal(fixture.Jobs.Job.Id.Value, review.Job.Id);
         Assert.Equal(nameof(JobStatus.AwaitingApproval), review.Job.Status);
+        Assert.Equal("test.script", review.Script.Name);
+        Assert.Equal("Test Script", review.Script.DisplayName);
+        Assert.Equal("1.0.0", review.Script.Version);
+        Assert.Equal(new string('a', 64), review.Script.Sha256);
+        Assert.Equal(nameof(RiskLevel.Low), review.Policy.RiskLevel);
+        Assert.Equal(nameof(JobWorkKind.DryRun), review.AcceptedDryRunEvidence.WorkKind);
+        Assert.Equal(nameof(JobDryRunEvidenceSource.InternalLifecycle), review.AcceptedDryRunEvidence.Source);
+        Assert.Equal(
+            fixture.Jobs.Job.AcceptedDryRunEvidence!.ExecutionWindowOpenedUtc,
+            review.AcceptedDryRunEvidence.ExecutionWindowOpenedUtc);
+        Assert.Equal(
+            fixture.Jobs.Job.AcceptedDryRunEvidence.CompletedUtc,
+            review.AcceptedDryRunEvidence.CompletedUtc);
         Assert.Equal(TestDomainFactory.Fingerprint, review.ExpectedFingerprint);
         Assert.Equal(1, fixture.Fingerprints.CallCount);
     }
