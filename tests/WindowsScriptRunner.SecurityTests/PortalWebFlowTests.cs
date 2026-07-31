@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
@@ -226,9 +227,12 @@ public sealed class PortalWebFlowTests
             evidence.CompletedUtc.UtcDateTime.ToString("u"),
             markup,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("Worker node ID", markup, StringComparison.Ordinal);
-        Assert.DoesNotContain("Lease ID", markup, StringComparison.Ordinal);
-        Assert.DoesNotContain("Fencing token", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(evidence.WorkerNodeId!.Value.ToString(), markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(evidence.LeaseId!.Value.ToString(), markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            evidence.FencingToken!.Value.ToString(CultureInfo.InvariantCulture),
+            markup,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -736,7 +740,7 @@ public sealed class PortalWebFlowTests
                 JobLeaseId.New(),
                 WorkerNodeId.New(),
                 JobWorkKind.DryRun,
-                56,
+                987654321012345678,
                 system,
                 started.AddMinutes(6),
                 started.AddMinutes(16)).Credentials;

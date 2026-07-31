@@ -16,6 +16,8 @@ Ambiguous, malformed, missing, control-character, or built-in-group user SIDs fa
 
 `CreateDraftJobHandler` obtains `RequestedBy` only from this mapped `ICurrentUser`; the create command has no requester field. Execute approval, rejection, and entry into the approval state additionally require the persisted requester to use the canonical `sid:S-1-...` representation. The evidence migration terminalizes legacy pending Execute jobs instead of allowing a historical non-SID requester representation to bypass separation of duties.
 
+Completed Phase 7 records can retain a non-SID `RequestedBy` value. The portal deliberately does not infer a SID from such a name, display name, UPN, or browser claim: that would turn an unverifiable historical string into an ownership grant. Those records remain available to configured report-reader, approver, and administrator groups, but not as self-service ownership for an ordinary requester. A controlled offline data-reconciliation process, using an authoritative directory record and an auditable migration plan, is deferred; it is not a Phase 8 browser feature.
+
 Group membership is a set of canonical Windows SIDs. Valid authenticated `GroupSid` claims are combined with `WindowsIdentity.Groups` from the authenticated Windows token. The token-group fallback is Windows-only, excludes the user SID, and does not use names. Invalid claims and a claim equal to the user SID grant nothing.
 
 ## Group configuration
