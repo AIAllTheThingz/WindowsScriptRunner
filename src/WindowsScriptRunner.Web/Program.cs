@@ -75,7 +75,18 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStatusCodePagesWithReExecute("/AccessDenied", "?statusCode={0}");
+app.UseStatusCodePages(async statusCodeContext =>
+{
+    var response = statusCodeContext.HttpContext.Response;
+    if (response.StatusCode != StatusCodes.Status403Forbidden)
+    {
+        return;
+    }
+
+    response.ContentType = "text/html; charset=utf-8";
+    await response.WriteAsync(
+        "<!doctype html><html><body><h1>Access denied</h1><p>You do not have permission to access this resource.</p></body></html>");
+});
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();

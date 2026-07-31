@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -154,6 +155,7 @@ public sealed class Phase7ReportPersistenceTests
 
         Assert.Single(requesterReports);
         Assert.Empty(otherRequesterReports);
+        Assert.Empty(await verification.Jobs.ListAsync([], CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => verification.Reports.ListLocalHostInventoryAsync(
                 0,
@@ -167,6 +169,42 @@ public sealed class Phase7ReportPersistenceTests
                 new UserIdentity("DOMAIN\\phase7-sql"),
                 101,
                 CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AcceptedDryRunEvidenceConstraintRejectsPartialStates()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var running = await SeedRunningJobAsync(database);
+        await using var verification = new PersistenceTestScope(database);
+        var timestamp = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+
+        await Assert.ThrowsAsync<SqlException>(
+            () => verification.Context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE [wsr].[Jobs]
+                SET [AcceptedDryRunEvidenceWorkKind] = N'DryRun',
+                    [AcceptedDryRunEvidenceSource] = NULL,
+                    [AcceptedDryRunEvidenceWorkerNodeId] = NULL,
+                    [AcceptedDryRunEvidenceLeaseId] = NULL,
+                    [AcceptedDryRunEvidenceFencingToken] = NULL,
+                    [AcceptedDryRunEvidenceWindowOpenedUtc] = {timestamp},
+                    [AcceptedDryRunEvidenceCompletedUtc] = {timestamp}
+                WHERE [Id] = {running.JobId.Value};
+                """));
+        await Assert.ThrowsAsync<SqlException>(
+            () => verification.Context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE [wsr].[Jobs]
+                SET [AcceptedDryRunEvidenceWorkKind] = N'DryRun',
+                    [AcceptedDryRunEvidenceSource] = N'LeasedWorker',
+                    [AcceptedDryRunEvidenceWorkerNodeId] = {Guid.NewGuid()},
+                    [AcceptedDryRunEvidenceLeaseId] = {Guid.NewGuid()},
+                    [AcceptedDryRunEvidenceFencingToken] = NULL,
+                    [AcceptedDryRunEvidenceWindowOpenedUtc] = {timestamp},
+                    [AcceptedDryRunEvidenceCompletedUtc] = {timestamp}
+                WHERE [Id] = {running.JobId.Value};
+                """));
     }
 
     [Fact]

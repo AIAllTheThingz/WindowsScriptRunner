@@ -144,12 +144,18 @@ public sealed class PortalWebFlowTests
             HttpMethod.Get,
             $"/Jobs/Details/{factory.State.Job.Id.Value:D}",
             OtherUserSid);
+        var missing = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            "/missing-route",
+            RequesterSid);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Contains(
             "Access denied",
             await response.Content.ReadAsStringAsync(),
             StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 
     [Fact]

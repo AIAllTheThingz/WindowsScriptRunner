@@ -137,9 +137,14 @@ public sealed class SqlJobRepository(
             ArgumentNullException.ThrowIfNull(id);
             return id.Value;
         }).Distinct().ToArray();
-        if (ids.Length is < 1 or > 100)
+        if (ids.Length > 100)
         {
             throw new ArgumentOutOfRangeException(nameof(jobIds));
+        }
+
+        if (ids.Length == 0)
+        {
+            return [];
         }
 
         return await SqlExceptionTranslator.ExecuteAsync(

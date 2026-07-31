@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -6,6 +7,8 @@ namespace WindowsScriptRunner.SqlServerTests;
 
 public sealed class MigrationTests
 {
+    private const string Phase7Migration = "20260730221709_AddDurableLocalHostInventoryReports";
+
     private static readonly string[] ExpectedTables =
     [
         "AuditEventProperties",
@@ -207,6 +210,73 @@ public sealed class MigrationTests
                   AND [name] = N'UX_WorkerNodes_NormalizedName'
                   AND [is_unique] = 1
                 """).SingleAsync());
+    }
+
+    [Fact]
+    public async Task Phase8MigrationCancelsLegacyApprovalStatesWithoutFabricatingEvidence()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync(
+            applyMigrations: false);
+        await using var context = database.CreateContext();
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync(Phase7Migration);
+
+        var definitionId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var dryRunCompletedJobId = Guid.NewGuid();
+        var awaitingApprovalJobId = Guid.NewGuid();
+        var timestamp = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO [wsr].[ScriptDefinitions]
+                ([Id], [Name], [NormalizedName], [DisplayName], [Description], [RiskLevel], [IsEnabled], [CreatedBy], [CreatedUtc], [UpdatedUtc])
+            VALUES
+                ({definitionId}, N'legacy-phase8-migration', N'LEGACY-PHASE8-MIGRATION', N'Legacy Phase 8 Migration', N'Legacy migration test definition.', N'Medium', {true}, N'system:migration-test', {timestamp}, {timestamp});
+
+            INSERT INTO [wsr].[ScriptVersions]
+                ([Id], [ScriptDefinitionId], [Major], [Minor], [Patch], [RelativeScriptPath], [Sha256], [GitCommitSha], [MinimumPowerShellVersion], [DefaultTimeoutMinutes], [IsPublished], [CreatedUtc], [CreatedBy])
+            VALUES
+                ({versionId}, {definitionId}, 1, 0, 0, N'legacy/Phase8Migration.ps1', {new string('a', 64)}, N'abcdef1', N'7.4.0', 30, {false}, {timestamp}, N'system:migration-test');
+
+            INSERT INTO [wsr].[Jobs]
+                ([Id], [ScriptDefinitionId], [ScriptVersionId], [RequestedPhase], [Status], [RequestedBy], [LastActingUser], [CreatedUtc], [UpdatedUtc], [SubmittedUtc], [PolicyScriptDefinitionId], [PolicyScriptVersionId], [PolicyRiskLevel], [PolicySupportsExecute], [PolicySupportsPostValidation])
+            VALUES
+                ({dryRunCompletedJobId}, {definitionId}, {versionId}, N'Execute', N'DryRunCompleted', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({awaitingApprovalJobId}, {definitionId}, {versionId}, N'Execute', N'AwaitingApproval', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false});
+            """);
+
+        await migrator.MigrateAsync();
+
+        var statuses = await context.Database.SqlQueryRaw<string>(
+            """
+            SELECT [Status] AS [Value]
+            FROM [wsr].[Jobs]
+            WHERE [Id] IN ({0}, {1})
+            ORDER BY [Id]
+            """,
+            dryRunCompletedJobId,
+            awaitingApprovalJobId).ToListAsync();
+        var auditCount = await context.Database.SqlQueryRaw<int>(
+            """
+            SELECT COUNT(*) AS [Value]
+            FROM [wsr].[AuditEvents]
+            WHERE [EventType] = N'LegacyDryRunEvidenceUnavailable'
+              AND [Actor] = N'system:phase-8-evidence-migration'
+            """).SingleAsync();
+
+        Assert.Equal(["Cancelled", "Cancelled"], statuses);
+        Assert.Equal(2, auditCount);
+
+        await migrator.MigrateAsync(Phase7Migration);
+        Assert.Equal(2, await context.Database.SqlQueryRaw<int>(
+            """
+            SELECT COUNT(*) AS [Value]
+            FROM [wsr].[Jobs]
+            WHERE [Id] IN ({0}, {1})
+              AND [Status] = N'Cancelled'
+            """,
+            dryRunCompletedJobId,
+            awaitingApprovalJobId).SingleAsync());
     }
 
     [Fact]
