@@ -17,6 +17,9 @@ To enable the reviewed `windows.local-host-inventory` `1.0.0` package, set `Auto
 
 The Automation handler—not Worker—passes code-zero output to Reporting. Valid typed inventory goes to the atomic Application report completion handler; malformed or untrusted success output becomes a controlled failure with no report. Worker contains no inventory JSON parser and no report persistence policy.
 
-Worker has no HTTP endpoint, service installer, or production hosting integration. Windows Service packaging belongs to Phase 9.
+Worker has no HTTP endpoint. Phase 9 adds Windows Service hosting integration through the
+`Microsoft.Extensions.Hosting.WindowsServices` lifetime; installation, upgrade, rollback, and
+verification remain explicit deployment-script operations. See the [Windows Service deployment
+status](../../deployment/windows-service/README.md).
 
 See [Worker queue](../../docs/worker-queue.md), [Worker leases](../../docs/worker-leases.md), and [Windows Service deployment status](../../deployment/windows-service/README.md).

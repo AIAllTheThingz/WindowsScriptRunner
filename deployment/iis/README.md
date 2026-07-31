@@ -2,19 +2,23 @@
 
 ## Status
 
-Production IIS deployment is planned for Phase 9 and is not implemented.
+Phase 9 has added an explicit HTTPS IIS install and verification script. A production installation has not been performed.
 
-`WindowsScriptRunner.Web` is buildable and publishable, but this directory does not yet provide:
+`WindowsScriptRunner.Web` is buildable and publishable. The repository now provides:
 
-- an IIS site or application-pool definition;
-- the required .NET Hosting Bundle installation check;
-- HTTPS bindings or certificate provisioning;
-- service-account identity and filesystem permissions;
-- production configuration injection;
-- health-probe integration;
-- authentication configuration; or
-- installation, upgrade, rollback, and verification scripts.
+- `Install-WindowsScriptRunnerWeb.ps1`, which requires a published `web.config`, an existing LocalMachine certificate thumbprint, an HTTPS host name, and an elevated session; and
+- `Verify-WindowsScriptRunnerWeb.ps1`, which checks site, application-pool, binding, and optional readiness state.
 
-The Web project currently provides a Razor Pages shell plus `/health`, `/health/live`, and `/health/ready`. It does not expose reports or approval actions.
+The production rollout still requires:
 
-Do not treat `dotnet publish` output alone as a production IIS installation. Phase 9 must define the complete server contract and validate it on a representative Windows Server host.
+- a representative Windows Server test with the .NET Hosting Bundle;
+- certificate provisioning and renewal ownership;
+- service-account identity and filesystem permission sign-off;
+- protected production configuration injection;
+- protected report and approval/rejection route validation, including authorization behavior;
+- health-probe, Negotiate, SPN/Kerberos, and browser-zone validation; and
+- installation, upgrade, rollback, and verification evidence.
+
+The Web project provides authorized typed report views and approval/rejection actions, plus `/health`, `/health/live`, and `/health/ready` endpoints. Production rollout must validate both the route behavior and the authorization outcomes for the configured Windows groups.
+
+Do not treat `dotnet publish` output or a script dry run as a production IIS installation. The HTTPS script requires an existing certificate and the verification script can probe readiness, but this repository change does not claim representative-host validation.

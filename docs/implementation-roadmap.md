@@ -7,8 +7,8 @@
 5. **PowerShell execution boundary — Complete and merged**
 6. **First reviewed automation package — Complete and merged**
 7. **Typed durable Local Host Inventory reporting — Complete and merged**
-8. **Identity, authentication, authorization, and approval workflow — Committed on review branch; pending review**
-9. **Production hardening and deployment — Planned**
+8. **Identity, authentication, authorization, and approval workflow — Complete and merged through PR #9**
+9. **Production hardening and deployment — In progress**
 
 ## Phase 7 result
 
@@ -20,8 +20,8 @@ No public report UI or endpoint exists because there is no authenticated princip
 
 Phase 8 adds Negotiate-protected Web composition, stable Windows SID mapping, SID group policies, resource authorization, typed Local Host Inventory list/lookup/detail pages, and bounded approval review/approval/rejection pages. Approval fingerprints are calculated in Application from immutable, persisted DryRun evidence and validated again at decision time. Authenticated requester identity reaches the existing Domain separation-of-duties rule through `ICurrentUser`; Web cannot provide an actor, role, policy, or fingerprint calculation.
 
-The implementation adds one EF Core migration for immutable accepted DryRun evidence and the bounded report-list index. It does not broaden automation execution, script selection, reporting formats, credential access, remoting, or deployment scope. It is committed on its review branch and pending review, not deployed.
+The implementation adds one EF Core migration for immutable accepted DryRun evidence and the bounded report-list index. It does not broaden automation execution, script selection, reporting formats, credential access, or remoting. Phase 8 is merged and not deployed or rolled out.
 
 ## Phase 9 boundary
 
-Phase 9 should package and harden the already-reviewed application for Windows Server. It owns deployment assets, service installation, IIS configuration, SQL rollout, operational identities and permissions, HTTPS, SPN/Kerberos and browser-zone validation, backup/restore, production observability, and runbooks.
+Phase 9 packages and hardens the already-reviewed application for Windows Server. The initial foundation adds Windows Service hosting integration, operator-run IIS/Worker install and verification scripts, reviewed SQL backup-and-migration execution, and hash-pinned PowerShell artifact installation. It owns the remaining deployment assets, operational identities and permissions, HTTPS, SPN/Kerberos and browser-zone validation, backup/restore, production observability, and runbooks. No production rollout is claimed.

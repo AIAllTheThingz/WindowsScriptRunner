@@ -1,10 +1,11 @@
 # Documentation
 
-This directory documents the Phase 8 implementation awaiting review. Historical phase evidence remains in `validation-report.md`; current-state documents describe the repository as it exists now.
+This directory documents the implementation validated and merged through Phase 8 and the Phase 9 deployment foundation now in progress. Historical phase evidence remains in `validation-report.md`; current-state documents describe the repository as it exists now.
 
 ## Start here
 
 - [Roadmap](roadmap.md) — completed phases, next phase, and production-readiness sequence
+- [Phase 9 deployment runbook](phase-9-deployment.md) — release layout, deployment order, and remaining production boundary
 - [Implementation roadmap](implementation-roadmap.md) — technical scope by phase
 - [Development setup](development-setup.md) — prerequisites, validation, local database, Web, and Worker startup
 - [Architecture](architecture.md) — project boundaries and runtime flow
