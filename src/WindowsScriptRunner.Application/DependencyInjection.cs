@@ -21,6 +21,8 @@ public static class DependencyInjection
         services.AddTransient<InspectJobLeaseHandler>();
         services.AddTransient<StartLeasedDryRunHandler>();
         services.AddTransient<CompleteLeasedDryRunHandler>();
+        services.AddTransient<CompleteLeasedReadOnlyDryRunHandler>();
+        services.AddTransient<TerminateLeasedDryRunHandler>();
         services.AddTransient<StartLeasedExecutionHandler>();
         services.AddTransient<BeginLeasedPostValidationHandler>();
         services.AddTransient<RecordLeasedExecutionOutcomeHandler>();

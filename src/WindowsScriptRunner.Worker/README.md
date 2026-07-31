@@ -1,6 +1,6 @@
 # Worker
 
-The Phase 4 Worker coordinates durable queue leases but executes no scripts. Production registers zero `IJobWorkHandler` implementations, so it supports zero work kinds and cannot claim a job.
+The Worker coordinates durable queue leases. Phase 6 can register one production `IJobWorkHandler` through `WindowsScriptRunner.Automation`, but both package enablement and bootstrap registration are disabled by default.
 
 Startup requires `ConnectionStrings:WindowsScriptRunner` and a stable `Worker:NodeId` unless the development-only `Worker:AllowEphemeralNodeId` switch is explicitly enabled. The complete option reference is in `docs/worker-queue.md`.
 
@@ -11,4 +11,6 @@ Hosted services:
 - `JobQueueWorker` polls only handler-supported work, owns backoff/concurrency/renewal/drain behavior, and tracks every dispatch.
 - `ExpiredLeaseRecoveryService` revalidates and resolves expired leases in bounded batches.
 
-Apply the reviewed database migration before startup. `Persistence:ApplyMigrationsOnStartup` remains false by default. Do not add a production handler here until the Phase 5 contract is approved; handlers must resolve leases explicitly and must not receive raw parameter or credential material through queue descriptors.
+Apply the reviewed database migrations before startup. `Persistence:ApplyMigrationsOnStartup` remains false by default. Production handlers must resolve leases explicitly and must not receive raw parameter or credential material through queue descriptors.
+
+To enable the reviewed `windows.local-host-inventory` `1.0.0` package, set `Automation:LocalHostInventory:Enabled=true`, optionally set `RegisterOnStartup=true`, and configure absolute, non-overlapping `PowerShellExecution:AllowedScriptRoot` and `WorkingRoot` directories. The allowed root contains the deterministically copied `windows.local-host-inventory\1.0.0\Collect-LocalHostInventory.ps1`. The SQL candidate query advertises only its pinned DryRun/script-version route; unknown versions are never claimed.

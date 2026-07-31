@@ -13,7 +13,7 @@
 - Script SHA-256 metadata must contain exactly 64 hexadecimal characters.
 - Published script versions reject mutation.
 - Published Execute-capable script versions must also support DryRun; Execute job submissions enforce the same invariant defensively before policy capture.
-- Web has no direct reference to Worker or PowerShell.
+- Web has no direct reference to Worker, Automation, or PowerShell.
 - Domain references no solution, ASP.NET Core, Entity Framework Core, or SQL client assembly.
 - Submission captures trusted script risk plus Execute- and PostValidation-phase capabilities in an immutable job policy snapshot only after rejecting undefined risk and phase enum values.
 - New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured Phase 2 policy until future runtime governance is implemented.
@@ -37,14 +37,14 @@
 - Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
 - Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
-Authentication, authorization, executable signing, production trusted-artifact resolution, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-approved jobs after script disable, and production approval controls are not implemented.
+Authentication, authorization, executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, production approval controls, and durable report persistence are not implemented.
 
-## Phase 4 queue security
+## Queue security (Phase 4 foundation, Phase 6 routing)
 
-- Production registers no `IJobWorkHandler`, so it advertises zero work kinds and leases no jobs.
+- With Phase 6 disabled, production registers no `IJobWorkHandler`, advertises zero routes, and leases no jobs.
 - Worker continues to have no PowerShell project reference, `Process.Start`, `System.Diagnostics.Process`, or `System.Management.Automation` use.
 - Candidate and claimed-work descriptors contain no parameters, serialized values, credential-reference IDs, external identifiers, or script content.
-- The SQL candidate projection is bounded, parameterized, filters exact eligible status plus lease absence, and orders deterministically.
+- The SQL candidate projection is bounded, parameterized, filters exact eligible status, lease absence, and handler-supported `ScriptVersionId`, and orders deterministically.
 - Every worker-controlled mutation requires current lease ID, worker ID, and fencing token. Domain validation precedes mutation; stale audit and job state cannot commit.
 - Acquisition revalidates that the persisted worker is enabled and live. Heartbeat failure immediately pauses new claims, and prolonged inability to heartbeat fails the hosted service.
 - Renewal uses the existing fencing token and writes no routine audit. Loss or inability to renew safely cancels the handler.
@@ -56,7 +56,7 @@ Authentication, authorization, executable signing, production trusted-artifact r
 
 - PowerShell runs only as an external `pwsh.exe` process. Production projects contain no `Microsoft.PowerShell.SDK`, `System.Management.Automation`, runspace, `powershell.exe`, command-shell, or execution-policy-bypass dependency.
 - Runtime discovery is deterministic and validates fixed JSON metadata. PowerShell Core, Windows, minimum version, preview policy, and architecture are enforced, and the successful runtime is cached.
-- `TrustedPowerShellScript` has no public constructor. Phase 5 creates only the test fixture artifact through test-only internal access; there is no production resolver or arbitrary script API.
+- `TrustedPowerShellScript` has no public constructor. Phase 6 adds a PowerShell-owned factory accessible only to the reviewed Automation assembly; there is no public arbitrary script API.
 - The script must be an existing canonical local `.ps1` beneath the separator-normalized allowed root. UNC paths, device paths, alternate data streams, traversal, sibling-prefix escapes, and reparse-point components are rejected.
 - SHA-256 is recomputed with a read-only file handle immediately before startup and compared in constant time. A small close-to-process-start time-of-check/time-of-use race remains.
 - Parameter names use a conservative identifier grammar, must belong to the artifact allowlist, and are unique case-insensitively. Count and value length are bounded; null, NUL, leading-hyphen, and sensitive-classified values are rejected.
@@ -69,4 +69,21 @@ Authentication, authorization, executable signing, production trusted-artifact r
 - Root exit does not cancel execution or probe watchdogs while redirected pipes remain open. The full-tree fallback is invoked after root exit when descendants still retain inherited handles.
 - Execution IDs are reserved separately, directories are created with exclusive Windows semantics, and an internal open claim prevents a competing directory or reparse point from being accepted or replacing the execution root before cleanup.
 - Job Objects provide lifetime containment only. They do not restrict filesystem, registry, network, privileges, or the PowerShell language. The immediate post-start assignment has a small race because the process is not created suspended.
-- Web and Worker neither reference nor register the PowerShell project. The production Worker still registers no `IJobWorkHandler`, so Phase 5 cannot lease or execute queued work.
+- Web and Worker do not reference PowerShell directly. Only enabled Worker-side Automation composition registers the boundary.
+
+## Phase 6 automation-package security
+
+- `WindowsScriptRunner.Automation` contains exactly one production `.ps1`: `windows.local-host-inventory` version `1.0.0`.
+- The catalog compile-pins stable definition/version IDs, package name/version, ReadOnly risk, DryRun-only phase, relative path, SHA-256, minimum runtime, timeout, JSON format, and an empty parameter allowlist.
+- Enabled composition rejects a configured PowerShell minimum version lower than the package-pinned `7.4.0`; a stronger operator minimum remains permitted.
+- Configuration can only enable the known package, opt into registration, and choose the Phase 5 roots. It cannot redefine identity, path, hash, parameters, or script content.
+- Startup fails when an enabled artifact is absent, outside the trusted root, a reparse/path escape, or hash-mismatched. Trust is checked again immediately before process launch.
+- Bootstrap registration is disabled by default, transactional, auditable, and idempotent. It creates and publishes the exact immutable aggregate only when absent; any existing mismatch fails closed and is never overwritten.
+- SQL candidate discovery accepts exact `(JobWorkKind, ScriptVersionId)` routes. The production route set contains only the reviewed DryRun version; unknown packages and versions remain unclaimed.
+- Claimed descriptors contain only job/work/version and fenced lease metadata. The handler loads the job, script definition, version, and bindings in a fresh scope only after confirming current ownership.
+- The package defines no parameters. Defense-in-depth mapping rejects any definition or binding that is not compile-allowlisted, and rejects all sensitive and `SecureReference` definitions before boundary invocation.
+- The execution ID is deterministically derived from immutable `JobId`. The handler invokes only `IPowerShellExecutionBoundary`; process creation remains confined to PowerShell.
+- Success, nonzero exit, timeout, output overflow, trust failure, runtime/startup failure, and caller cancellation map to controlled lease-aware outcomes. Lease loss prevents stale terminal mutation, and uncertain persistence is left to expiration recovery.
+- The script performs only local, bounded inventory collection. It has no remoting, network, credential, installation, registry-write, or file-write behavior and does not enumerate software, users, environment variables, certificates, or network configuration.
+- Raw stdout, stderr, inventory JSON, argument values, script contents, roots, hashes, executable paths, connection strings, and environment values are not written to application logs or audit properties. Inventory JSON is not persisted in Phase 6.
+- This read-only operation is externally safe to retry under at-least-once coordination. The system does not claim exactly-once execution.

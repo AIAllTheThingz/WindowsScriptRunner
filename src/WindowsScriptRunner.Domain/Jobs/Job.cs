@@ -603,6 +603,28 @@ public sealed class Job
         _lease = null;
     }
 
+    public void TerminateDryRun(
+        JobLeaseCredentials credentials,
+        ExecutionOutcome outcome,
+        UserIdentity actingUser,
+        DateTimeOffset updatedUtc)
+    {
+        ValidateWorkLease(credentials, JobWorkKind.DryRun, updatedUtc);
+        var terminalStatus = outcome switch
+        {
+            ExecutionOutcome.Failed => JobStatus.Failed,
+            ExecutionOutcome.Cancelled => JobStatus.Cancelled,
+            ExecutionOutcome.TimedOut => JobStatus.TimedOut,
+            ExecutionOutcome.Blocked => JobStatus.Blocked,
+            ExecutionOutcome.NotRun => JobStatus.NotRun,
+            _ => throw new DomainValidationException(
+                "Leased dry-run work requires a controlled terminal outcome."),
+        };
+
+        ApplyTransition(terminalStatus, actingUser, updatedUtc);
+        _lease = null;
+    }
+
     public void CompleteRequestedValidation(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureRequestedPhase(

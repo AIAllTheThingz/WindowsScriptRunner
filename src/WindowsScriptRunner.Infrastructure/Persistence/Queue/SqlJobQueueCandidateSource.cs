@@ -15,12 +15,12 @@ public sealed class SqlJobQueueCandidateSource(
     private const int MaximumCandidateCount = 100;
 
     public async Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
-        IReadOnlySet<JobWorkKind> supportedWorkKinds,
+        IReadOnlySet<JobWorkRoute> supportedRoutes,
         int maximumCount,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(supportedWorkKinds);
+        ArgumentNullException.ThrowIfNull(supportedRoutes);
         cancellationToken.ThrowIfCancellationRequested();
         if (maximumCount is < 1 or > MaximumCandidateCount)
         {
@@ -28,29 +28,39 @@ public sealed class SqlJobQueueCandidateSource(
                 $"Queue candidate count must be between 1 and {MaximumCandidateCount}.");
         }
 
-        if (supportedWorkKinds.Any(workKind => !Enum.IsDefined(workKind)))
+        if (supportedRoutes.Any(route =>
+            route is null ||
+            route.ScriptVersionId is null ||
+            !Enum.IsDefined(route.WorkKind)))
         {
-            throw new DomainValidationException("Supported queue work kinds must be defined.");
+            throw new DomainValidationException("Supported queue routes must be valid.");
         }
 
-        if (supportedWorkKinds.Count == 0)
+        if (supportedRoutes.Count == 0)
         {
             return [];
         }
 
         _ = now;
-        var statuses = supportedWorkKinds
-            .Select(workKind => workKind switch
-            {
-                JobWorkKind.DryRun => JobStatus.DryRunQueued.ToString(),
-                JobWorkKind.Execute => JobStatus.ExecutionQueued.ToString(),
-                _ => throw new DomainValidationException("Supported queue work kind is undefined."),
-            })
+        var dryRunVersionIds = supportedRoutes
+            .Where(route => route.WorkKind == JobWorkKind.DryRun)
+            .Select(route => route.ScriptVersionId.Value)
+            .Distinct()
+            .ToArray();
+        var executeVersionIds = supportedRoutes
+            .Where(route => route.WorkKind == JobWorkKind.Execute)
+            .Select(route => route.ScriptVersionId.Value)
+            .Distinct()
             .ToArray();
         var candidates = await SqlExceptionTranslator.ExecuteAsync(
             () => dbContext.Jobs
                 .AsNoTracking()
-                .Where(job => statuses.Contains(job.Status) && job.Lease == null)
+                .Where(job =>
+                    job.Lease == null &&
+                    ((job.Status == nameof(JobStatus.DryRunQueued) &&
+                      dryRunVersionIds.Contains(job.ScriptVersionId)) ||
+                     (job.Status == nameof(JobStatus.ExecutionQueued) &&
+                      executeVersionIds.Contains(job.ScriptVersionId))))
                 .OrderBy(job => job.UpdatedUtc)
                 .ThenBy(job => job.CreatedUtc)
                 .ThenBy(job => job.Id)
@@ -59,6 +69,7 @@ public sealed class SqlJobQueueCandidateSource(
                 {
                     job.Id,
                     job.Status,
+                    job.ScriptVersionId,
                     job.CreatedUtc,
                     job.UpdatedUtc,
                 })
@@ -71,6 +82,7 @@ public sealed class SqlJobQueueCandidateSource(
                 candidate.Status == JobStatus.DryRunQueued.ToString()
                     ? JobWorkKind.DryRun
                     : JobWorkKind.Execute,
+                new ScriptVersionId(candidate.ScriptVersionId),
                 candidate.CreatedUtc,
                 candidate.UpdatedUtc))
             .ToArray();

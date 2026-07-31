@@ -26,6 +26,9 @@ public static class DependencyInjection
         services.AddSingleton<
             IPowerShellScriptTrustValidator,
             PowerShellScriptTrustValidator>();
+        services.AddSingleton<
+            IReviewedPowerShellArtifactFactory,
+            ReviewedPowerShellArtifactFactory>();
         services.AddSingleton<IPowerShellArgumentValidator, PowerShellArgumentValidator>();
         services.AddSingleton<IExecutionWorkingDirectory, ExecutionWorkingDirectory>();
         services.AddSingleton<IPowerShellExecutionBoundary, PowerShellExecutionBoundary>();

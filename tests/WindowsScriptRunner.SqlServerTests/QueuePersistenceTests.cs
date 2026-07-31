@@ -62,6 +62,13 @@ public sealed class QueuePersistenceTests
         await using var database = await SqlServerDatabase.CreateAsync();
         var version = SqlServerTestData.Version();
         var script = SqlServerTestData.Script(version);
+        var unsupportedVersion = SqlServerTestData.Version(version: "2.0.0");
+        var unsupportedScript = SqlServerTestData.Script(
+            unsupportedVersion,
+            name: "unsupported.script");
+        var unsupportedJob = SqlServerTestData.DryRunQueuedJob(
+            unsupportedScript,
+            unsupportedVersion);
         var dryRunJobs = Enumerable.Range(0, 3)
             .Select(_ => SqlServerTestData.DryRunQueuedJob(script, version))
             .ToArray();
@@ -70,11 +77,13 @@ public sealed class QueuePersistenceTests
         await using (var seed = new PersistenceTestScope(database))
         {
             await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Scripts.AddAsync(unsupportedScript, CancellationToken.None);
             foreach (var job in dryRunJobs.Append(executeJob).Append(submittedJob))
             {
                 await seed.Jobs.AddAsync(job, CancellationToken.None);
             }
 
+            await seed.Jobs.AddAsync(unsupportedJob, CancellationToken.None);
             await seed.UnitOfWork.CommitAsync(CancellationToken.None);
         }
 
@@ -82,22 +91,25 @@ public sealed class QueuePersistenceTests
         var firstToken = await scope.FencingTokens.GetNextAsync(CancellationToken.None);
         var secondToken = await scope.FencingTokens.GetNextAsync(CancellationToken.None);
         var dryRunCandidates = await scope.Candidates.FindCandidatesAsync(
-            new HashSet<JobWorkKind> { JobWorkKind.DryRun },
+            SqlServerTestData.Routes(version, JobWorkKind.DryRun),
             2,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
         var allDryRunCandidates = await scope.Candidates.FindCandidatesAsync(
-            new HashSet<JobWorkKind> { JobWorkKind.DryRun },
+            SqlServerTestData.Routes(version, JobWorkKind.DryRun),
             10,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
         var repeatedDryRunCandidates = await scope.Candidates.FindCandidatesAsync(
-            new HashSet<JobWorkKind> { JobWorkKind.DryRun },
+            SqlServerTestData.Routes(version, JobWorkKind.DryRun),
             10,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
         var allCandidates = await scope.Candidates.FindCandidatesAsync(
-            new HashSet<JobWorkKind> { JobWorkKind.DryRun, JobWorkKind.Execute },
+            SqlServerTestData.Routes(
+                version,
+                JobWorkKind.DryRun,
+                JobWorkKind.Execute),
             10,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
@@ -113,6 +125,7 @@ public sealed class QueuePersistenceTests
             repeatedDryRunCandidates.Select(candidate => candidate.JobId));
         Assert.Equal(4, allCandidates.Count);
         Assert.DoesNotContain(allCandidates, candidate => candidate.JobId == submittedJob.Id);
+        Assert.DoesNotContain(allCandidates, candidate => candidate.JobId == unsupportedJob.Id);
         Assert.All(
             typeof(JobQueueCandidate).GetProperties(),
             property => Assert.DoesNotContain(
@@ -146,6 +159,7 @@ public sealed class QueuePersistenceTests
                 new AcquireJobLeaseCommand(
                     job.Id,
                     JobWorkKind.Execute,
+                    job.ScriptVersionId,
                     worker.Id,
                     TimeSpan.FromMinutes(2),
                     TimeSpan.FromHours(1)),
@@ -239,14 +253,14 @@ public sealed class QueuePersistenceTests
         Assert.Equal(
             job.Id,
             Assert.Single(await discoveryOne.Candidates.FindCandidatesAsync(
-                new HashSet<JobWorkKind> { JobWorkKind.Execute },
+                SqlServerTestData.Routes(version, JobWorkKind.Execute),
                 10,
                 claimTime,
                 CancellationToken.None)).JobId);
         Assert.Equal(
             job.Id,
             Assert.Single(await discoveryTwo.Candidates.FindCandidatesAsync(
-                new HashSet<JobWorkKind> { JobWorkKind.Execute },
+                SqlServerTestData.Routes(version, JobWorkKind.Execute),
                 10,
                 claimTime,
                 CancellationToken.None)).JobId);
@@ -265,11 +279,11 @@ public sealed class QueuePersistenceTests
         var results = await Task.WhenAll(
             CaptureAsync(
                 () => firstHandler.HandleAsync(
-                    Command(job.Id, firstWorker.Id),
+                    Command(job.Id, job.ScriptVersionId, firstWorker.Id),
                     CancellationToken.None)),
             CaptureAsync(
                 () => secondHandler.HandleAsync(
-                    Command(job.Id, secondWorker.Id),
+                    Command(job.Id, job.ScriptVersionId, secondWorker.Id),
                     CancellationToken.None)));
 
         Assert.Single(results, result => result.Work is not null);
@@ -305,6 +319,7 @@ public sealed class QueuePersistenceTests
 
         await Task.WhenAll(workers.Select(worker => ClaimDiscoveredAsync(
             database,
+            version.Id,
             worker.Id,
             claimTime)));
 
@@ -645,7 +660,7 @@ public sealed class QueuePersistenceTests
         await using (var acquisition = new PersistenceTestScope(database))
         {
             claimed = await CreateAcquireHandler(acquisition, claimTime).HandleAsync(
-                Command(job.Id, worker.Id),
+                Command(job.Id, job.ScriptVersionId, worker.Id),
                 CancellationToken.None);
         }
 
@@ -717,6 +732,7 @@ public sealed class QueuePersistenceTests
 
     private static async Task ClaimDiscoveredAsync(
         SqlServerDatabase database,
+        ScriptVersionId scriptVersionId,
         WorkerNodeId workerId,
         DateTimeOffset claimTime)
     {
@@ -724,7 +740,10 @@ public sealed class QueuePersistenceTests
         await using (var discovery = new PersistenceTestScope(database))
         {
             candidates = await discovery.Candidates.FindCandidatesAsync(
-                new HashSet<JobWorkKind> { JobWorkKind.Execute },
+                new HashSet<JobWorkRoute>
+                {
+                    new(JobWorkKind.Execute, scriptVersionId),
+                },
                 100,
                 claimTime,
                 CancellationToken.None);
@@ -736,7 +755,10 @@ public sealed class QueuePersistenceTests
             try
             {
                 _ = await CreateAcquireHandler(attempt, claimTime).HandleAsync(
-                    Command(candidate.JobId, workerId),
+                    Command(
+                        candidate.JobId,
+                        candidate.ScriptVersionId,
+                        workerId),
                     CancellationToken.None);
             }
             catch (ApplicationConflictException)
@@ -759,7 +781,7 @@ public sealed class QueuePersistenceTests
         await SeedAsync(database, script, [job], [worker]);
         await using var acquisition = new PersistenceTestScope(database);
         var work = await CreateAcquireHandler(acquisition, claimTime).HandleAsync(
-            Command(job.Id, worker.Id),
+            Command(job.Id, job.ScriptVersionId, worker.Id),
             CancellationToken.None);
         return (job.Id, work);
     }
@@ -804,10 +826,14 @@ public sealed class QueuePersistenceTests
             unitOfWork ?? scope.UnitOfWork,
             new FixedClock(clock));
 
-    private static AcquireJobLeaseCommand Command(JobId jobId, WorkerNodeId workerId) =>
+    private static AcquireJobLeaseCommand Command(
+        JobId jobId,
+        ScriptVersionId scriptVersionId,
+        WorkerNodeId workerId) =>
         new(
             jobId,
             JobWorkKind.Execute,
+            scriptVersionId,
             workerId,
             TimeSpan.FromMinutes(2),
             TimeSpan.FromHours(1));

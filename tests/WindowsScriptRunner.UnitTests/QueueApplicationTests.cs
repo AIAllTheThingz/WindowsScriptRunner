@@ -144,6 +144,7 @@ public sealed class QueueApplicationTests
             new AcquireJobLeaseCommand(
                 fixture.Jobs.Job!.Id,
                 JobWorkKind.Execute,
+                fixture.Jobs.Job.ScriptVersionId,
                 workerId,
                 TimeSpan.FromMinutes(2),
                 TimeSpan.FromMinutes(1)),
@@ -173,6 +174,7 @@ public sealed class QueueApplicationTests
                 new AcquireJobLeaseCommand(
                     fixture.Jobs.Job!.Id,
                     JobWorkKind.Execute,
+                    fixture.Jobs.Job.ScriptVersionId,
                     workerId,
                     TimeSpan.FromMinutes(2),
                     TimeSpan.FromMinutes(1)),
@@ -270,6 +272,7 @@ public sealed class QueueApplicationTests
                 new AcquireJobLeaseCommand(
                     fixture.Jobs.Job!.Id,
                     JobWorkKind.Execute,
+                    fixture.Jobs.Job.ScriptVersionId,
                     workerId,
                     TimeSpan.FromMinutes(2),
                     TimeSpan.FromMinutes(1)),

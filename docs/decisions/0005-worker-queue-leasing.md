@@ -1,6 +1,6 @@
 # 0005: Worker queue leasing
 
-Status: Accepted for Phase 4
+Status: Accepted for Phase 4; route filtering extended in Phase 6
 
 ## Context
 
@@ -10,7 +10,7 @@ Multiple WindowsScriptRunner Worker processes must coordinate queued jobs withou
 
 Use a one-to-one aggregate-owned `JobLease` persisted in `wsr.JobLeases`, with a globally monotonic token from `wsr.JobLeaseFencingSequence`. Candidate discovery is a bounded projection over eligible statuses and lease absence. Acquisition is an optimistic race committed through the existing aggregate/audit unit of work. Every subsequent worker-controlled mutation requires lease ID, worker ID, and fencing token.
 
-Workers advertise only work kinds represented by registered `IJobWorkHandler` instances. No handler means no candidate query and no claim. Phase 4 production registers no handlers.
+Workers advertise only `(JobWorkKind, ScriptVersionId)` routes represented by registered `IJobWorkHandler` instances. No route means no candidate query and no claim. Enabled Phase 6 production registers only the reviewed inventory DryRun route; SQL excludes unsupported versions before acquisition.
 
 Leases are renewed periodically. Unstarted work can release safely. Expired active work is terminalized as timed out; expired unstarted work is requeued. Polling, heartbeat, renewal, and recovery use fresh scopes and bounded backoff. Shutdown drains tracked tasks for a configured interval and leaves potentially side-effecting active work to expire.
 
@@ -23,7 +23,7 @@ Leases are renewed periodically. Unstarted work can release safely. Expired acti
 - Sequence gaps and duplicate delivery attempts are expected.
 - The system provides at-least-once coordination, not exactly-once effects.
 - Future handlers must be cancellation-aware and make downstream effects idempotent or fenced.
-- Production cannot process work until a later phase deliberately registers a handler.
+- Production only processes routes deliberately registered by reviewed Worker-side composition.
 
 ## Alternatives not selected
 

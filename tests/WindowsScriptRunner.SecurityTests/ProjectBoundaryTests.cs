@@ -1,8 +1,10 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Xml.Linq;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Credentials;
 using WindowsScriptRunner.Domain.Exceptions;
@@ -23,6 +25,14 @@ public sealed class ProjectBoundaryTests
         {
             "WindowsScriptRunner.Application",
             ["WindowsScriptRunner.Contracts", "WindowsScriptRunner.Domain"]
+        },
+        {
+            "WindowsScriptRunner.Automation",
+            [
+                "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Domain",
+                "WindowsScriptRunner.PowerShell",
+            ]
         },
         {
             "WindowsScriptRunner.Infrastructure",
@@ -53,6 +63,7 @@ public sealed class ProjectBoundaryTests
             "WindowsScriptRunner.Worker",
             [
                 "WindowsScriptRunner.Application",
+                "WindowsScriptRunner.Automation",
                 "WindowsScriptRunner.Contracts",
                 "WindowsScriptRunner.Domain",
                 "WindowsScriptRunner.Infrastructure",
@@ -63,6 +74,7 @@ public sealed class ProjectBoundaryTests
 
     public static TheoryData<string, string> ForbiddenReferences => new()
     {
+        { "WindowsScriptRunner.Web", "WindowsScriptRunner.Automation" },
         { "WindowsScriptRunner.Web", "WindowsScriptRunner.PowerShell" },
         { "WindowsScriptRunner.Infrastructure", "WindowsScriptRunner.PowerShell" },
         { "WindowsScriptRunner.Domain", "WindowsScriptRunner.Infrastructure" },
@@ -100,6 +112,7 @@ public sealed class ProjectBoundaryTests
         var references = ReadProjectReferences("WindowsScriptRunner.Web");
 
         Assert.DoesNotContain("WindowsScriptRunner.Worker", references);
+        Assert.DoesNotContain("WindowsScriptRunner.Automation", references);
         Assert.DoesNotContain("WindowsScriptRunner.PowerShell", references);
     }
 
@@ -507,6 +520,8 @@ public sealed class ProjectBoundaryTests
             typeof(InspectJobLeaseQuery),
             typeof(StartLeasedDryRunCommand),
             typeof(CompleteLeasedDryRunCommand),
+            typeof(CompleteLeasedReadOnlyDryRunCommand),
+            typeof(TerminateLeasedDryRunCommand),
             typeof(StartLeasedExecutionCommand),
             typeof(BeginLeasedPostValidationCommand),
             typeof(RecordLeasedExecutionOutcomeCommand),
@@ -576,6 +591,94 @@ public sealed class ProjectBoundaryTests
                     null,
                     [],
                     false)));
+    }
+
+    [Fact]
+    public void AutomationConfigurationExposesOnlyEnablementFlags()
+    {
+        var properties = typeof(LocalHostInventoryPackageOptions)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.Equal(
+            [
+                nameof(LocalHostInventoryPackageOptions.Enabled),
+                nameof(LocalHostInventoryPackageOptions.RegisterOnStartup),
+            ],
+            properties.Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.All(properties, property => Assert.Equal(typeof(bool), property.PropertyType));
+    }
+
+    [Fact]
+    public void ReviewedProductionArtifactMatchesPinnedHashAndIsTheOnlyProductionScript()
+    {
+        var root = FindRepositoryRoot();
+        var automationRoot = Path.Combine(
+            root,
+            "src",
+            "WindowsScriptRunner.Automation");
+        var script = Assert.Single(
+            Directory.EnumerateFiles(
+                automationRoot,
+                "*.ps1",
+                SearchOption.AllDirectories),
+            path =>
+                !path.Contains(
+                    $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal) &&
+                !path.Contains(
+                    $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal));
+        var actualHash = Convert.ToHexString(
+            SHA256.HashData(File.ReadAllBytes(script)));
+
+        Assert.Equal(
+            "B85B29BBFC04DFB9C85F3FCC391E58C1EA0EF8AEEDDCB5B796D8968B3729C368",
+            actualHash);
+    }
+
+    [Fact]
+    public void AutomationDoesNotConstructProcessesOrConsumeMutableArtifactMetadata()
+    {
+        var source = ReadProjectSource("WindowsScriptRunner.Automation");
+        var optionsProperties = typeof(LocalHostInventoryPackageOptions)
+            .GetProperties()
+            .Select(property => property.Name)
+            .ToArray();
+
+        Assert.DoesNotContain("ProcessStartInfo", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Process.Start", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("new TrustedPowerShellScript", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            optionsProperties,
+            property => property.Contains("Path", StringComparison.OrdinalIgnoreCase) ||
+                property.Contains("Hash", StringComparison.OrdinalIgnoreCase) ||
+                property.Contains("Parameter", StringComparison.OrdinalIgnoreCase) ||
+                property.Contains("Command", StringComparison.OrdinalIgnoreCase) ||
+                property.Contains("Script", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AutomationLoggingAndAuditingDoNotConsumeOutputArgumentsOrInventory()
+    {
+        var automationRoot = Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "WindowsScriptRunner.Automation");
+        var source = string.Join(
+            Environment.NewLine,
+            new[]
+            {
+                "LocalHostInventoryJobWorkHandler.cs",
+                "LocalHostInventoryPackageRegistrar.cs",
+                "LocalHostInventoryPackageStartupService.cs",
+                "LocalHostInventoryResultMapper.cs",
+            }.Select(file => File.ReadAllText(Path.Combine(automationRoot, file))));
+
+        Assert.DoesNotContain(".StandardOutput", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(".StandardError", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SerializedValue", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Environment.MachineName", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetEnvironmentVariables", source, StringComparison.Ordinal);
     }
 
     private static ScriptVersion CreateVersion(string path) =>

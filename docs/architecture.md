@@ -1,8 +1,8 @@
 # Architecture
 
-The web application and worker are separate processes. The web process must never execute PowerShell directly. It will eventually submit work through application contracts, while the worker will coordinate job execution.
+The web application and Worker are separate processes. Web never executes PowerShell or references the PowerShell or Automation projects. The Worker is the only production composition root that may enable the reviewed automation package.
 
-The Domain project remains independent of all outer layers and owns aggregates and lifecycle invariants. Application coordinates use cases through domain-specific repository, audit, clock, and unit-of-work interfaces. Infrastructure implements those persistence contracts with EF Core and SQL Server. The Phase 5 PowerShell project owns an out-of-process PowerShell 7 boundary and has no production-project dependency. Only its integration tests invoke the boundary.
+The Domain project remains independent of all outer layers and owns aggregates and lifecycle invariants. Application coordinates use cases through domain-specific repository, audit, clock, and unit-of-work interfaces. Infrastructure implements those persistence contracts with EF Core and SQL Server. PowerShell owns the complete out-of-process PowerShell 7 boundary. Automation owns the single reviewed production artifact, catalog, registration, parameter/result mapping, and lease-aware handler.
 
 ```text
 Browser
@@ -15,16 +15,17 @@ Web --> Application --> Domain
 
 Worker --> Application --> Domain
    |----> Infrastructure
-   +----> Reporting
+   |----> Reporting
+   +----> Automation --> PowerShell --> reviewed pwsh.exe child process
 
-PowerShellTests --> PowerShell boundary --> controlled pwsh.exe child process
+PowerShellTests --> PowerShell boundary --> controlled test and reviewed package processes
 ```
 
 Arrows represent compile-time dependencies. Domain has no solution-project dependencies.
 
-Contracts contains immutable transport DTOs and does not reference Domain. Application maps Domain objects to safe contract responses. Web and Worker are composition roots: both register Infrastructure, while neither references EF Core or `Microsoft.Data.SqlClient` directly. Worker does not reference the PowerShell project.
+Contracts contains immutable transport DTOs and does not reference Domain. Application maps Domain objects to safe contract responses. Web and Worker are composition roots: both register Infrastructure, while neither references EF Core or `Microsoft.Data.SqlClient` directly. Worker references Automation but not PowerShell directly; Automation is the narrow reviewed bridge and references only Application, Domain, and PowerShell.
 
-Security tests parse each source `.csproj` and compare its `ProjectReference` entries with an explicit allowlist. Compiled-reference checks remain supplementary. The source-level rules explicitly prohibit Web from referencing Worker or PowerShell and require Domain and Contracts to have no project references.
+Security tests parse each source `.csproj` and compare its `ProjectReference` entries with an explicit allowlist. Compiled-reference checks remain supplementary. The source-level rules explicitly prohibit Web from referencing Worker, Automation, or PowerShell and require Domain and Contracts to have no project references.
 
 Phase 2 application handlers remain orchestration-only. They load domain objects, validate related references, delegate invariants to Domain, construct bounded audit events, then update repositories and commit. No handler accepts caller-provided risk, Execute capability, parameter sensitivity, parameter type, raw credential material, or generic completion status overrides. Execution terminalization is modeled as a dedicated outcome handler so an active `JobExecution` cannot be left open by a direct job-status update.
 
@@ -46,7 +47,7 @@ Repositories track one aggregate graph per scoped `WindowsScriptRunnerDbContext`
 
 The Worker composition root registers Application and Infrastructure plus four focused hosted services: startup registration, persistent heartbeat, handler-gated queue polling, and expired-lease recovery. Startup registration commits a stable `WorkerNode` identity, its complete configured capability set, and its first heartbeat atomically. Every subsequent heartbeat and every lease operation creates a fresh dependency-injection scope.
 
-Candidate discovery returns identifiers and queue metadata only. It does not load parameters, credential references, script contents, or the aggregate graph. Supported `JobWorkKind` values come exclusively from the startup `IJobWorkHandler` registry. The production Phase 4 registry contains zero handlers, so it performs no candidate query and cannot acquire a lease. Test-only handlers exercise coordination without crossing the PowerShell boundary.
+Candidate discovery returns identifiers and queue metadata only. It does not load parameters, credential references, script contents, or the aggregate graph. Supported `(JobWorkKind, ScriptVersionId)` routes come exclusively from the immutable startup `IJobWorkHandler` registry. When Phase 6 is disabled the registry is empty. When enabled, it contains only the DryRun route for the reviewed inventory version. Unknown versions are filtered in SQL and remain unclaimed.
 
 `Job` owns its optional `JobLease`. Persisted job handlers and worker handlers obtain SQL Server UTC through the scoped coordination clock; lease acquisition also obtains a monotonic SQL fencing token. Queue entry, registration, heartbeat, acquisition, renewal, leased lifecycle validation, and expiration recovery therefore share one time authority across hosts. Terminal lease resolution uses a bounded retry only when the job row is unchanged and the same fenced owner renewed the lease concurrently. The queue tracks every dispatch, renews through fresh scopes, cancels work after lease loss, limits local concurrency, and drains for a configured interval at shutdown. Expired leases are independently revalidated and recovered. This produces at-least-once coordination; it does not promise exactly-once external side effects.
 
@@ -62,4 +63,14 @@ Every execution atomically reserves and exclusively creates `<working-root>\<exe
 
 Windows Job Objects apply `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; `Process.Kill(entireProcessTree: true)` is the fallback and retry path, including when the root has already exited but descendants remain. This controls process lifetime, not filesystem, registry, network, token, or privilege access. Assignment occurs immediately after startup, so a small process-start-to-assignment race remains. The trusted hash check also has a small check-to-process-start filesystem race. Phase 5 makes neither an operating-system sandbox nor an absolute malicious-filesystem claim.
 
-No Web or Worker composition root registers this boundary. The production handler registry remains empty, and no queue status, lease, or database row changes because Phase 5 exists. Phase 6 may introduce a reviewed handler that resolves a production trusted artifact and maps leased work into this boundary; that integration is not present here.
+Web never registers the boundary. Worker calls the Automation composition extension; only explicit Phase 6 package enablement causes that extension to register the PowerShell boundary and the single reviewed handler.
+
+## Phase 6 first automation package
+
+`WindowsScriptRunner.Automation` pins package ID `windows.local-host-inventory`, semantic version `1.0.0`, stable definition/version GUIDs, relative artifact path, SHA-256, empty parameter allowlist, ReadOnly risk, DryRun-only behavior, JSON report format, minimum PowerShell version, and one-minute timeout. None of those trust values come from configuration, a request, or SQL. Configuration can only enable the known package, opt into registration, and select the Phase 5 trusted and working roots.
+
+The artifact catalog first compares the loaded immutable `ScriptDefinition` and published `ScriptVersion` with every pinned value. A PowerShell-owned reviewed-artifact factory then resolves the relative path beneath the configured root and performs the Phase 5 path/reparse/hash validation. The execution boundary repeats trust validation immediately before launch.
+
+The singleton handler creates fresh scopes to inspect fenced ownership, load the aggregate and immutable script metadata, start DryRun, and terminalize. It derives the PowerShell execution ID from the immutable `JobId`, maps no arguments because the package defines none, and invokes only `IPowerShellExecutionBoundary`. Success atomically moves the ReadOnly non-Execute job to `Completed` and removes the lease. Nonzero exit, timeout, output overflow, trust failure, runtime failure, and caller cancellation map to bounded terminal outcomes. Lease loss or uncertain terminal persistence never permits a stale mutation; expiration recovery remains authoritative.
+
+The script emits one bounded JSON document with schema version, computer name, OS description/version/architecture, PowerShell version, and UTC collection time. It does not enumerate software, users, environment variables, certificates, network data, or secrets. Stdout and stderr are used only for in-memory result classification and are not logged or persisted. Durable inventory/report persistence is Phase 7 work.

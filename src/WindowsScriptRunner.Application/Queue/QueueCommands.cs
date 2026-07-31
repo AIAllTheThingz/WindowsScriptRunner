@@ -8,6 +8,7 @@ namespace WindowsScriptRunner.Application.Queue;
 public sealed record AcquireJobLeaseCommand(
     JobId JobId,
     JobWorkKind WorkKind,
+    ScriptVersionId ScriptVersionId,
     WorkerNodeId WorkerNodeId,
     TimeSpan LeaseDuration,
     TimeSpan WorkerStaleAfter);
@@ -35,6 +36,17 @@ public sealed record StartLeasedDryRunCommand(
 public sealed record CompleteLeasedDryRunCommand(
     JobId JobId,
     JobLeaseCredentials Credentials,
+    UserIdentity ActingUser);
+
+public sealed record CompleteLeasedReadOnlyDryRunCommand(
+    JobId JobId,
+    JobLeaseCredentials Credentials,
+    UserIdentity ActingUser);
+
+public sealed record TerminateLeasedDryRunCommand(
+    JobId JobId,
+    JobLeaseCredentials Credentials,
+    ExecutionOutcome Outcome,
     UserIdentity ActingUser);
 
 public sealed record StartLeasedExecutionCommand(

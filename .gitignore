@@ -6,7 +6,7 @@ TestResults/
 *.user
 *.suo
 *.ncrunch*
-artifacts/
+/artifacts/
 coverage/
 *.log
 .DS_Store
