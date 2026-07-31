@@ -1023,6 +1023,39 @@ public sealed class JobAggregateTests
     }
 
     [Fact]
+    public void LegacyExecuteStateCannotQueueLeaseOrStartWithoutAcceptedDryRunEvidence()
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version, RiskLevel.Medium),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        var updated = job.UpdatedUtc;
+
+        ForceStatus(job, JobStatus.Approved);
+        Assert.Throws<DomainValidationException>(
+            () => job.QueueExecution(TestDomainFactory.OtherUser, updated.AddMinutes(1)));
+
+        ForceStatus(job, JobStatus.ExecutionQueued);
+        Assert.Throws<DomainValidationException>(
+            () => job.AcquireWorkLease(
+                JobLeaseId.New(),
+                WorkerNodeId.New(),
+                JobWorkKind.Execute,
+                1,
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1),
+                updated.AddMinutes(2)));
+
+        ForceStatus(job, JobStatus.Claimed);
+        Assert.Throws<DomainValidationException>(
+            () => job.StartExecutionAttempt(
+                WorkerNodeId.New(),
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1)));
+    }
+
+    [Fact]
     public void AggregateBoundariesRejectNullIdentifiers()
     {
         var version = TestDomainFactory.Version();

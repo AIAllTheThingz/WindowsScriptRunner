@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Application.Workers;
 using WindowsScriptRunner.Domain;
@@ -169,6 +170,26 @@ public sealed class WorkerFoundationTests
             descriptor => descriptor.ServiceType.FullName?.Contains(
                 "PowerShell",
                 StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public void SharedWorkerApplicationRegistrationExcludesWebActorHandlers()
+    {
+        var services = new ServiceCollection();
+        services.AddApplication();
+
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IJobFingerprintService));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ApproveJobHandler));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(RejectJobHandler));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(GetApprovalReviewHandler));
     }
 
     private static WorkerOptionsValidator Validator(

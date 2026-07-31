@@ -84,7 +84,16 @@ public partial class AddTrustedDryRunApprovalEvidence : Migration
                    N'Cancelled legacy Execute job because trusted accepted DryRun evidence was not persisted before Phase 8.'
             FROM [wsr].[Jobs]
             WHERE [RequestedPhase] = N'Execute'
-              AND [Status] IN (N'DryRunCompleted', N'AwaitingApproval');
+              AND [Status] IN (N'DryRunCompleted', N'AwaitingApproval', N'Approved', N'ExecutionQueued', N'Claimed');
+
+            DELETE [wsr].[JobLeases]
+            WHERE [JobId] IN
+            (
+                SELECT [Id]
+                FROM [wsr].[Jobs]
+                WHERE [RequestedPhase] = N'Execute'
+                  AND [Status] IN (N'DryRunCompleted', N'AwaitingApproval', N'Approved', N'ExecutionQueued', N'Claimed')
+            );
 
             UPDATE [wsr].[Jobs]
             SET [Status] = N'Cancelled',
@@ -94,7 +103,7 @@ public partial class AddTrustedDryRunApprovalEvidence : Migration
                     ELSE @OccurredUtc
                 END
             WHERE [RequestedPhase] = N'Execute'
-              AND [Status] IN (N'DryRunCompleted', N'AwaitingApproval');
+              AND [Status] IN (N'DryRunCompleted', N'AwaitingApproval', N'Approved', N'ExecutionQueued', N'Claimed');
             """);
 
         migrationBuilder.CreateIndex(

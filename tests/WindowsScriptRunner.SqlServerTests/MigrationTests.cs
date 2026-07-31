@@ -213,7 +213,7 @@ public sealed class MigrationTests
     }
 
     [Fact]
-    public async Task Phase8MigrationCancelsLegacyApprovalStatesWithoutFabricatingEvidence()
+    public async Task Phase8MigrationCancelsLegacyPreExecutionStatesWithoutFabricatingEvidence()
     {
         await using var database = await SqlServerDatabase.CreateAsync(
             applyMigrations: false);
@@ -225,6 +225,11 @@ public sealed class MigrationTests
         var versionId = Guid.NewGuid();
         var dryRunCompletedJobId = Guid.NewGuid();
         var awaitingApprovalJobId = Guid.NewGuid();
+        var approvedJobId = Guid.NewGuid();
+        var executionQueuedJobId = Guid.NewGuid();
+        var claimedJobId = Guid.NewGuid();
+        var workerNodeId = Guid.NewGuid();
+        var leaseId = Guid.NewGuid();
         var timestamp = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -242,7 +247,20 @@ public sealed class MigrationTests
                 ([Id], [ScriptDefinitionId], [ScriptVersionId], [RequestedPhase], [Status], [RequestedBy], [LastActingUser], [CreatedUtc], [UpdatedUtc], [SubmittedUtc], [PolicyScriptDefinitionId], [PolicyScriptVersionId], [PolicyRiskLevel], [PolicySupportsExecute], [PolicySupportsPostValidation])
             VALUES
                 ({dryRunCompletedJobId}, {definitionId}, {versionId}, N'Execute', N'DryRunCompleted', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
-                ({awaitingApprovalJobId}, {definitionId}, {versionId}, N'Execute', N'AwaitingApproval', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false});
+                ({awaitingApprovalJobId}, {definitionId}, {versionId}, N'Execute', N'AwaitingApproval', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({approvedJobId}, {definitionId}, {versionId}, N'Execute', N'Approved', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({executionQueuedJobId}, {definitionId}, {versionId}, N'Execute', N'ExecutionQueued', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({claimedJobId}, {definitionId}, {versionId}, N'Execute', N'Claimed', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false});
+
+            INSERT INTO [wsr].[WorkerNodes]
+                ([Id], [Name], [NormalizedName], [IsEnabled], [RegisteredUtc], [LastHeartbeatUtc])
+            VALUES
+                ({workerNodeId}, N'legacy-phase8-migration-worker', N'LEGACY-PHASE8-MIGRATION-WORKER', {true}, {timestamp}, {timestamp});
+
+            INSERT INTO [wsr].[JobLeases]
+                ([JobId], [LeaseId], [WorkerNodeId], [WorkKind], [FencingToken], [AcquiredUtc], [LastRenewedUtc], [ExpiresUtc])
+            VALUES
+                ({claimedJobId}, {leaseId}, {workerNodeId}, N'Execute', 1, {timestamp}, {timestamp}, {timestamp.AddMinutes(1)});
             """);
 
         await migrator.MigrateAsync();
@@ -251,11 +269,14 @@ public sealed class MigrationTests
             """
             SELECT [Status] AS [Value]
             FROM [wsr].[Jobs]
-            WHERE [Id] IN ({0}, {1})
+            WHERE [Id] IN ({0}, {1}, {2}, {3}, {4})
             ORDER BY [Id]
             """,
             dryRunCompletedJobId,
-            awaitingApprovalJobId).ToListAsync();
+            awaitingApprovalJobId,
+            approvedJobId,
+            executionQueuedJobId,
+            claimedJobId).ToListAsync();
         var auditCount = await context.Database.SqlQueryRaw<int>(
             """
             SELECT COUNT(*) AS [Value]
@@ -264,19 +285,29 @@ public sealed class MigrationTests
               AND [Actor] = N'system:phase-8-evidence-migration'
             """).SingleAsync();
 
-        Assert.Equal(["Cancelled", "Cancelled"], statuses);
-        Assert.Equal(2, auditCount);
+        Assert.Equal(["Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled"], statuses);
+        Assert.Equal(5, auditCount);
+        Assert.Equal(0, await context.Database.SqlQueryRaw<int>(
+            """
+            SELECT COUNT(*) AS [Value]
+            FROM [wsr].[JobLeases]
+            WHERE [JobId] = {0}
+            """,
+            claimedJobId).SingleAsync());
 
         await migrator.MigrateAsync(Phase7Migration);
-        Assert.Equal(2, await context.Database.SqlQueryRaw<int>(
+        Assert.Equal(5, await context.Database.SqlQueryRaw<int>(
             """
             SELECT COUNT(*) AS [Value]
             FROM [wsr].[Jobs]
-            WHERE [Id] IN ({0}, {1})
+            WHERE [Id] IN ({0}, {1}, {2}, {3}, {4})
               AND [Status] = N'Cancelled'
             """,
             dryRunCompletedJobId,
-            awaitingApprovalJobId).SingleAsync());
+            awaitingApprovalJobId,
+            approvedJobId,
+            executionQueuedJobId,
+            claimedJobId).SingleAsync());
     }
 
     [Fact]

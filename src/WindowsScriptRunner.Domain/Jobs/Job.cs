@@ -694,7 +694,10 @@ public sealed class Job
     public void QueueExecution(UserIdentity actingUser, DateTimeOffset updatedUtc)
     {
         EnsureExecuteRequested("Only Execute requests can queue execution.");
-        ApplyTransition(JobStatus.ExecutionQueued, actingUser, updatedUtc);
+        ValidateTransition(JobStatus.ExecutionQueued, actingUser, updatedUtc);
+        RequireStableApprovalRequester();
+        RequireAcceptedDryRunEvidence();
+        ApplyValidatedTransition(JobStatus.ExecutionQueued, actingUser, updatedUtc);
     }
 
     internal void Claim(UserIdentity actingUser, DateTimeOffset updatedUtc)
@@ -852,6 +855,8 @@ public sealed class Job
                 break;
             case JobWorkKind.Execute when Status == JobStatus.ExecutionQueued:
                 EnsureExecuteRequested("Only Execute requests can be leased for execution.");
+                RequireStableApprovalRequester();
+                RequireAcceptedDryRunEvidence();
                 JobStatusPolicy.EnsureAllowed(Status, JobStatus.Claimed);
                 break;
             default:
@@ -995,6 +1000,8 @@ public sealed class Job
         }
 
         ValidateTransition(JobStatus.Executing, actingUser, startedUtc);
+        RequireStableApprovalRequester();
+        RequireAcceptedDryRunEvidence();
         var execution = new JobExecution(
             JobExecutionId.New(),
             _executions.Count + 1,
