@@ -1,6 +1,6 @@
 # Approval fingerprints
 
-An approval fingerprint is trusted review evidence, not a browser-generated approval claim. Phase 8 implements `IJobFingerprintService` with `ApprovalFingerprintService` in Application. Its canonical format version is `windows-script-runner-approval-v1` and its output is one lowercase 64-character SHA-256 value.
+An approval fingerprint is trusted review evidence, not a browser-generated approval claim. Phase 8 implements `IJobFingerprintService` with `ApprovalFingerprintService` in Application. Its canonical format version is `windows-script-runner-approval-v2` and its output is one lowercase 64-character SHA-256 value.
 
 ## Preconditions
 
@@ -9,7 +9,7 @@ The service fails with a bounded application conflict unless all of the followin
 - the job is `AwaitingApproval` and requested `Execute`;
 - the immutable policy snapshot matches the current pinned definition and version;
 - the version remains published; and
-- at least one execution has accepted dry-run evidence: start and completion timestamps plus `Succeeded` or `SucceededWithWarnings` outcome.
+- immutable accepted `JobDryRunEvidence` is present for a completed `DryRun`.
 
 ## Bound data
 
@@ -20,7 +20,7 @@ The canonical byte sequence length-prefixes every named field and includes:
 - captured policy definition/version IDs, risk, Execute capability, and post-validation capability;
 - targets sorted case-insensitively then ordinally, including target name, add time, and stable adding actor;
 - parameters sorted the same way, including exact stored serialized values; and
-- every execution in attempt order, including execution/worker identity, timestamps, outcome, exit code, plus the accepted dry-run evidence count.
+- accepted DryRun evidence: work kind, trusted lifecycle source, worker/lease/fencing provenance when the lifecycle was leased, and execution-window opened/completed UTC timestamps.
 
 This binds the reviewed script version, requested phase, targets, parameters, execution window, and accepted dry-run evidence. A changed value produces a different fingerprint. Sensitive and SecureReference values can influence the internal calculation when they are part of the pinned job binding, but they are never displayed, logged, audited, or returned by the fingerprint service.
 

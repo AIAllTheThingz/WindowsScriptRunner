@@ -30,6 +30,10 @@ public sealed record GetLocalHostInventoryReportByJobIdQuery(JobId JobId);
 
 public sealed record ListLocalHostInventoryReportsQuery(int MaximumCount);
 
+public sealed record ListLocalHostInventoryReportsForRequesterQuery(
+    int MaximumCount,
+    UserIdentity Requester);
+
 public sealed class CompleteLocalHostInventoryDryRunHandler(
     IJobRepository jobRepository,
     IScriptDefinitionRepository scriptRepository,
@@ -363,15 +367,35 @@ public sealed class ListLocalHostInventoryReportsHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
-        if (query.MaximumCount is < 1 or > MaximumReportCount)
-        {
-            throw new ApplicationValidationException(
-                $"Report list size must be between 1 and {MaximumReportCount}.");
-        }
+        ValidateMaximumCount(query.MaximumCount);
 
         var reports = await reportRepository.ListLocalHostInventoryAsync(
             query.MaximumCount,
             cancellationToken);
         return reports.Select(GetLocalHostInventoryReportHandler.ToResponse).ToArray();
+    }
+
+    public async Task<IReadOnlyList<LocalHostInventoryReportResponse>> HandleAsync(
+        ListLocalHostInventoryReportsForRequesterQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(query.Requester);
+        ValidateMaximumCount(query.MaximumCount);
+
+        var reports = await reportRepository.ListLocalHostInventoryForRequesterAsync(
+            query.Requester,
+            query.MaximumCount,
+            cancellationToken);
+        return reports.Select(GetLocalHostInventoryReportHandler.ToResponse).ToArray();
+    }
+
+    private static void ValidateMaximumCount(int maximumCount)
+    {
+        if (maximumCount is < 1 or > MaximumReportCount)
+        {
+            throw new ApplicationValidationException(
+                $"Report list size must be between 1 and {MaximumReportCount}.");
+        }
     }
 }

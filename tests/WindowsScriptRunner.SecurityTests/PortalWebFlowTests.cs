@@ -244,6 +244,7 @@ public sealed class PortalWebFlowTests
             factory.State.Report.Inventory.ComputerName,
             await unprivilegedList.Content.ReadAsStringAsync(),
             StringComparison.Ordinal);
+        Assert.Equal(2, factory.State.RequesterReportListCount);
         Assert.Equal(HttpStatusCode.Forbidden, unprivilegedLookup.StatusCode);
     }
 
@@ -570,6 +571,7 @@ public sealed class PortalWebFlowTests
         internal JobReport Report { get; }
         internal string SecureReference { get; }
         internal int AuditCount { get; set; }
+        internal int RequesterReportListCount { get; set; }
 
         internal static PortalState Create()
         {
@@ -732,6 +734,17 @@ public sealed class PortalWebFlowTests
             int maximumCount,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<JobReport>>(maximumCount > 0 ? [state.Report] : []);
+
+        public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+            UserIdentity requester,
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(requester);
+            state.RequesterReportListCount++;
+            return Task.FromResult<IReadOnlyList<JobReport>>(
+                maximumCount > 0 && requester == state.Job.RequestedBy ? [state.Report] : []);
+        }
 
         public Task AddAsync(JobReport report, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

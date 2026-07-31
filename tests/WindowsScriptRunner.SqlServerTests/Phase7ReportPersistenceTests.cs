@@ -143,12 +143,28 @@ public sealed class Phase7ReportPersistenceTests
         Assert.Equal(running.JobId, report.JobId);
         Assert.Equal(JobReportType.LocalHostInventory, report.ReportType);
         Assert.Equal(ReportFormat.Json, report.Format);
+        var requesterReports = await verification.Reports.ListLocalHostInventoryForRequesterAsync(
+            new UserIdentity("DOMAIN\\phase7-sql"),
+            1,
+            CancellationToken.None);
+        var otherRequesterReports = await verification.Reports.ListLocalHostInventoryForRequesterAsync(
+            new UserIdentity("DOMAIN\\different-requester"),
+            1,
+            CancellationToken.None);
+
+        Assert.Single(requesterReports);
+        Assert.Empty(otherRequesterReports);
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => verification.Reports.ListLocalHostInventoryAsync(
                 0,
                 CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => verification.Reports.ListLocalHostInventoryAsync(
+                101,
+                CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Reports.ListLocalHostInventoryForRequesterAsync(
+                new UserIdentity("DOMAIN\\phase7-sql"),
                 101,
                 CancellationToken.None));
     }

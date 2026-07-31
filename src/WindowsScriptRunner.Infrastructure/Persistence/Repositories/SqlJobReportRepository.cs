@@ -6,6 +6,7 @@ using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Reports;
+using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.Infrastructure.Persistence.Entities;
 using WindowsScriptRunner.Infrastructure.Persistence.Mapping;
 
@@ -51,6 +52,33 @@ public sealed class SqlJobReportRepository(
                 .Where(entity => entity.ReportType == nameof(Domain.JobReportType.LocalHostInventory))
                 .OrderByDescending(entity => entity.CreatedUtc)
                 .ThenBy(entity => entity.Id)
+                .Take(maximumCount)
+                .Include(entity => entity.Inventory)
+                .AsNoTracking()
+                .ToListAsync(cancellationToken),
+            logger);
+        return entities.Select(entity => Map(entity)!).ToArray();
+    }
+
+    public async Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+        UserIdentity requester,
+        int maximumCount,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(requester);
+        if (maximumCount is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumCount));
+        }
+
+        var entities = await SqlExceptionTranslator.ExecuteAsync(
+            () =>
+                (from report in dbContext.JobReports
+                 join job in dbContext.Jobs on report.JobId equals job.Id
+                 where report.ReportType == nameof(Domain.JobReportType.LocalHostInventory) &&
+                       job.RequestedBy == requester.Value
+                 orderby report.CreatedUtc descending, report.Id
+                 select report)
                 .Take(maximumCount)
                 .Include(entity => entity.Inventory)
                 .AsNoTracking()

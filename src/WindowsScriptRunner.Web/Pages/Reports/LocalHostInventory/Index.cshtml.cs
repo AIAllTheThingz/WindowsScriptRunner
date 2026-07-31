@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Reports;
+using WindowsScriptRunner.Contracts.Reports;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Web.Security;
 
@@ -15,7 +17,8 @@ public sealed class IndexModel(
     ListLocalHostInventoryReportsHandler listReportsHandler,
     ListJobAuthorizationResourcesHandler listAuthorizationResourcesHandler,
     GetJobHandler getJobHandler,
-    IAuthorizationService authorizationService) : PageModel
+    IAuthorizationService authorizationService,
+    ICurrentUser currentUser) : PageModel
 {
     private const int MaximumReportCount = 100;
 
@@ -48,9 +51,32 @@ public sealed class IndexModel(
             }
         }
 
-        var reports = await listReportsHandler.HandleAsync(
-            new ListLocalHostInventoryReportsQuery(MaximumReportCount),
-            cancellationToken);
+        var canViewAllReports = (await authorizationService.AuthorizeAsync(
+            User,
+            AuthorizationPolicies.ReportReader)).Succeeded;
+        IReadOnlyList<LocalHostInventoryReportResponse> reports;
+        if (canViewAllReports)
+        {
+            reports = await listReportsHandler.HandleAsync(
+                new ListLocalHostInventoryReportsQuery(MaximumReportCount),
+                cancellationToken);
+        }
+        else
+        {
+            try
+            {
+                reports = await listReportsHandler.HandleAsync(
+                    new ListLocalHostInventoryReportsForRequesterQuery(
+                        MaximumReportCount,
+                        currentUser.User),
+                    cancellationToken);
+            }
+            catch (AuthenticationMappingException)
+            {
+                return Forbid();
+            }
+        }
+
         if (reports.Count == 0)
         {
             return Page();

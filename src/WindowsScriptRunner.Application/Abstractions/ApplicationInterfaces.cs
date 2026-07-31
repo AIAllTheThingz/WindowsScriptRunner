@@ -86,6 +86,10 @@ public interface IJobReportRepository
     Task<IReadOnlyList<JobReport>> ListLocalHostInventoryAsync(
         int maximumCount,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+        UserIdentity requester,
+        int maximumCount,
+        CancellationToken cancellationToken);
     Task AddAsync(JobReport report, CancellationToken cancellationToken);
 }
 

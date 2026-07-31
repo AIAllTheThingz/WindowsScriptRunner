@@ -197,6 +197,15 @@ public sealed class Phase7ApplicationTests
         Assert.Equal("LocalHostInventory", report.ReportType);
         Assert.Equal(1, fixture.Reports.ListCallCount);
         Assert.Equal(1, fixture.Reports.LastListMaximumCount);
+
+        var requesterReports = await listHandler.HandleAsync(
+            new ListLocalHostInventoryReportsForRequesterQuery(
+                1,
+                fixture.Job.RequestedBy),
+            CancellationToken.None);
+
+        Assert.Single(requesterReports);
+        Assert.Equal(fixture.Job.RequestedBy, fixture.Reports.LastRequester);
         Assert.DoesNotContain(
             report.GetType().GetProperties(),
             property => property.Name.Contains("Standard", StringComparison.OrdinalIgnoreCase) ||
@@ -460,6 +469,7 @@ public sealed class Phase7ApplicationTests
         internal int AddCount { get; private set; }
         internal int ListCallCount { get; private set; }
         internal int? LastListMaximumCount { get; private set; }
+        internal UserIdentity? LastRequester { get; private set; }
 
         public Task<JobReport?> GetByIdAsync(
             JobReportId id,
@@ -483,6 +493,19 @@ public sealed class Phase7ApplicationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             ListCallCount++;
+            LastListMaximumCount = maximumCount;
+            IReadOnlyList<JobReport> reports = Report is null ? [] : [Report];
+            return Task.FromResult(reports);
+        }
+
+        public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+            UserIdentity requester,
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentNullException.ThrowIfNull(requester);
+            LastRequester = requester;
             LastListMaximumCount = maximumCount;
             IReadOnlyList<JobReport> reports = Report is null ? [] : [Report];
             return Task.FromResult(reports);
