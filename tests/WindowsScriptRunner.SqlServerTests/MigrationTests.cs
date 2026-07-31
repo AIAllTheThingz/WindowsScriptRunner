@@ -239,6 +239,10 @@ public sealed class MigrationTests
 
         var definitionId = Guid.NewGuid();
         var versionId = Guid.NewGuid();
+        var submittedJobId = Guid.NewGuid();
+        var validatedJobId = Guid.NewGuid();
+        var dryRunQueuedJobId = Guid.NewGuid();
+        var dryRunRunningJobId = Guid.NewGuid();
         var dryRunCompletedJobId = Guid.NewGuid();
         var awaitingApprovalJobId = Guid.NewGuid();
         var approvedJobId = Guid.NewGuid();
@@ -262,6 +266,10 @@ public sealed class MigrationTests
             INSERT INTO [wsr].[Jobs]
                 ([Id], [ScriptDefinitionId], [ScriptVersionId], [RequestedPhase], [Status], [RequestedBy], [LastActingUser], [CreatedUtc], [UpdatedUtc], [SubmittedUtc], [PolicyScriptDefinitionId], [PolicyScriptVersionId], [PolicyRiskLevel], [PolicySupportsExecute], [PolicySupportsPostValidation])
             VALUES
+                ({submittedJobId}, {definitionId}, {versionId}, N'Execute', N'Submitted', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({validatedJobId}, {definitionId}, {versionId}, N'Execute', N'Validated', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({dryRunQueuedJobId}, {definitionId}, {versionId}, N'Execute', N'DryRunQueued', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
+                ({dryRunRunningJobId}, {definitionId}, {versionId}, N'Execute', N'DryRunRunning', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
                 ({dryRunCompletedJobId}, {definitionId}, {versionId}, N'Execute', N'DryRunCompleted', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
                 ({awaitingApprovalJobId}, {definitionId}, {versionId}, N'Execute', N'AwaitingApproval', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
                 ({approvedJobId}, {definitionId}, {versionId}, N'Execute', N'Approved', N'sid:legacy-requester', N'sid:legacy-requester', {timestamp}, {timestamp}, {timestamp}, {definitionId}, {versionId}, N'Medium', {true}, {false}),
@@ -285,9 +293,13 @@ public sealed class MigrationTests
             """
             SELECT [Status] AS [Value]
             FROM [wsr].[Jobs]
-            WHERE [Id] IN ({0}, {1}, {2}, {3}, {4})
+            WHERE [Id] IN ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8})
             ORDER BY [Id]
             """,
+            submittedJobId,
+            validatedJobId,
+            dryRunQueuedJobId,
+            dryRunRunningJobId,
             dryRunCompletedJobId,
             awaitingApprovalJobId,
             approvedJobId,
@@ -301,8 +313,8 @@ public sealed class MigrationTests
               AND [Actor] = N'system:phase-8-evidence-migration'
             """).SingleAsync();
 
-        Assert.Equal(["Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled"], statuses);
-        Assert.Equal(5, auditCount);
+        Assert.Equal(["Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled", "Cancelled"], statuses);
+        Assert.Equal(9, auditCount);
         Assert.Equal(0, await context.Database.SqlQueryRaw<int>(
             """
             SELECT COUNT(*) AS [Value]
@@ -312,13 +324,17 @@ public sealed class MigrationTests
             claimedJobId).SingleAsync());
 
         await migrator.MigrateAsync(Phase7Migration);
-        Assert.Equal(5, await context.Database.SqlQueryRaw<int>(
+        Assert.Equal(9, await context.Database.SqlQueryRaw<int>(
             """
             SELECT COUNT(*) AS [Value]
             FROM [wsr].[Jobs]
-            WHERE [Id] IN ({0}, {1}, {2}, {3}, {4})
+            WHERE [Id] IN ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8})
               AND [Status] = N'Cancelled'
             """,
+            submittedJobId,
+            validatedJobId,
+            dryRunQueuedJobId,
+            dryRunRunningJobId,
             dryRunCompletedJobId,
             awaitingApprovalJobId,
             approvedJobId,
