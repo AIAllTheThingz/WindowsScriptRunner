@@ -5,8 +5,8 @@
 3. **SQL Server persistence — Complete and merged**
 4. **Worker foundation and queue processing — Complete and merged**
 5. **PowerShell execution boundary — Complete and merged**
-6. **First reviewed automation package — Complete; pushed for review**
-7. **Typed durable Local Host Inventory reporting — Complete; pushed for review**
+6. **First reviewed automation package — Complete and merged**
+7. **Typed durable Local Host Inventory reporting — Complete and merged**
 8. **Identity, authentication, authorization, and approval workflow — Next**
 9. **Production hardening and deployment — Planned**
 

@@ -26,7 +26,7 @@ internal sealed class ReviewedPowerShellArtifactFactory(
         var relativePath = artifact.RelativePath.Replace(
             '/',
             Path.DirectorySeparatorChar);
-        if (Path.IsPathFullyQualified(relativePath) ||
+        if (Path.IsPathRooted(relativePath) ||
             relativePath.Split(
                 Path.DirectorySeparatorChar,
                 StringSplitOptions.RemoveEmptyEntries)

@@ -7,10 +7,10 @@
 3. SQL Server persistence — complete and merged.
 4. Worker foundation and queue processing — complete and merged.
 5. Isolated PowerShell execution — complete and merged.
-6. First reviewed automation package — complete and pushed on `origin/codex/phase-6-first-automation-package`.
-7. Strict parsing and durable typed inventory reporting — complete and pushed on dependent branch `origin/codex/phase-7-durable-reporting`.
+6. First reviewed automation package — complete and merged through PR #8.
+7. Strict parsing and durable typed inventory reporting — complete and merged through PR #7.
 
-Implementation status and merge status are intentionally reported separately. Phase 7 depends on Phase 6 and must be reviewed and merged after it.
+The dependency order was preserved: Phase 6 was reviewed and merged first, then Phase 7 was integrated against that reviewed baseline and merged.
 
 ## Next
 

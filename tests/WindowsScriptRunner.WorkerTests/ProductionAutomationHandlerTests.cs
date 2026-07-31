@@ -47,6 +47,18 @@ public sealed class ProductionAutomationHandlerTests
         Assert.Throws<InvalidOperationException>(
             () => new ServiceCollection()
                 .AddProductionAutomation(incompatibleConfiguration));
+
+        var insufficientTimeoutConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Automation:LocalHostInventory:Enabled"] = "true",
+                    ["PowerShellExecution:MaximumTimeoutSeconds"] = "59",
+                })
+            .Build();
+        Assert.Throws<InvalidOperationException>(
+            () => new ServiceCollection()
+                .AddProductionAutomation(insufficientTimeoutConfiguration));
     }
 
     [Fact]

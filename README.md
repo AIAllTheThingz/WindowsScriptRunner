@@ -15,7 +15,7 @@ The solution includes:
 
 The inventory package is ReadOnly, local-only, parameterless, and DryRun-only. Its successful result is validated against the exact schema and stored as one typed SQL report in the same transaction that completes the job, removes the lease, and records bounded audit metadata. Raw stdout, stderr, and arbitrary JSON are not persisted.
 
-Phases 1–5 are merged into `main`. Phase 6 is pushed on `origin/codex/phase-6-first-automation-package`, and Phase 7 is pushed on the dependent `origin/codex/phase-7-durable-reporting` branch. Both implementations are complete and validated; their merge status is tracked separately from implementation status.
+Phases 1–7 are implemented, validated, and merged into `main`. Phase 6 was merged first through PR #8, then Phase 7 through PR #7.
 
 Phase 8 is next: identity, authentication, authorization, trusted approval fingerprints, and approval workflow composition. Phase 9 is production hardening and deployment.
 
@@ -53,7 +53,7 @@ dotnet format --verify-no-changes
 dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build
 ```
 
-The Phase 7 baseline is 652 passing tests with zero failures or required skips.
+The merged Phase 7 baseline is 654 passing tests with zero failures or required skips.
 
 See [development setup](docs/development-setup.md) for local configuration and startup instructions.
 

@@ -1518,7 +1518,7 @@ Validation date: 2026-07-30. Times are America/Chicago (`-05:00`).
 - `dotnet build --configuration Release --no-restore`: `2026-07-30T15:19:36.2410606-05:00` to `15:19:41.8750083-05:00`, exit 0, 0 warnings/errors.
 - `dotnet test --configuration Release --no-build`: `2026-07-30T15:19:41.8903724-05:00` to `15:20:22.6570094-05:00`, exit 0, 557 passed, 0 failed, 0 skipped: Unit 318, Security 48, SQL Server 43, Worker 37, Integration 3, PowerShell boundary 108.
 - `dotnet format --verify-no-changes --no-restore`: `2026-07-30T15:20:47.2067059-05:00` to `15:21:15.3164133-05:00`, exit 0.
-- No migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior was added.
+- This final pre-Phase 6 correction added no migration, production queue wiring, handler, arbitrary script surface, credential path, or Phase 6 behavior.
 
 ## Phase 6 first automation package
 
@@ -1539,6 +1539,18 @@ Validation date: 2026-07-30, America/Chicago.
 - `dotnet format --verify-no-changes`: exit 0.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes.
 - No EF Core model or schema change was required, so Phase 6 adds no migration.
+
+## Phase 6 pull-request review remediation
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Startup validation now rejects a configured PowerShell maximum timeout below the reviewed package's pinned 60-second timeout.
+- Concurrent package registration now retries in a fresh service scope after an insert conflict, reloads the committed package, and accepts only an exact match.
+- Reviewed artifact paths reject every rooted form before trusted-root combination.
+- Documentation now distinguishes the final pre-Phase 6 validation from the Phase 6 production-routing behavior.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build`: exit 0; 592 passed, 0 failed, 0 skipped: Unit 333, PowerShell 110, Security 54, Worker 48, SQL Server 44, Integration 3.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.
 
 ## Phase 7 typed durable inventory reporting
 
@@ -1605,3 +1617,15 @@ Validation date: 2026-07-30, America/Chicago.
 - `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
 - `dotnet test --configuration Release --no-build`: exit 0; 652 passed, 0 failed, 0 skipped: Unit 380, PowerShell 109, Security 57, Worker 51, SQL Server 52, Integration 3.
 - `dotnet format --verify-no-changes --no-restore`: exit 0.
+
+## Phase 6-to-Phase 7 reviewed-baseline integration
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Phase 6 PR #8 passed review with every conversation resolved and merged into `main` as `98688d615992d5bfcaafac689271761a7460cabb`.
+- Phase 7 integrated that reviewed `main` baseline while preserving its typed report parser and the corrected scoped package registrar.
+- Current-status documentation records the dependency-safe merge order: Phase 6 through PR #8, followed by Phase 7 through PR #7.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build`: exit 0; 654 passed, 0 failed, 0 skipped: Unit 381, PowerShell 110, Security 57, Worker 51, SQL Server 52, Integration 3.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes.
