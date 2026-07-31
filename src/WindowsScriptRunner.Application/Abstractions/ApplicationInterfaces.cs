@@ -1,4 +1,5 @@
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -29,6 +30,9 @@ public interface ICurrentUser
 public interface IJobRepository
 {
     Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+        int maximumCount,
+        CancellationToken cancellationToken);
     Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken);
     Task AddAsync(Job job, CancellationToken cancellationToken);
     Task UpdateAsync(Job job, CancellationToken cancellationToken);
@@ -36,6 +40,13 @@ public interface IJobRepository
     Task<bool> TryRefreshLeaseAsync(
         JobId jobId,
         JobLeaseCredentials credentials,
+        CancellationToken cancellationToken);
+}
+
+public interface IJobAuthorizationResourceReader
+{
+    Task<IReadOnlyList<JobAuthorizationResourceResponse>> ListAsync(
+        IReadOnlyCollection<JobId> jobIds,
         CancellationToken cancellationToken);
 }
 
@@ -72,6 +83,13 @@ public interface IJobReportRepository
     Task<JobReport?> GetByJobIdAsync(
         JobId jobId,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<JobReport>> ListLocalHostInventoryAsync(
+        int maximumCount,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+        UserIdentity requester,
+        int maximumCount,
+        CancellationToken cancellationToken);
     Task AddAsync(JobReport report, CancellationToken cancellationToken);
 }
 
@@ -88,6 +106,8 @@ public interface IUnitOfWork
 public interface IJobFingerprintService
 {
     Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken);
+
+    bool IsExpectedFingerprintCurrent(string? expectedFingerprint, string currentFingerprint);
 }
 
 public interface IJobQueueCandidateSource

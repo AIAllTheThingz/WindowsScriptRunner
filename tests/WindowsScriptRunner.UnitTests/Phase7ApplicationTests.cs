@@ -178,7 +178,55 @@ public sealed class Phase7ApplicationTests
                 StringComparison.OrdinalIgnoreCase) ||
                 property.Name.Contains(
                     "Json",
-                    StringComparison.OrdinalIgnoreCase));
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TypedReportListIsBoundedAndExposesOnlyLocalHostInventoryResponses()
+    {
+        var fixture = Fixture.Create();
+        _ = await fixture.Handler.HandleAsync(fixture.Command, CancellationToken.None);
+        var listHandler = new ListLocalHostInventoryReportsHandler(fixture.Reports);
+
+        var reports = await listHandler.HandleAsync(
+            new ListLocalHostInventoryReportsQuery(1),
+            CancellationToken.None);
+
+        var report = Assert.Single(reports);
+        Assert.Equal(fixture.Job.Id.Value, report.JobId);
+        Assert.Equal("LocalHostInventory", report.ReportType);
+        Assert.Equal(1, fixture.Reports.ListCallCount);
+        Assert.Equal(1, fixture.Reports.LastListMaximumCount);
+
+        var requesterReports = await listHandler.HandleAsync(
+            new ListLocalHostInventoryReportsForRequesterQuery(
+                1,
+                fixture.Job.RequestedBy),
+            CancellationToken.None);
+
+        Assert.Single(requesterReports);
+        Assert.Equal(fixture.Job.RequestedBy, fixture.Reports.LastRequester);
+        Assert.DoesNotContain(
+            report.GetType().GetProperties(),
+            property => property.Name.Contains("Standard", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("Raw", StringComparison.OrdinalIgnoreCase) ||
+                property.Name.Contains("Json", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public async Task TypedReportListRejectsOutOfRangeBoundsBeforeRepositoryAccess(int maximumCount)
+    {
+        var fixture = Fixture.Create();
+        var listHandler = new ListLocalHostInventoryReportsHandler(fixture.Reports);
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => listHandler.HandleAsync(
+                new ListLocalHostInventoryReportsQuery(maximumCount),
+                CancellationToken.None));
+
+        Assert.Equal(0, fixture.Reports.ListCallCount);
     }
 
     [Fact]
@@ -353,6 +401,11 @@ public sealed class Phase7ApplicationTests
             return Task.FromResult(job.Id == id ? job : null);
         }
 
+        public Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+            int maximumCount,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Job>>([]);
+
         public Task<bool> ExistsAsync(
             JobId id,
             CancellationToken cancellationToken) =>
@@ -414,6 +467,9 @@ public sealed class Phase7ApplicationTests
     {
         internal JobReport? Report { get; private set; }
         internal int AddCount { get; private set; }
+        internal int ListCallCount { get; private set; }
+        internal int? LastListMaximumCount { get; private set; }
+        internal UserIdentity? LastRequester { get; private set; }
 
         public Task<JobReport?> GetByIdAsync(
             JobReportId id,
@@ -429,6 +485,30 @@ public sealed class Phase7ApplicationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(Report?.JobId == jobId ? Report : null);
+        }
+
+        public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryAsync(
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ListCallCount++;
+            LastListMaximumCount = maximumCount;
+            IReadOnlyList<JobReport> reports = Report is null ? [] : [Report];
+            return Task.FromResult(reports);
+        }
+
+        public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+            UserIdentity requester,
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentNullException.ThrowIfNull(requester);
+            LastRequester = requester;
+            LastListMaximumCount = maximumCount;
+            IReadOnlyList<JobReport> reports = Report is null ? [] : [Report];
+            return Task.FromResult(reports);
         }
 
         public Task AddAsync(

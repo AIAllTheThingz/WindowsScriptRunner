@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Application.Workers;
 using WindowsScriptRunner.Domain;
@@ -169,6 +170,26 @@ public sealed class WorkerFoundationTests
             descriptor => descriptor.ServiceType.FullName?.Contains(
                 "PowerShell",
                 StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public void SharedWorkerApplicationRegistrationExcludesWebActorHandlers()
+    {
+        var services = new ServiceCollection();
+        services.AddApplication();
+
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IJobFingerprintService));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ApproveJobHandler));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(RejectJobHandler));
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType == typeof(GetApprovalReviewHandler));
     }
 
     private static WorkerOptionsValidator Validator(
@@ -612,6 +633,19 @@ internal sealed class FakeJobRepository : IJobRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(Jobs.GetValueOrDefault(id));
+    }
+
+    public Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+        int maximumCount,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        IReadOnlyList<Job> jobs = Jobs.Values
+            .Where(job => job.Status == JobStatus.AwaitingApproval)
+            .OrderBy(job => job.UpdatedUtc)
+            .Take(maximumCount)
+            .ToArray();
+        return Task.FromResult(jobs);
     }
 
     public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken)

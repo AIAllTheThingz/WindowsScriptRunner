@@ -18,6 +18,6 @@ The current migration history provides initial persistence, `JobLeases` with `Jo
 
 Queue projections load only bounded identifiers and routing metadata; full trusted aggregates are loaded inside Application handlers. Repositories and queue sources never commit. `SqlUnitOfWork` remains the single production `SaveChangesAsync` boundary.
 
-`SqlJobReportRepository` supports only add and bounded lookup by report ID or job ID; no update method exists. The report schema stores no raw stdout, stderr, or JSON payload and independently enforces metadata, provenance, typed bounds, deterministic uniqueness, and supported architecture.
+`SqlJobReportRepository` supports only add and bounded typed Local Host Inventory lookup/list operations; no update method exists. `SqlJobRepository` also supplies the bounded `AwaitingApproval` list used by the protected portal. The report schema stores no raw stdout, stderr, or JSON payload and independently enforces metadata, provenance, typed bounds, deterministic uniqueness, and supported architecture. Phase 8 requires no schema migration or persisted identity/session/fingerprint record.
 
 See [SQL Server persistence](../../docs/sql-server-persistence.md), [database schema](../../docs/database-schema.md), and [database migrations](../../docs/database-migrations.md).

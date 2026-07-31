@@ -31,9 +31,9 @@ Completed, CompletedWithWarnings, Failed, Rejected, Cancelled, TimedOut, Blocked
 
 ## Approval fingerprint
 
-The current application contract accepts a structurally valid 64-character hexadecimal SHA-256 fingerprint. Phase 8 will calculate and verify the trusted fingerprint from the script version, requested phase, targets, parameters, execution window, and dry-run evidence at an authenticated boundary.
+Application calculates and verifies a trusted versioned SHA-256 approval fingerprint from persisted job state, pinned script/policy, targets, parameter bindings, execution window, and accepted dry-run evidence. The browser can only echo the expected value rendered for an authenticated review; the decision handler recomputes it and compares it in constant time before Domain mutation. A malformed or stale echo fails as an application conflict.
 
-Approval policy is evaluated from the immutable policy snapshot captured from the published script at submission. Medium, High, and Critical requesters cannot self-approve; the current policy permits Low and ReadOnly self-approval. Validation precedes decision-record and status mutation. Web approval actions and authenticated principal mapping remain Phase 8 work.
+Approval policy is evaluated from the immutable policy snapshot captured from the published script at submission. Medium, High, and Critical requesters cannot self-approve; the current policy permits Low and ReadOnly self-approval. `ICurrentUser` supplies the authenticated stable SID actor to the decision handler, and Domain validates it before decision-record and status mutation. Web group authorization permits a review/decision attempt but does not override the Domain policy. See [approval workflow](approval-workflow.md) and [approval fingerprints](approval-fingerprints.md).
 
 ## Requested phase enforcement
 

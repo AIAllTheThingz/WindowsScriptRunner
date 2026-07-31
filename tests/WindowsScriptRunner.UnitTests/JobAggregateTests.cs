@@ -976,7 +976,7 @@ public sealed class JobAggregateTests
     [InlineData(RiskLevel.Medium)]
     [InlineData(RiskLevel.High)]
     [InlineData(RiskLevel.Critical)]
-    public void ElevatedRiskSelfApprovalFailsWhenRequesterCasingDiffers(RiskLevel riskLevel)
+    public void ElevatedRiskSelfApprovalFailsForTheStableRequesterIdentity(RiskLevel riskLevel)
     {
         var version = TestDomainFactory.Version();
         var job = TestDomainFactory.SubmittedJob(
@@ -987,13 +987,72 @@ public sealed class JobAggregateTests
 
         Assert.Throws<DomainValidationException>(
             () => job.RecordApproval(
-                new UserIdentity("domain\\REQUESTER"),
+                new UserIdentity("sid:S-1-5-21-1001-1002-1003-1004"),
                 TestDomainFactory.Fingerprint,
                 null,
                 job.UpdatedUtc.AddMinutes(1)));
 
         Assert.Equal(JobStatus.AwaitingApproval, job.Status);
         Assert.Empty(job.Approvals);
+    }
+
+    [Fact]
+    public void ExecuteApprovalRequiresAStableSidRequester()
+    {
+        var version = TestDomainFactory.Version();
+        var script = TestDomainFactory.Script(version, RiskLevel.Medium);
+        var requester = new UserIdentity("DOMAIN\\legacy-requester");
+        var job = Job.CreateDraft(
+            JobId.New(),
+            script.Id,
+            version.Id,
+            ExecutionPhase.Execute,
+            requester,
+            TestDomainFactory.Time);
+        job.AddTarget(new TargetName("server-01"), requester, TestDomainFactory.Time.AddMinutes(1));
+        job.Submit(script, requester, TestDomainFactory.Time.AddMinutes(2));
+        job.MarkValidated(TestDomainFactory.OtherUser, TestDomainFactory.Time.AddMinutes(3));
+        job.QueueDryRun(TestDomainFactory.OtherUser, TestDomainFactory.Time.AddMinutes(4));
+        job.StartDryRun(TestDomainFactory.OtherUser, TestDomainFactory.Time.AddMinutes(5));
+        job.CompleteDryRun(TestDomainFactory.OtherUser, TestDomainFactory.Time.AddMinutes(6));
+
+        Assert.Throws<DomainValidationException>(
+            () => job.RequireApproval(TestDomainFactory.OtherUser, TestDomainFactory.Time.AddMinutes(7)));
+
+        Assert.Equal(JobStatus.DryRunCompleted, job.Status);
+    }
+
+    [Fact]
+    public void LegacyExecuteStateCannotQueueLeaseOrStartWithoutAcceptedDryRunEvidence()
+    {
+        var version = TestDomainFactory.Version();
+        var job = TestDomainFactory.SubmittedJob(
+            TestDomainFactory.Script(version, RiskLevel.Medium),
+            version,
+            requestedPhase: ExecutionPhase.Execute);
+        var updated = job.UpdatedUtc;
+
+        ForceStatus(job, JobStatus.Approved);
+        Assert.Throws<DomainValidationException>(
+            () => job.QueueExecution(TestDomainFactory.OtherUser, updated.AddMinutes(1)));
+
+        ForceStatus(job, JobStatus.ExecutionQueued);
+        Assert.Throws<DomainValidationException>(
+            () => job.AcquireWorkLease(
+                JobLeaseId.New(),
+                WorkerNodeId.New(),
+                JobWorkKind.Execute,
+                1,
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1),
+                updated.AddMinutes(2)));
+
+        ForceStatus(job, JobStatus.Claimed);
+        Assert.Throws<DomainValidationException>(
+            () => job.StartExecutionAttempt(
+                WorkerNodeId.New(),
+                TestDomainFactory.OtherUser,
+                updated.AddMinutes(1)));
     }
 
     [Fact]

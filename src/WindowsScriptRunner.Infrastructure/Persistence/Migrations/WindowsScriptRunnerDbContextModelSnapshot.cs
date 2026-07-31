@@ -215,6 +215,29 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset?>("AcceptedDryRunEvidenceCompletedUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<long?>("AcceptedDryRunEvidenceFencingToken")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("AcceptedDryRunEvidenceLeaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AcceptedDryRunEvidenceSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTimeOffset?>("AcceptedDryRunEvidenceWindowOpenedUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("AcceptedDryRunEvidenceWorkKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid?>("AcceptedDryRunEvidenceWorkerNodeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ChangeReference")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -299,6 +322,8 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Jobs", "wsr", t =>
                         {
+                            t.HasCheckConstraint("CK_Jobs_AcceptedDryRunEvidence", "([AcceptedDryRunEvidenceWorkKind] IS NULL AND [AcceptedDryRunEvidenceSource] IS NULL AND [AcceptedDryRunEvidenceWorkerNodeId] IS NULL AND [AcceptedDryRunEvidenceLeaseId] IS NULL AND [AcceptedDryRunEvidenceFencingToken] IS NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] IS NULL AND [AcceptedDryRunEvidenceCompletedUtc] IS NULL) OR ([AcceptedDryRunEvidenceWorkKind] IS NOT NULL AND [AcceptedDryRunEvidenceWorkKind] = 'DryRun' AND [AcceptedDryRunEvidenceSource] IS NOT NULL AND [AcceptedDryRunEvidenceSource] = 'InternalLifecycle' AND [AcceptedDryRunEvidenceWorkerNodeId] IS NULL AND [AcceptedDryRunEvidenceLeaseId] IS NULL AND [AcceptedDryRunEvidenceFencingToken] IS NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceCompletedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] <= [AcceptedDryRunEvidenceCompletedUtc]) OR ([AcceptedDryRunEvidenceWorkKind] IS NOT NULL AND [AcceptedDryRunEvidenceWorkKind] = 'DryRun' AND [AcceptedDryRunEvidenceSource] IS NOT NULL AND [AcceptedDryRunEvidenceSource] = 'LeasedWorker' AND [AcceptedDryRunEvidenceWorkerNodeId] IS NOT NULL AND [AcceptedDryRunEvidenceWorkerNodeId] <> '00000000-0000-0000-0000-000000000000' AND [AcceptedDryRunEvidenceLeaseId] IS NOT NULL AND [AcceptedDryRunEvidenceLeaseId] <> '00000000-0000-0000-0000-000000000000' AND [AcceptedDryRunEvidenceFencingToken] IS NOT NULL AND [AcceptedDryRunEvidenceFencingToken] > 0 AND [AcceptedDryRunEvidenceWindowOpenedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceCompletedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] <= [AcceptedDryRunEvidenceCompletedUtc])");
+
                             t.HasCheckConstraint("CK_Jobs_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
 
                             t.HasCheckConstraint("CK_Jobs_PolicyRiskLevel", "[PolicyRiskLevel] IS NULL OR [PolicyRiskLevel] IN ('ReadOnly','Low','Medium','High','Critical')");
@@ -547,6 +572,10 @@ namespace WindowsScriptRunner.Infrastructure.Persistence.Migrations
                     b.HasIndex("JobId", "PackageId", "SchemaVersion")
                         .IsUnique()
                         .HasDatabaseName("UX_JobReports_Job_Package_Schema");
+
+                    b.HasIndex("ReportType", "CreatedUtc", "Id")
+                        .IsDescending(false, true, false)
+                        .HasDatabaseName("IX_JobReports_ReportType_CreatedUtc_Id");
 
                     b.ToTable("JobReports", "wsr", t =>
                         {

@@ -94,6 +94,13 @@ internal sealed class JobEntity
     public string? PolicyRiskLevel { get; set; }
     public bool? PolicySupportsExecute { get; set; }
     public bool? PolicySupportsPostValidation { get; set; }
+    public string? AcceptedDryRunEvidenceWorkKind { get; set; }
+    public string? AcceptedDryRunEvidenceSource { get; set; }
+    public Guid? AcceptedDryRunEvidenceWorkerNodeId { get; set; }
+    public Guid? AcceptedDryRunEvidenceLeaseId { get; set; }
+    public long? AcceptedDryRunEvidenceFencingToken { get; set; }
+    public DateTimeOffset? AcceptedDryRunEvidenceWindowOpenedUtc { get; set; }
+    public DateTimeOffset? AcceptedDryRunEvidenceCompletedUtc { get; set; }
     public byte[] RowVersion { get; set; } = [];
     public List<JobTargetEntity> Targets { get; } = [];
     public List<JobParameterEntity> Parameters { get; } = [];

@@ -481,6 +481,24 @@ public sealed class ProductionAutomationHandlerTests
             return Task.FromResult(Report?.JobId == jobId ? Report : null);
         }
 
+        public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryAsync(
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<JobReport> reports = Report is null ? [] : [Report];
+            return Task.FromResult(reports);
+        }
+
+        public Task<IReadOnlyList<JobReport>> ListLocalHostInventoryForRequesterAsync(
+            UserIdentity requester,
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<JobReport>>([]);
+        }
+
         public Task AddAsync(
             JobReport report,
             CancellationToken cancellationToken)

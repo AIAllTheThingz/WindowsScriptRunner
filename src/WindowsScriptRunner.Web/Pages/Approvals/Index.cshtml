@@ -1,0 +1,21 @@
+@page
+@model WindowsScriptRunner.Web.Pages.Approvals.IndexModel
+@{
+    ViewData["Title"] = "Approval queue";
+}
+
+<h1>Approval queue</h1>
+<table class="table">
+    <thead><tr><th>Job ID</th><th>Requester</th><th>Description</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var job in Model.Jobs)
+    {
+        <tr>
+            <td>@job.Id</td>
+            <td>@job.RequestedBy</td>
+            <td>@job.Description</td>
+            <td><a asp-page="/Approvals/Review" asp-route-jobId="@job.Id">Review</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

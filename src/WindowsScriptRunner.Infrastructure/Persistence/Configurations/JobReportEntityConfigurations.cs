@@ -64,6 +64,14 @@ internal sealed class JobReportConfiguration :
         builder.HasIndex(entity => entity.PowerShellExecutionId)
             .IsUnique()
             .HasDatabaseName("UX_JobReports_PowerShellExecutionId");
+        builder.HasIndex(entity => new
+        {
+            entity.ReportType,
+            entity.CreatedUtc,
+            entity.Id,
+        })
+            .IsDescending(false, true, false)
+            .HasDatabaseName("IX_JobReports_ReportType_CreatedUtc_Id");
         builder.HasOne(entity => entity.Job)
             .WithMany()
             .HasForeignKey(entity => entity.JobId)

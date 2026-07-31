@@ -117,6 +117,7 @@ internal static class PersistenceMapper
             ChangeReference = job.ChangeReference?.Value,
         };
         SetPolicySnapshot(entity, job.PolicySnapshot);
+        SetAcceptedDryRunEvidence(entity, job.AcceptedDryRunEvidence);
         foreach (var target in job.Targets.OrderBy(item => Normalize(item.Name.Value)))
         {
             entity.Targets.Add(ToEntity(target, entity.Id));
@@ -188,7 +189,8 @@ internal static class PersistenceMapper
                     item.Comment,
                     item.ApprovalFingerprint))
                 .ToArray(),
-            entity.Lease is null ? null : ToDomain(entity.Lease));
+            entity.Lease is null ? null : ToDomain(entity.Lease),
+            ToDomainAcceptedDryRunEvidence(entity));
     }
 
     public static void Synchronize(Job job, JobEntity entity)
@@ -209,6 +211,7 @@ internal static class PersistenceMapper
         entity.Description = job.Description;
         entity.ChangeReference = job.ChangeReference?.Value;
         SetPolicySnapshot(entity, job.PolicySnapshot);
+        SynchronizeAcceptedDryRunEvidence(job, entity);
         SynchronizeTargets(job, entity);
         SynchronizeParameters(job, entity);
         SynchronizeExecutions(job, entity);
@@ -607,6 +610,57 @@ internal static class PersistenceMapper
             entity.LastRenewedUtc,
             entity.ExpiresUtc);
 
+    private static void SetAcceptedDryRunEvidence(
+        JobEntity entity,
+        JobDryRunEvidence? evidence)
+    {
+        entity.AcceptedDryRunEvidenceWorkKind = evidence?.WorkKind.ToString();
+        entity.AcceptedDryRunEvidenceSource = evidence?.Source.ToString();
+        entity.AcceptedDryRunEvidenceWorkerNodeId = evidence?.WorkerNodeId?.Value;
+        entity.AcceptedDryRunEvidenceLeaseId = evidence?.LeaseId?.Value;
+        entity.AcceptedDryRunEvidenceFencingToken = evidence?.FencingToken;
+        entity.AcceptedDryRunEvidenceWindowOpenedUtc = ToUtc(evidence?.ExecutionWindowOpenedUtc);
+        entity.AcceptedDryRunEvidenceCompletedUtc = ToUtc(evidence?.CompletedUtc);
+    }
+
+    private static JobDryRunEvidence? ToDomainAcceptedDryRunEvidence(JobEntity entity)
+    {
+        if (entity.AcceptedDryRunEvidenceSource is null)
+        {
+            RequireSame(
+                entity.AcceptedDryRunEvidenceWorkKind is null &&
+                entity.AcceptedDryRunEvidenceWorkerNodeId is null &&
+                entity.AcceptedDryRunEvidenceLeaseId is null &&
+                entity.AcceptedDryRunEvidenceFencingToken is null &&
+                entity.AcceptedDryRunEvidenceWindowOpenedUtc is null &&
+                entity.AcceptedDryRunEvidenceCompletedUtc is null,
+                "Persisted dry-run evidence must be complete or absent.");
+            return null;
+        }
+
+        RequireSame(
+            entity.AcceptedDryRunEvidenceWorkKind is not null &&
+            entity.AcceptedDryRunEvidenceWindowOpenedUtc is not null &&
+            entity.AcceptedDryRunEvidenceCompletedUtc is not null,
+            "Persisted dry-run evidence must be complete or absent.");
+        return new JobDryRunEvidence(
+            ParseEnum<JobWorkKind>(
+                entity.AcceptedDryRunEvidenceWorkKind!,
+                "accepted dry-run evidence work kind"),
+            ParseEnum<JobDryRunEvidenceSource>(
+                entity.AcceptedDryRunEvidenceSource,
+                "accepted dry-run evidence source"),
+            entity.AcceptedDryRunEvidenceWorkerNodeId is null
+                ? null
+                : new WorkerNodeId(entity.AcceptedDryRunEvidenceWorkerNodeId.Value),
+            entity.AcceptedDryRunEvidenceLeaseId is null
+                ? null
+                : new JobLeaseId(entity.AcceptedDryRunEvidenceLeaseId.Value),
+            entity.AcceptedDryRunEvidenceFencingToken,
+            entity.AcceptedDryRunEvidenceWindowOpenedUtc!.Value,
+            entity.AcceptedDryRunEvidenceCompletedUtc!.Value);
+    }
+
     private static JobApprovalEntity ToEntity(JobApproval approval, Guid jobId) =>
         new()
         {
@@ -668,6 +722,35 @@ internal static class PersistenceMapper
             "Job lease immutable persistence state does not match the aggregate.");
         entity.Lease.LastRenewedUtc = ToUtc(job.Lease.LastRenewedUtc);
         entity.Lease.ExpiresUtc = ToUtc(job.Lease.ExpiresUtc);
+    }
+
+    private static void SynchronizeAcceptedDryRunEvidence(Job job, JobEntity entity)
+    {
+        if (job.AcceptedDryRunEvidence is null)
+        {
+            RequireSame(
+                entity.AcceptedDryRunEvidenceSource is null,
+                "Accepted dry-run evidence cannot be removed through persistence.");
+            return;
+        }
+
+        if (entity.AcceptedDryRunEvidenceSource is null)
+        {
+            SetAcceptedDryRunEvidence(entity, job.AcceptedDryRunEvidence);
+            return;
+        }
+
+        var evidence = ToDomainAcceptedDryRunEvidence(entity);
+        RequireSame(
+            evidence is not null &&
+            evidence.WorkKind == job.AcceptedDryRunEvidence.WorkKind &&
+            evidence.Source == job.AcceptedDryRunEvidence.Source &&
+            evidence.WorkerNodeId == job.AcceptedDryRunEvidence.WorkerNodeId &&
+            evidence.LeaseId == job.AcceptedDryRunEvidence.LeaseId &&
+            evidence.FencingToken == job.AcceptedDryRunEvidence.FencingToken &&
+            evidence.ExecutionWindowOpenedUtc == job.AcceptedDryRunEvidence.ExecutionWindowOpenedUtc &&
+            evidence.CompletedUtc == job.AcceptedDryRunEvidence.CompletedUtc,
+            "Accepted dry-run evidence is immutable.");
     }
 
     private static void SynchronizeParameters(Job job, JobEntity entity)

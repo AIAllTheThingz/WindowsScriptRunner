@@ -1,16 +1,16 @@
 # Architecture
 
-This document describes the implementation validated through Phase 7. Phase labels below identify when each boundary was introduced; they do not imply that later sections replace the earlier controls.
+This document describes the Phase 8 implementation awaiting review. Phase labels identify when each boundary was introduced; they do not imply that later sections replace the earlier controls.
 
 The web application and Worker are separate processes. Web never executes PowerShell or references the PowerShell or Automation projects. The Worker is the only production composition root that may enable the reviewed automation package.
 
 The Domain project remains independent of all outer layers and owns aggregates and lifecycle invariants. Application coordinates use cases through domain-specific repository, audit, clock, and unit-of-work interfaces. Infrastructure implements those persistence contracts with EF Core and SQL Server. Reporting is independent and owns the strict package-specific parser, canonical typed parse result, and deterministic digest representation. PowerShell owns the complete out-of-process PowerShell 7 boundary. Automation owns the single reviewed production artifact, catalog, registration, process-result adaptation, and lease-aware handler.
 
 ```text
-Browser
+Windows-authenticated browser
    |
    v
-Web --> Application --> Domain
+Web (Negotiate, Razor Pages) --> Application --> Domain
  |           |
  +--> Infrastructure (EF Core / SQL Server)
 
@@ -26,7 +26,7 @@ PowerShellTests --> PowerShell boundary --> controlled test and reviewed package
 
 Arrows represent compile-time dependencies. Domain has no solution-project dependencies.
 
-Contracts contains immutable transport DTOs and does not reference Domain. Application maps Domain objects to safe contract responses. Web and Worker are composition roots: both register Infrastructure, while neither references EF Core or `Microsoft.Data.SqlClient` directly. Worker references Automation but not PowerShell or Reporting directly. Reporting has no solution-project dependency. Automation is the narrow reviewed bridge and references Application, Domain, PowerShell, and Reporting.
+Contracts contains immutable transport DTOs and does not reference Domain. Application maps Domain objects to safe contract responses. Web and Worker are composition roots: both register Application and Infrastructure, while neither references EF Core or `Microsoft.Data.SqlClient` directly. Worker references Automation but not PowerShell or Reporting directly. Reporting has no solution-project dependency. Automation is the narrow reviewed bridge and references Application, Domain, PowerShell, and Reporting.
 
 Security tests parse each source `.csproj` and compare its `ProjectReference` entries with an explicit allowlist. Compiled-reference checks remain supplementary. The source-level rules explicitly prohibit Web from referencing Worker, Automation, or PowerShell and require Domain and Contracts to have no project references.
 
@@ -88,4 +88,12 @@ The digest covers stable report provenance and every typed inventory value, but 
 
 Infrastructure persists a `JobReports` envelope and one required `LocalHostInventoryReports` detail row. There is no raw stdout, stderr, JSON payload, generic payload table, or report update repository. The one scoped unit of work atomically commits job, lease deletion, report envelope/detail, and audit rows. The read repository rehydrates the typed Domain model and fails closed when envelope and detail disagree. Application maps it to one immutable Contracts response by report ID or job ID.
 
-Web has no report endpoint, Razor Page, download, or report-project reference. Typed queries exist for tests and authenticated Phase 8 composition only. Identity, authentication, authorization, and approval workflow are deferred to Phase 8.
+## Phase 8 protected portal and approval boundary
+
+Web registers Application and Infrastructure, then composes Windows Negotiate, a fallback authenticated policy, SID-based group policies, and resource authorization. It maps a real authenticated Windows principal to a stable `sid:<canonical-sid>` `UserIdentity`; names and browser form fields are never identity or role authority. Web still has no project reference to Worker, Automation, PowerShell, or Reporting, and it never invokes a process, accesses an execution working directory, or obtains a credential.
+
+The portal is a thin adapter over Application handlers. It can show job details, bounded awaiting-approval jobs, and the persisted Local Host Inventory report through a safe view model that omits raw output, JSON, worker/lease/fencing provenance, execution identity, and secure references. Its approval review additionally exposes the pinned script name/version/SHA-256, captured risk, requested phase, and accepted DryRun work kind/source/window timestamps so an approver can identify the exact decision; it still omits script content/path, worker/lease/fencing provenance, and secrets. Its report list is bounded to 100 and filters every item by its owning job's resource authorization.
+
+Approval review loads an Application `ApprovalReviewResponse`, which includes a server-calculated expected fingerprint. A POST reloads and reauthorizes the route-bound job, runs normal Razor Pages antiforgery validation, and calls the existing Application decision handler. Leased DryRun completion records immutable evidence carrying the DryRun work kind, worker/lease/fencing provenance, and the execution-window timestamps. Application fingerprints that evidence—not Execute attempts—and Domain requires DryRun evidence and a stable `sid:S-1-...` requester before an Execute request can enter approval or receive a decision. Draft creation and decisions derive their actors from `ICurrentUser`, never a command or form field; the decision handler recomputes trusted fingerprint evidence, delegates separation-of-duties/state rules to Domain, stages audit/job changes, and commits through Infrastructure. Web has no direct state, audit, or lease mutation.
+
+The explicit Web routes and policies are in [authorization matrix](authorization-matrix.md); SID mapping is in [Windows authentication](windows-authentication.md). IIS, HTTPS, Kerberos/SPN operational validation, service identity setup, and deployment remain outside this architecture in Phase 9.

@@ -6,6 +6,6 @@ Reporting is the focused trust boundary for `windows.local-host-inventory` versi
 
 The parser returns one immutable `ValidatedLocalHostInventoryReport`. `LocalHostInventoryCanonicalizer` creates a deterministic SHA-256 over stable provenance and typed inventory values. Neither component logs, persists, or returns raw stdout, stderr, or arbitrary JSON.
 
-Reporting is not a generic report engine. It does not support CSV, HTML, text reports, uploads, user schemas, arbitrary payloads, visual design, additional packages, or Web presentation.
+Reporting is not a generic report engine. It does not support CSV, HTML, text reports, uploads, user schemas, arbitrary payloads, visual design, additional packages, or Web presentation code. The protected Phase 8 Web adapter consumes only Application's typed response through a separate safe view model; Reporting still exposes no browser, download, or generic report surface.
 
 See [ADR 0008](../../docs/decisions/0008-typed-durable-inventory-reporting.md), [database schema](../../docs/database-schema.md), and [security](../../docs/security.md).

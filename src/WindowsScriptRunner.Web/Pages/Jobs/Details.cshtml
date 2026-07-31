@@ -1,0 +1,46 @@
+@page "{jobId:guid}"
+@model WindowsScriptRunner.Web.Pages.Jobs.DetailsModel
+@{
+    ViewData["Title"] = "Job details";
+}
+
+<h1>Job details</h1>
+
+<dl class="row">
+    <dt class="col-sm-3">Job ID</dt><dd class="col-sm-9">@Model.Job.Id</dd>
+    <dt class="col-sm-3">Status</dt><dd class="col-sm-9">@Model.Job.Status</dd>
+    <dt class="col-sm-3">Requested phase</dt><dd class="col-sm-9">@Model.Job.RequestedPhase</dd>
+    <dt class="col-sm-3">Requester</dt><dd class="col-sm-9">@Model.Job.RequestedBy</dd>
+    <dt class="col-sm-3">Description</dt><dd class="col-sm-9">@Model.Job.Description</dd>
+    <dt class="col-sm-3">Change reference</dt><dd class="col-sm-9">@Model.Job.ChangeReference</dd>
+</dl>
+
+<h2>Targets</h2>
+<ul>
+@foreach (var target in Model.Job.Targets)
+{
+    <li>@target.Name</li>
+}
+</ul>
+
+<h2>Parameters</h2>
+<table class="table">
+    <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+    <tbody>
+    @foreach (var parameter in Model.Job.Parameters)
+    {
+        <tr><td>@parameter.Name</td><td>@parameter.ParameterType</td><td>@parameter.DisplayValue</td></tr>
+    }
+    </tbody>
+</table>
+
+<h2>Approvals</h2>
+<table class="table">
+    <thead><tr><th>Decision</th><th>Approver</th><th>Time (UTC)</th><th>Comment</th></tr></thead>
+    <tbody>
+    @foreach (var approval in Model.Job.Approvals)
+    {
+        <tr><td>@approval.Decision</td><td>@approval.Approver</td><td>@approval.DecisionUtc.UtcDateTime</td><td>@approval.Comment</td></tr>
+    }
+    </tbody>
+</table>

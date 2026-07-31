@@ -1,5 +1,11 @@
 namespace WindowsScriptRunner.Contracts.Jobs;
 
+public interface IJobAuthorizationResource
+{
+    string Status { get; }
+    string RequestedBy { get; }
+}
+
 public sealed record CreateJobRequest(
     Guid ScriptDefinitionId,
     Guid ScriptVersionId,
@@ -38,12 +44,12 @@ public sealed record RecordExecutionOutcomeRequest(
 
 public sealed record ApproveJobRequest(
     Guid JobId,
-    string ApprovalFingerprint,
+    string ExpectedFingerprint,
     string? Comment);
 
 public sealed record RejectJobRequest(
     Guid JobId,
-    string ApprovalFingerprint,
+    string ExpectedFingerprint,
     string? Comment);
 
 public sealed record JobSummaryResponse(
@@ -73,7 +79,12 @@ public sealed record JobDetailResponse(
     IReadOnlyList<JobTargetResponse> Targets,
     IReadOnlyList<JobParameterResponse> Parameters,
     IReadOnlyList<JobExecutionResponse> Executions,
-    IReadOnlyList<JobApprovalResponse> Approvals);
+    IReadOnlyList<JobApprovalResponse> Approvals) : IJobAuthorizationResource;
+
+public sealed record JobAuthorizationResourceResponse(
+    Guid Id,
+    string Status,
+    string RequestedBy) : IJobAuthorizationResource;
 
 public sealed record JobTargetResponse(
     string Name,
@@ -104,3 +115,24 @@ public sealed record JobApprovalResponse(
     string Approver,
     DateTimeOffset DecisionUtc,
     string? Comment);
+
+public sealed record ApprovalReviewResponse(
+    JobDetailResponse Job,
+    ApprovalReviewScriptResponse Script,
+    ApprovalReviewPolicyResponse Policy,
+    ApprovalReviewDryRunEvidenceResponse AcceptedDryRunEvidence,
+    string ExpectedFingerprint);
+
+public sealed record ApprovalReviewScriptResponse(
+    string Name,
+    string DisplayName,
+    string Version,
+    string Sha256);
+
+public sealed record ApprovalReviewPolicyResponse(string RiskLevel);
+
+public sealed record ApprovalReviewDryRunEvidenceResponse(
+    string WorkKind,
+    string Source,
+    DateTimeOffset ExecutionWindowOpenedUtc,
+    DateTimeOffset CompletedUtc);

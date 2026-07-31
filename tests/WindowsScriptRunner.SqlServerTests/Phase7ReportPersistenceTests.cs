@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -21,6 +22,8 @@ public sealed class Phase7ReportPersistenceTests
 {
     private const string Phase6Migration =
         "20260729224310_AddWorkerQueueLeases";
+    private const string Phase7Migration =
+        "20260730221709_AddDurableLocalHostInventoryReports";
 
     [Fact]
     public async Task Phase7MigrationUpgradesAndRollsBackThePhase6Schema()
@@ -36,7 +39,7 @@ public sealed class Phase7ReportPersistenceTests
             (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(0, await ReportTableCountAsync(context));
 
-        await migrator.MigrateAsync();
+        await migrator.MigrateAsync(Phase7Migration);
         Assert.Equal(
             3,
             (await context.Database.GetAppliedMigrationsAsync()).Count());
@@ -118,6 +121,90 @@ public sealed class Phase7ReportPersistenceTests
                     conflict,
                     CancellationToken.None));
         }
+    }
+
+    [Fact]
+    public async Task TypedReportListIsBoundedAndReturnsOnlyThePersistedInventoryReport()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var running = await SeedRunningJobAsync(database);
+        await using (var completion = new PersistenceTestScope(database))
+        {
+            _ = await Handler(completion).HandleAsync(
+                running.Command,
+                CancellationToken.None);
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        var reports = await verification.Reports.ListLocalHostInventoryAsync(
+            1,
+            CancellationToken.None);
+
+        var report = Assert.Single(reports);
+        Assert.Equal(running.JobId, report.JobId);
+        Assert.Equal(JobReportType.LocalHostInventory, report.ReportType);
+        Assert.Equal(ReportFormat.Json, report.Format);
+        var requesterReports = await verification.Reports.ListLocalHostInventoryForRequesterAsync(
+            new UserIdentity("DOMAIN\\phase7-sql"),
+            1,
+            CancellationToken.None);
+        var otherRequesterReports = await verification.Reports.ListLocalHostInventoryForRequesterAsync(
+            new UserIdentity("DOMAIN\\different-requester"),
+            1,
+            CancellationToken.None);
+
+        Assert.Single(requesterReports);
+        Assert.Empty(otherRequesterReports);
+        Assert.Empty(await verification.Jobs.ListAsync([], CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Reports.ListLocalHostInventoryAsync(
+                0,
+                CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Reports.ListLocalHostInventoryAsync(
+                101,
+                CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Reports.ListLocalHostInventoryForRequesterAsync(
+                new UserIdentity("DOMAIN\\phase7-sql"),
+                101,
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AcceptedDryRunEvidenceConstraintRejectsPartialStates()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var running = await SeedRunningJobAsync(database);
+        await using var verification = new PersistenceTestScope(database);
+        var timestamp = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+
+        await Assert.ThrowsAsync<SqlException>(
+            () => verification.Context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE [wsr].[Jobs]
+                SET [AcceptedDryRunEvidenceWorkKind] = N'DryRun',
+                    [AcceptedDryRunEvidenceSource] = NULL,
+                    [AcceptedDryRunEvidenceWorkerNodeId] = NULL,
+                    [AcceptedDryRunEvidenceLeaseId] = NULL,
+                    [AcceptedDryRunEvidenceFencingToken] = NULL,
+                    [AcceptedDryRunEvidenceWindowOpenedUtc] = {timestamp},
+                    [AcceptedDryRunEvidenceCompletedUtc] = {timestamp}
+                WHERE [Id] = {running.JobId.Value};
+                """));
+        await Assert.ThrowsAsync<SqlException>(
+            () => verification.Context.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE [wsr].[Jobs]
+                SET [AcceptedDryRunEvidenceWorkKind] = N'DryRun',
+                    [AcceptedDryRunEvidenceSource] = N'LeasedWorker',
+                    [AcceptedDryRunEvidenceWorkerNodeId] = {Guid.NewGuid()},
+                    [AcceptedDryRunEvidenceLeaseId] = {Guid.NewGuid()},
+                    [AcceptedDryRunEvidenceFencingToken] = NULL,
+                    [AcceptedDryRunEvidenceWindowOpenedUtc] = {timestamp},
+                    [AcceptedDryRunEvidenceCompletedUtc] = {timestamp}
+                WHERE [Id] = {running.JobId.Value};
+                """));
     }
 
     [Fact]

@@ -1,0 +1,28 @@
+@page
+@model WindowsScriptRunner.Web.Pages.Reports.LocalHostInventory.IndexModel
+@using System.Globalization
+@{
+    ViewData["Title"] = "Local Host Inventory reports";
+}
+
+<h1>Local Host Inventory reports</h1>
+<form method="get" class="mb-3">
+    <label asp-for="JobId">Lookup by job ID</label>
+    <input asp-for="JobId" class="form-control" />
+    <button type="submit" class="btn btn-primary mt-2">Lookup</button>
+</form>
+
+<table class="table">
+    <thead><tr><th>Computer</th><th>Collected (UTC)</th><th>Operating system</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var report in Model.Reports)
+    {
+        <tr>
+            <td>@report.ComputerName</td>
+            <td>@report.CollectedUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture)</td>
+            <td>@report.OsDescription</td>
+            <td><a asp-page="/Reports/LocalHostInventory/Details" asp-route-reportId="@report.ReportId">Details</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

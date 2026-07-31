@@ -1,6 +1,6 @@
 # Security properties
 
-These properties describe the repository through Phase 7. Phase 8 is the next trust-boundary change and will add authenticated identity, authorization, approval workflow, and trusted approval-fingerprint calculation.
+These properties describe the Phase 8 implementation awaiting review. Phase 8 adds the first authenticated Web portal without weakening the existing Worker, PowerShell, reporting, lease, or Domain boundaries.
 
 - No raw credential property exists in the domain model; `CredentialReference` stores only an external identifier.
 - `SecureReference` job parameters must contain a canonical non-empty `CredentialReferenceId` GUID. Application handlers resolve the ID, reject missing or disabled references, store only the canonical ID, and never audit external vault identifiers.
@@ -21,7 +21,7 @@ These properties describe the repository through Phase 7. Phase 8 is the next tr
 - New submissions require the selected script definition to be enabled and the selected version to be published. Disabling a script later prevents new submissions; already-submitted jobs keep their captured policy until runtime governance is implemented.
 - Submitted jobs enforce the requested phase: Validation stops after validation, DryRun stops after dry-run, and only Execute requests may enter approval/execution states.
 - Requesters cannot self-approve Medium, High, or Critical work, and callers cannot lower risk at approval time. The current policy permits ReadOnly and Low self-approval.
-- Windows user identities compare with ordinal case-insensitive equality so casing cannot bypass self-approval checks. Phase 8 should map authenticated users to stable SIDs or equivalent principal identifiers.
+- Windows user identities compare with ordinal case-insensitive equality so casing cannot bypass self-approval checks. Web maps only an authenticated Windows user SID to `sid:<canonical-sid>`; names and role claims are not stable identity fallbacks.
 - Read-only completion requires captured ReadOnly risk and a captured absence of Execute support; callers cannot override either value.
 - Approval, rejection, execution, and completion states require dedicated evidence-bearing operations; the generic application transition handler rejects protected targets and refuses to terminalize jobs with active execution attempts.
 - Execution outcomes complete the active `JobExecution` and terminalize the parent `Job` in one aggregate operation, preventing orphaned active attempts.
@@ -39,7 +39,22 @@ These properties describe the repository through Phase 7. Phase 8 is the next tr
 - Production startup migration is disabled by default. Readiness reports unhealthy if SQL is unavailable or migrations are pending, while liveness remains independent of SQL.
 - Database constraints and triggers repeat critical integrity rules, including unique aggregate keys, one active execution per job, valid enum ranges, temporal ordering, and Execute-with-DryRun publication.
 
-Authentication, authorization, trusted approval-fingerprint calculation, executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, and production approval controls are not implemented.
+Executable signing, external credential retrieval, operating-system sandboxing, runtime cancellation policy for already-submitted jobs after script disable, and production operational hardening are not implemented. Phase 8 does not add IIS/HTTPS/SPN configuration, Kerberos delegation validation, external identity federation, account provisioning, production secret integration, or deployment controls.
+
+## Windows identity, authorization, and portal security
+
+- Production Web registers only ASP.NET Core Negotiate authentication. The fallback policy requires an authenticated principal for every endpoint except explicit static assets and health checks.
+- `WindowsPrincipalMapper` requires exactly one authenticated user SID from `PrimarySid`, then `Sid`, then trusted `WindowsIdentity.User`. Missing, ambiguous, malformed, control-character, and built-in-group user SIDs fail closed. Display names are never used for ownership, actor, approval, or group authority.
+- Canonical group SIDs come from valid authenticated GroupSid claims and the authenticated `WindowsIdentity.Groups` token collection. Invalid group values and the user SID are discarded. Configured role groups are normalized SIDs; duplicate, Everyone, Anonymous, and service-account groups are rejected, and non-test startup requires an administrator group.
+- Operator, ReportReader, Approver, and Administrator policies use those configured group SIDs only. Resource authorization additionally checks stable requester ownership and job state. Administrator capability does not grant cross-requester draft mutation.
+- The portal exposes no generic administration action. `/Administration` is policy-protected; the only new business actions are protected approval and rejection requests sent to Application.
+- Inventory list, lookup, and detail views use a dedicated safe view model. They do not render raw stdout/stderr, arbitrary JSON, rejected input, worker identity, lease ID, fencing token, PowerShell execution ID, hash, execution working files, or secure references.
+- Approval/rejection POSTs use Razor Pages antiforgery validation, reload and reauthorize the resource, obtain the actor only from `ICurrentUser`, and apply POST-Redirect-GET on success. Caller-supplied requester, approver, role, risk, separation-of-duties, and fingerprint-calculation fields are ignored or cannot grant authority.
+- `ApprovalFingerprintService` binds versioned canonical trusted job/script/policy/target/parameter/execution evidence to a lowercase SHA-256 fingerprint. Decision handlers recompute and compare it in constant time; a stale or malformed browser echo fails before mutation.
+- Domain remains the separation-of-duties authority: Medium, High, and Critical requesters cannot approve their own jobs even when their authenticated group permits an approval attempt. Audit, job state, and lease behavior remain outside Web.
+- Test-only synthetic authentication exists exclusively in the test project to exercise deterministic SID/group cases. It is absent from the production Web assembly and does not represent IIS/Kerberos/domain deployment validation.
+
+See [Windows authentication](windows-authentication.md), [authorization matrix](authorization-matrix.md), [approval workflow](approval-workflow.md), and [approval fingerprints](approval-fingerprints.md).
 
 ## Queue and routing security
 
@@ -102,4 +117,4 @@ Authentication, authorization, trusted approval-fingerprint calculation, executa
 - Report, completed job, lease deletion, and bounded audit event share the existing SQL unit-of-work transaction. Uniqueness and concurrency failures become bounded Application exceptions.
 - Audit properties contain report ID/type/schema/format, script version ID, worker ID, and created status only. They exclude computer name, OS data, PowerShell version, collected values, JSON, hash inputs, secrets, and credential references.
 - The typed read path is bounded to one report by Job ID or Report ID and fails closed on missing or inconsistent typed detail. It returns an immutable DTO and never returns EF entities, Domain entities, raw output, audit internals, or JSON.
-- Web has no report project reference, endpoint, Razor Page, download, or anonymous inventory exposure. Identity, authentication, authorization, and approval workflow are Phase 8.
+- Web still has no Reporting project reference, generic report endpoint, raw-output download, report mutation, or anonymous inventory exposure. Its Phase 8 pages call bounded Application queries and render only the safe typed view model after authorization.

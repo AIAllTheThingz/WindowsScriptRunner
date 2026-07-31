@@ -12,7 +12,7 @@ It owns:
 - bounded audit events; and
 - the immutable `JobReport` envelope with typed `LocalHostInventoryReportPayload`.
 
-All aggregate operations validate proposed state before mutation. Null, empty, and whitespace parameter input means no explicit binding. Active execution attempts cannot be orphaned by generic terminal transitions.
+All aggregate operations validate proposed state before mutation. Null, empty, and whitespace parameter input means no explicit binding. Active execution attempts cannot be orphaned by generic terminal transitions. Approval remains a Domain decision: Medium, High, and Critical requesters cannot approve their own policy-captured job. Phase 8 supplies a stable authenticated SID actor from Web but does not move policy into ASP.NET.
 
 Report construction enforces the only supported package/type/schema/format, provenance identifiers, positive fencing, timestamp ordering, bounded typed inventory, supported architecture and versions, lowercase SHA-256, and deterministic `JobReportId`.
 

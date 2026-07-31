@@ -714,11 +714,7 @@ public sealed class ProjectBoundaryTests
                 property.Name.Contains("Schema", StringComparison.OrdinalIgnoreCase) ||
                 property.Name.Contains("ReportType", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(
-            nameof(GetLocalHostInventoryReportHandler),
-            webSource,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "LocalHostInventoryReportResponse",
+            nameof(CompleteLocalHostInventoryDryRunHandler),
             webSource,
             StringComparison.Ordinal);
     }

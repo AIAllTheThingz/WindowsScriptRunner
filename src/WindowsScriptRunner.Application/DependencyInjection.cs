@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Application.Time;
@@ -13,6 +14,9 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<IClock, SystemClock>();
+        services.AddTransient<GetJobHandler>();
+        services.AddTransient<ListJobAuthorizationResourcesHandler>();
+        services.AddTransient<ListAwaitingApprovalJobsHandler>();
         services.AddTransient<RegisterWorkerHandler>();
         services.AddTransient<RecordWorkerHeartbeatHandler>();
         services.AddTransient<AcquireJobLeaseHandler>();
@@ -29,6 +33,17 @@ public static class DependencyInjection
         services.AddTransient<RecordLeasedExecutionOutcomeHandler>();
         services.AddTransient<CompleteLocalHostInventoryDryRunHandler>();
         services.AddTransient<GetLocalHostInventoryReportHandler>();
+        services.AddTransient<ListLocalHostInventoryReportsHandler>();
+        return services;
+    }
+
+    public static IServiceCollection AddWebPortalApplication(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddScoped<IJobFingerprintService, ApprovalFingerprintService>();
+        services.AddTransient<ApproveJobHandler>();
+        services.AddTransient<RejectJobHandler>();
+        services.AddTransient<GetApprovalReviewHandler>();
         return services;
     }
 }

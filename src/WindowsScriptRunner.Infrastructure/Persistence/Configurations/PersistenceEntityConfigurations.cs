@@ -208,6 +208,9 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<JobEntity>
                 table.HasCheckConstraint(
                     "CK_Jobs_PolicyRiskLevel",
                     "[PolicyRiskLevel] IS NULL OR [PolicyRiskLevel] IN ('ReadOnly','Low','Medium','High','Critical')");
+                table.HasCheckConstraint(
+                    "CK_Jobs_AcceptedDryRunEvidence",
+                    "([AcceptedDryRunEvidenceWorkKind] IS NULL AND [AcceptedDryRunEvidenceSource] IS NULL AND [AcceptedDryRunEvidenceWorkerNodeId] IS NULL AND [AcceptedDryRunEvidenceLeaseId] IS NULL AND [AcceptedDryRunEvidenceFencingToken] IS NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] IS NULL AND [AcceptedDryRunEvidenceCompletedUtc] IS NULL) OR ([AcceptedDryRunEvidenceWorkKind] IS NOT NULL AND [AcceptedDryRunEvidenceWorkKind] = 'DryRun' AND [AcceptedDryRunEvidenceSource] IS NOT NULL AND [AcceptedDryRunEvidenceSource] = 'InternalLifecycle' AND [AcceptedDryRunEvidenceWorkerNodeId] IS NULL AND [AcceptedDryRunEvidenceLeaseId] IS NULL AND [AcceptedDryRunEvidenceFencingToken] IS NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceCompletedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] <= [AcceptedDryRunEvidenceCompletedUtc]) OR ([AcceptedDryRunEvidenceWorkKind] IS NOT NULL AND [AcceptedDryRunEvidenceWorkKind] = 'DryRun' AND [AcceptedDryRunEvidenceSource] IS NOT NULL AND [AcceptedDryRunEvidenceSource] = 'LeasedWorker' AND [AcceptedDryRunEvidenceWorkerNodeId] IS NOT NULL AND [AcceptedDryRunEvidenceWorkerNodeId] <> '00000000-0000-0000-0000-000000000000' AND [AcceptedDryRunEvidenceLeaseId] IS NOT NULL AND [AcceptedDryRunEvidenceLeaseId] <> '00000000-0000-0000-0000-000000000000' AND [AcceptedDryRunEvidenceFencingToken] IS NOT NULL AND [AcceptedDryRunEvidenceFencingToken] > 0 AND [AcceptedDryRunEvidenceWindowOpenedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceCompletedUtc] IS NOT NULL AND [AcceptedDryRunEvidenceWindowOpenedUtc] <= [AcceptedDryRunEvidenceCompletedUtc])");
             });
         builder.HasKey(entity => entity.Id);
         builder.Property(entity => entity.Id).ValueGeneratedNever();
@@ -221,6 +224,12 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<JobEntity>
         builder.Property(entity => entity.Description).HasMaxLength(2000);
         builder.Property(entity => entity.ChangeReference).HasMaxLength(100);
         builder.Property(entity => entity.PolicyRiskLevel).HasMaxLength(16);
+        builder.Property(entity => entity.AcceptedDryRunEvidenceWorkKind).HasMaxLength(16);
+        builder.Property(entity => entity.AcceptedDryRunEvidenceSource).HasMaxLength(32);
+        builder.Property(entity => entity.AcceptedDryRunEvidenceWindowOpenedUtc)
+            .HasColumnType("datetimeoffset(7)");
+        builder.Property(entity => entity.AcceptedDryRunEvidenceCompletedUtc)
+            .HasColumnType("datetimeoffset(7)");
         builder.Property(entity => entity.RowVersion).IsRowVersion().IsConcurrencyToken();
         builder.HasIndex(entity => new { entity.Status, entity.UpdatedUtc })
             .HasDatabaseName("IX_Jobs_Status_UpdatedUtc");

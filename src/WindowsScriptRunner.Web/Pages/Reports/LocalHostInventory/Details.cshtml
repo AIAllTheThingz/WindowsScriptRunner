@@ -1,0 +1,16 @@
+@page "{reportId:guid}"
+@model WindowsScriptRunner.Web.Pages.Reports.LocalHostInventory.DetailsModel
+@{
+    ViewData["Title"] = "Local Host Inventory report";
+}
+
+<h1>Local Host Inventory report</h1>
+<dl class="row">
+    <dt class="col-sm-3">Computer</dt><dd class="col-sm-9">@Model.Report.ComputerName</dd>
+    <dt class="col-sm-3">Collected (UTC)</dt><dd class="col-sm-9">@Model.Report.CollectedUtc.UtcDateTime</dd>
+    <dt class="col-sm-3">Operating system</dt><dd class="col-sm-9">@Model.Report.OsDescription</dd>
+    <dt class="col-sm-3">OS version</dt><dd class="col-sm-9">@Model.Report.OsVersion</dd>
+    <dt class="col-sm-3">Architecture</dt><dd class="col-sm-9">@Model.Report.OsArchitecture</dd>
+    <dt class="col-sm-3">PowerShell version</dt><dd class="col-sm-9">@Model.Report.PowerShellVersion</dd>
+    <dt class="col-sm-3">Package</dt><dd class="col-sm-9">@Model.Report.PackageId @Model.Report.PackageVersion</dd>
+</dl>
