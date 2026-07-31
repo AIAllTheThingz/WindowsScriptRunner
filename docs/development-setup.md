@@ -24,7 +24,7 @@ dotnet format --verify-no-changes
 dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build
 ```
 
-The Phase 7 baseline is 649 passing tests.
+The Phase 7 baseline is 652 passing tests.
 
 ## Local database
 

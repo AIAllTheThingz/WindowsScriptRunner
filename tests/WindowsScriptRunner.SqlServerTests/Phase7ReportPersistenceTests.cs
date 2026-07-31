@@ -222,6 +222,48 @@ public sealed class Phase7ReportPersistenceTests
                 cancellation.Token));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PersistedDigestOrTypedContentMismatchFailsClosed(
+        bool corruptDigest)
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var running = await SeedRunningJobAsync(database);
+        await using (var completion = new PersistenceTestScope(database))
+        {
+            _ = await Handler(completion).HandleAsync(
+                running.Command,
+                CancellationToken.None);
+        }
+
+        await using (var corruption = database.CreateContext())
+        {
+            if (corruptDigest)
+            {
+                await corruption.Database.ExecuteSqlRawAsync(
+                    """
+                    UPDATE [wsr].[JobReports]
+                    SET [Sha256] = REPLICATE('b', 64)
+                    """);
+            }
+            else
+            {
+                await corruption.Database.ExecuteSqlRawAsync(
+                    """
+                    UPDATE [wsr].[LocalHostInventoryReports]
+                    SET [ComputerName] = 'WORKER-02'
+                    """);
+            }
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        await Assert.ThrowsAsync<PersistenceOperationException>(
+            () => verification.Reports.GetByJobIdAsync(
+                running.JobId,
+                CancellationToken.None));
+    }
+
     private static CompleteLocalHostInventoryDryRunHandler Handler(
         PersistenceTestScope scope) =>
         new(

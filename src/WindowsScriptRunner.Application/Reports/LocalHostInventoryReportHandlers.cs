@@ -63,9 +63,6 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
             ?? throw new EntityNotFoundException(
                 nameof(Job),
                 command.JobId.ToString());
-        var version = await LoadAndValidatePinnedPackageAsync(
-            job,
-            cancellationToken);
         var reportId = JobReport.CreateDeterministicId(job.Id);
         var existing = await reportRepository.GetByIdAsync(
             reportId,
@@ -76,6 +73,9 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
             return new LocalHostInventoryReportCompletion(existing.Id, Created: false);
         }
 
+        var version = await LoadAndValidatePinnedPackageAsync(
+            job,
+            cancellationToken);
         var reportForJob = await reportRepository.GetByJobIdAsync(
             job.Id,
             cancellationToken);
@@ -105,7 +105,11 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
         }
 
         var payload = ToPayload(command.Inventory);
-        var digest = CreateDigest(job, command.Credentials, command.Inventory);
+        var digest = LocalHostInventoryReportDigest.Create(
+            job,
+            command.Credentials,
+            command.Inventory,
+            payload);
         JobReport report;
         try
         {
@@ -212,7 +216,11 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
         CompleteLocalHostInventoryDryRunCommand command)
     {
         var payload = ToPayload(command.Inventory);
-        var digest = CreateDigest(job, command.Credentials, command.Inventory);
+        var digest = LocalHostInventoryReportDigest.Create(
+            job,
+            command.Credentials,
+            command.Inventory,
+            payload);
         var matches =
             job.Status == JobStatus.Completed &&
             job.Lease is null &&
@@ -262,26 +270,6 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
                 exception);
         }
     }
-
-    private static string CreateDigest(
-        Job job,
-        JobLeaseCredentials credentials,
-        ValidatedLocalHostInventoryReport inventory) =>
-        LocalHostInventoryCanonicalizer.CreateSha256(
-            new LocalHostInventoryCanonicalReport(
-                job.Id.Value,
-                job.ScriptDefinitionId.Value,
-                job.ScriptVersionId.Value,
-                credentials.WorkerNodeId.Value,
-                credentials.LeaseId.Value,
-                credentials.FencingToken,
-                inventory.ExecutionId,
-                inventory.CollectedUtc,
-                inventory.ComputerName,
-                inventory.OsDescription,
-                inventory.OsVersion,
-                inventory.OsArchitecture,
-                inventory.PowerShellVersion));
 
     private static AuditEvent CreateAudit(
         JobReport report,

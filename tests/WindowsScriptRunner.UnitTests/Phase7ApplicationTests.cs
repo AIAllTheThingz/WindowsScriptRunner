@@ -68,6 +68,26 @@ public sealed class Phase7ApplicationTests
     }
 
     [Fact]
+    public async Task ExactReplayRemainsIdempotentAfterDefinitionIsDisabled()
+    {
+        var fixture = Fixture.Create();
+        var first = await fixture.Handler.HandleAsync(
+            fixture.Command,
+            CancellationToken.None);
+        fixture.Scripts.Definition.Disable(Time.AddMinutes(1));
+
+        var replay = await fixture.Handler.HandleAsync(
+            fixture.Command,
+            CancellationToken.None);
+
+        Assert.False(replay.Created);
+        Assert.Equal(first.ReportId, replay.ReportId);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        Assert.Single(fixture.Audits.Events);
+        Assert.Equal(1, fixture.Reports.AddCount);
+    }
+
+    [Fact]
     public async Task ConflictingReplayFailsClosed()
     {
         var fixture = Fixture.Create();

@@ -1593,3 +1593,15 @@ Validation date: 2026-07-30, America/Chicago.
 - The test suite was not rerun because this consolidation changes documentation only. The validated Phase 7 baseline immediately above remains 649 passed, 0 failed, and 0 skipped.
 
 No deployment, commit, push, or pull request was performed as part of the documentation consolidation.
+
+## Phase 7 pull-request review remediation
+
+Validation date: 2026-07-30, America/Chicago.
+
+- Corrected deterministic report IDs to use the UUID version 8 marker at the byte required by .NET `Guid` ordering and added a regression assertion.
+- Exact replay is now recognized before mutable script-definition enablement is checked, so a retry after an uncertain successful commit remains idempotent even if the definition is subsequently disabled.
+- Persistence now recomputes the canonical report digest from rehydrated typed content and provenance. A valid-looking but altered digest or typed inventory value fails closed.
+- Updated Domain documentation to distinguish exact idempotent replay from conflicting duplicate completion.
+- `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build`: exit 0; 652 passed, 0 failed, 0 skipped: Unit 380, PowerShell 109, Security 57, Worker 51, SQL Server 52, Integration 3.
+- `dotnet format --verify-no-changes --no-restore`: exit 0.

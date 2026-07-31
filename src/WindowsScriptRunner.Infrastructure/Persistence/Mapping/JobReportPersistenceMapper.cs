@@ -1,3 +1,4 @@
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Reports;
@@ -52,7 +53,7 @@ internal static class JobReportPersistenceMapper
                 "Persisted report envelope and detail identifiers disagree.");
         }
 
-        return JobReport.Rehydrate(
+        var report = JobReport.Rehydrate(
             new JobReportId(entity.Id),
             new JobId(entity.JobId),
             new ScriptDefinitionId(entity.ScriptDefinitionId),
@@ -75,6 +76,16 @@ internal static class JobReportPersistenceMapper
                 ParseEnum<InventoryOsArchitecture>(inventory.OsArchitecture),
                 inventory.PowerShellVersion),
             entity.Sha256);
+        if (!string.Equals(
+                report.Sha256,
+                LocalHostInventoryReportDigest.Create(report),
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Persisted report digest does not match its typed content and provenance.");
+        }
+
+        return report;
     }
 
     private static TEnum ParseEnum<TEnum>(string value)
