@@ -2,7 +2,7 @@
 
 ## Status
 
-The EF Core SQL Server model and reviewed migrations are implemented through durable Phase 7 reporting. Production rollout automation is planned for Phase 9 and is not present here.
+The EF Core SQL Server model and reviewed migrations are implemented through durable Phase 8 reporting. Phase 9 has added `Invoke-ReviewedMigration.ps1` for an explicit, Windows-integrated rollout path. It creates a `COPY_ONLY` backup before applying a reviewed idempotent script and supports `-WhatIf`. No production database has been changed by this repository work.
 
 Migration source is owned by:
 
@@ -13,9 +13,10 @@ The current history includes:
 1. `InitialSqlServerPersistence`
 2. `AddWorkerQueueLeases`
 3. `AddDurableLocalHostInventoryReports`
+4. `AddTrustedDryRunApprovalEvidence`
 
-Production startup migration is disabled by default. The repository supports design-time migration commands and tests clean apply, upgrade, rollback, reapply, and pending-model detection, but it does not provide a production connection profile, reviewed generated rollout script, backup/restore automation, maintenance window procedure, or operator sign-off workflow.
+Production startup migration is disabled by default. The repository supports design-time migration commands and tests clean apply, upgrade, rollback, reapply, and pending-model detection. The rollout script still requires an operator-generated reviewed idempotent script, an approved backup path, Windows-integrated `sqlcmd`, a maintenance window, and an operator sign-off record.
 
-Phase 9 must produce and rehearse deployment and rollback artifacts against a representative production topology. Dropping the reporting migration destroys durable reports and therefore requires an explicit backup and retention decision.
+The rollout script does not implement rollback automatically. Restoring the pre-migration backup and revalidating application readiness remains the supported rollback boundary. Phase 9 must still rehearse forward migration, restore, retention, and verification against a representative topology.
 
 See [database migrations](../../docs/database-migrations.md), [database schema](../../docs/database-schema.md), and [SQL Server persistence](../../docs/sql-server-persistence.md).

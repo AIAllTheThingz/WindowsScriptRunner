@@ -1,6 +1,6 @@
 # Security properties
 
-These properties describe the Phase 8 implementation awaiting review. Phase 8 adds the first authenticated Web portal without weakening the existing Worker, PowerShell, reporting, lease, or Domain boundaries.
+These properties describe the Phase 8 implementation merged into `main`. Phase 8 adds the first authenticated Web portal without weakening the existing Worker, PowerShell, reporting, lease, or Domain boundaries. It has not been deployed or rolled out.
 
 - No raw credential property exists in the domain model; `CredentialReference` stores only an external identifier.
 - `SecureReference` job parameters must contain a canonical non-empty `CredentialReferenceId` GUID. Application handlers resolve the ID, reject missing or disabled references, store only the canonical ID, and never audit external vault identifiers.

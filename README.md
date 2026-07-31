@@ -1,6 +1,6 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application for controlled automation. Phase 8 is committed on its review branch and awaits review; it has not been merged into `main`, deployed, or rolled out.
+Windows Script Runner is a Windows-hosted .NET application for controlled automation. Phase 8 is complete and merged into `main`; it has not been deployed or rolled out. Phase 9 production hardening and deployment are in progress.
 
 ## Current status
 
@@ -10,13 +10,13 @@ The solution includes:
 - SQL Server persistence, migrations, health checks, and transactional auditing;
 - a fenced, lease-backed Worker queue with SQL-authoritative coordination time;
 - an isolated PowerShell 7 child-process boundary;
-- one reviewed, hash-pinned production package, `windows.local-host-inventory` version `1.0.0`; and
+- one reviewed, hash-pinned production package, `windows.local-host-inventory` version `1.0.0`;
 - strict Local Host Inventory parsing with immutable typed report persistence; and
 - a Negotiate-protected Razor Pages portal with SID-based authorization, safe typed inventory views, and trusted approval/rejection workflow.
 
 The inventory package is ReadOnly, local-only, parameterless, and DryRun-only. Its successful result is validated against the exact schema and stored as one typed SQL report in the same transaction that completes the job, removes the lease, and records bounded audit metadata. Raw stdout, stderr, and arbitrary JSON are not persisted.
 
-Phases 1–7 are implemented, validated, and merged into `main`. Phase 8 is implemented and validated on its review branch. Phase 9 remains production hardening and deployment.
+Phases 1–8 are implemented, validated, reviewed, and merged into `main`. Phase 9 is the current production-hardening and deployment phase, but no production rollout is claimed.
 
 ## Solution structure
 
@@ -31,7 +31,7 @@ Phases 1–7 are implemented, validated, and merged into `main`. Phase 8 is impl
 - `src/WindowsScriptRunner.Reporting` — strict inventory parsing, validation, canonicalization, and digest calculation
 - `tests` — unit, security, Worker, SQL Server, integration, and real PowerShell tests
 - `automation` — reserved repository-maintenance automation area
-- `deployment` — Phase 9 deployment planning and status
+- `deployment` — Phase 9 deployment tooling, runbooks, and status
 - `docs` — architecture, security, operations, ADRs, roadmap, and validation evidence
 
 ## Prerequisites
@@ -76,7 +76,7 @@ Apply reviewed migrations before production startup. Startup migration is an exp
 - Windows Negotiate, stable SID identity mapping, authorization, trusted approval fingerprints, and approval/rejection workflow are implemented; IIS/Kerberos/SPN/HTTPS deployment validation is not.
 - External secret retrieval and injection are not implemented.
 - There is no generic package discovery, arbitrary script upload, generic reporting, or operating-system sandbox.
-- IIS configuration, Windows Service installation, production SQL rollout, backup rehearsal, and operational deployment automation are not implemented.
+- Representative IIS/Windows Service installation, production SQL rollout, backup/restore rehearsal, certificate/SPN/Kerberos validation, and operational deployment sign-off are not complete.
 - There is no password, application session, account provisioning, identity federation, or server-side Windows sign-out; Windows-session sign-out guidance is provided instead.
 - The product is not production-ready.
 

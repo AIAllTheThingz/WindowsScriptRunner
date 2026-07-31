@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Phase 8 implementation awaiting review. Phase labels identify when each boundary was introduced; they do not imply that later sections replace the earlier controls.
+This document describes the Phase 8 implementation merged into `main`. Phase 8 has not been deployed or rolled out. Phase labels identify when each boundary was introduced; they do not imply that later sections replace the earlier controls.
 
 The web application and Worker are separate processes. Web never executes PowerShell or references the PowerShell or Automation projects. The Worker is the only production composition root that may enable the reviewed automation package.
 
