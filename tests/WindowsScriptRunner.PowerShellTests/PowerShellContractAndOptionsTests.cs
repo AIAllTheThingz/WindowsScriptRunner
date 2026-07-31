@@ -135,8 +135,9 @@ public sealed class PowerShellContractAndOptionsTests
             new string('a', 64),
             []);
 
-        Assert.Throws<PowerShellScriptTrustException>(
+        var exception = Assert.Throws<PowerShellScriptTrustException>(
             () => factory.Resolve(artifact));
+        Assert.Equal("The reviewed artifact path is invalid.", exception.Message);
     }
 
     [Theory]
