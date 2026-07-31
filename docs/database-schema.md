@@ -1,6 +1,6 @@
 # Database schema
 
-The current schema includes the initial aggregate model, durable worker leases, and the Phase 7 typed local-host inventory report.
+The current schema includes the initial aggregate model, durable worker leases, and the Phase 7 typed local-host inventory report. Phase 8 adds no persistent identity, authorization, approval-evidence, or portal table: authenticated SID mapping and approval fingerprints are calculated from the Windows token and existing trusted persisted state.
 
 The initial migration creates the `wsr` schema and uses `wsr.__EFMigrationsHistory` for migration history.
 

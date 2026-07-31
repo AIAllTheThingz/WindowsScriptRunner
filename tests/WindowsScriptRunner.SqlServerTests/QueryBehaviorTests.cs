@@ -10,6 +10,8 @@ using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
+using WindowsScriptRunner.Domain.Jobs;
+using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Infrastructure;
 using WindowsScriptRunner.Infrastructure.Persistence;
 using WindowsScriptRunner.Infrastructure.Persistence.Queue;
@@ -179,6 +181,50 @@ public sealed class QueryBehaviorTests
             CancellationToken.None);
         Assert.Empty(none);
         Assert.Empty(capture.Commands);
+    }
+
+    [Fact]
+    public async Task ApprovalQueueListReturnsOnlyAwaitingApprovalJobsAndHonorsBounds()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var version = SqlServerTestData.Version();
+        var script = SqlServerTestData.Script(version);
+        var firstAwaiting = AwaitingApproval(script, version);
+        var secondAwaiting = AwaitingApproval(script, version);
+        var submitted = SqlServerTestData.SubmittedJob(script, version);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Jobs.AddAsync(firstAwaiting, CancellationToken.None);
+            await seed.Jobs.AddAsync(secondAwaiting, CancellationToken.None);
+            await seed.Jobs.AddAsync(submitted, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        var jobs = await verification.Jobs.ListAwaitingApprovalAsync(
+            1,
+            CancellationToken.None);
+
+        var job = Assert.Single(jobs);
+        Assert.Contains(job.Id, new[] { firstAwaiting.Id, secondAwaiting.Id });
+        Assert.Equal(JobStatus.AwaitingApproval, job.Status);
+        Assert.DoesNotContain(jobs, item => item.Id == submitted.Id);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Jobs.ListAwaitingApprovalAsync(0, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Jobs.ListAwaitingApprovalAsync(101, CancellationToken.None));
+    }
+
+    private static Job AwaitingApproval(ScriptDefinition script, ScriptVersion version)
+    {
+        var job = SqlServerTestData.SubmittedJob(script, version);
+        job.MarkValidated(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.QueueDryRun(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.StartDryRun(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.CompleteDryRun(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        job.RequireApproval(SqlServerTestData.Approver, job.UpdatedUtc.AddMinutes(1));
+        return job;
     }
 
     private sealed class CommandCaptureInterceptor : DbCommandInterceptor

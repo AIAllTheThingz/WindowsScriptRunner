@@ -393,6 +393,11 @@ public sealed class QueueApplicationTests
             return Task.FromResult(Job?.Id == id ? Job : null);
         }
 
+        public Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+            int maximumCount,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Job>>([]);
+
         public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken) =>
             Task.FromResult(Job?.Id == id);
 

@@ -121,6 +121,37 @@ public sealed class Phase7ReportPersistenceTests
     }
 
     [Fact]
+    public async Task TypedReportListIsBoundedAndReturnsOnlyThePersistedInventoryReport()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var running = await SeedRunningJobAsync(database);
+        await using (var completion = new PersistenceTestScope(database))
+        {
+            _ = await Handler(completion).HandleAsync(
+                running.Command,
+                CancellationToken.None);
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        var reports = await verification.Reports.ListLocalHostInventoryAsync(
+            1,
+            CancellationToken.None);
+
+        var report = Assert.Single(reports);
+        Assert.Equal(running.JobId, report.JobId);
+        Assert.Equal(JobReportType.LocalHostInventory, report.ReportType);
+        Assert.Equal(ReportFormat.Json, report.Format);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Reports.ListLocalHostInventoryAsync(
+                0,
+                CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => verification.Reports.ListLocalHostInventoryAsync(
+                101,
+                CancellationToken.None));
+    }
+
+    [Fact]
     public async Task ConstraintFailureRollsBackReportJobLeaseAndAuditTogether()
     {
         await using var database = await SqlServerDatabase.CreateAsync();

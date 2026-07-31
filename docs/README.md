@@ -1,6 +1,6 @@
 # Documentation
 
-This directory documents the implementation validated through Phase 7. Historical phase evidence remains in `validation-report.md`; current-state documents describe the repository as it exists now.
+This directory documents the Phase 8 implementation awaiting review. Historical phase evidence remains in `validation-report.md`; current-state documents describe the repository as it exists now.
 
 ## Start here
 
@@ -9,6 +9,10 @@ This directory documents the implementation validated through Phase 7. Historica
 - [Development setup](development-setup.md) — prerequisites, validation, local database, Web, and Worker startup
 - [Architecture](architecture.md) — project boundaries and runtime flow
 - [Security](security.md) — trust boundaries, protected data, and residual risks
+- [Windows authentication](windows-authentication.md) — Negotiate, SID mapping, configuration, and safe sign-out
+- [Authorization matrix](authorization-matrix.md) — policy, resource, and route decisions
+- [Approval workflow](approval-workflow.md) — authenticated review, decision, PRG, and separation of duties
+- [Approval fingerprints](approval-fingerprints.md) — canonical trusted review evidence and decision-time verification
 - [Validation report](validation-report.md) — chronological command and test evidence
 
 ## Domain and application
@@ -39,6 +43,7 @@ This directory documents the implementation validated through Phase 7. Historica
 6. [PowerShell child-process boundary](decisions/0006-powershell-child-process-boundary.md)
 7. [First production automation package](decisions/0007-first-production-automation-package.md)
 8. [Typed durable inventory reporting](decisions/0008-typed-durable-inventory-reporting.md)
+9. [Windows SID identity and trusted approval evidence](decisions/0009-windows-sid-identity-and-trusted-approval-evidence.md)
 
 ## Deployment status
 

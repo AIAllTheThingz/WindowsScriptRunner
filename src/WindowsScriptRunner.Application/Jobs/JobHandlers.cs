@@ -421,7 +421,9 @@ public sealed class ApproveJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IWorkerCoordinationClock coordinationClock)
+    IWorkerCoordinationClock coordinationClock,
+    IJobFingerprintService fingerprintService,
+    ICurrentUser currentUser)
 {
     public async Task HandleAsync(ApproveJobCommand command, CancellationToken cancellationToken)
     {
@@ -430,18 +432,36 @@ public sealed class ApproveJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
+        var fingerprint = await fingerprintService.CreateFingerprintAsync(job, cancellationToken);
+        if (!ApprovalFingerprintService.IsExpectedFingerprintCurrent(
+                command.ExpectedFingerprint,
+                fingerprint))
+        {
+            throw new ApplicationConflictException(
+                "The approval review is stale or invalid.");
+        }
+
         var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
-        job.RecordApproval(
-            command.ActingUser,
-            command.ApprovalFingerprint,
-            command.Comment,
-            now);
+        try
+        {
+            job.RecordApproval(
+                currentUser.User,
+                fingerprint,
+                command.Comment,
+                now);
+        }
+        catch (Domain.Exceptions.DomainException exception)
+        {
+            throw new ApplicationConflictException(
+                "The approval decision is no longer valid for the current job state.",
+                exception);
+        }
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
             CreateDraftJobHandler.Audit(
                 "JobApproved",
                 job,
-                command.ActingUser,
+                currentUser.User,
                 now,
                 "Approval evidence was recorded and the job was approved."),
             cancellationToken);
@@ -453,7 +473,9 @@ public sealed class RejectJobHandler(
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
-    IWorkerCoordinationClock coordinationClock)
+    IWorkerCoordinationClock coordinationClock,
+    IJobFingerprintService fingerprintService,
+    ICurrentUser currentUser)
 {
     public async Task HandleAsync(RejectJobCommand command, CancellationToken cancellationToken)
     {
@@ -462,18 +484,36 @@ public sealed class RejectJobHandler(
             jobRepository,
             command.JobId,
             cancellationToken);
+        var fingerprint = await fingerprintService.CreateFingerprintAsync(job, cancellationToken);
+        if (!ApprovalFingerprintService.IsExpectedFingerprintCurrent(
+                command.ExpectedFingerprint,
+                fingerprint))
+        {
+            throw new ApplicationConflictException(
+                "The approval review is stale or invalid.");
+        }
+
         var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
-        job.RecordRejection(
-            command.ActingUser,
-            command.ApprovalFingerprint,
-            command.Comment,
-            now);
+        try
+        {
+            job.RecordRejection(
+                currentUser.User,
+                fingerprint,
+                command.Comment,
+                now);
+        }
+        catch (Domain.Exceptions.DomainException exception)
+        {
+            throw new ApplicationConflictException(
+                "The rejection decision is no longer valid for the current job state.",
+                exception);
+        }
         await jobRepository.UpdateAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
             CreateDraftJobHandler.Audit(
                 "JobRejected",
                 job,
-                command.ActingUser,
+                currentUser.User,
                 now,
                 "Rejection evidence was recorded and the job was rejected."),
             cancellationToken);
@@ -682,7 +722,7 @@ public sealed class GetJobHandler(
         return Map(job, script);
     }
 
-    private static JobDetailResponse Map(Job job, ScriptDefinition script)
+    internal static JobDetailResponse Map(Job job, ScriptDefinition script)
     {
         try
         {
@@ -746,5 +786,64 @@ public sealed class GetJobHandler(
             isSensitive ? "[REDACTED]" : parameter.SerializedValue ?? "(null)",
             isSensitive,
             isSensitive);
+    }
+}
+
+public sealed class ListAwaitingApprovalJobsHandler(
+    IJobRepository jobRepository,
+    IScriptDefinitionRepository scriptRepository)
+{
+    private const int MaximumQueueSize = 100;
+
+    public async Task<IReadOnlyList<JobDetailResponse>> HandleAsync(
+        ListAwaitingApprovalJobsQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (query.MaximumCount is < 1 or > MaximumQueueSize)
+        {
+            throw new ApplicationValidationException(
+                $"Approval queue size must be between 1 and {MaximumQueueSize}.");
+        }
+
+        var jobs = await jobRepository.ListAwaitingApprovalAsync(
+            query.MaximumCount,
+            cancellationToken);
+        var results = new List<JobDetailResponse>(jobs.Count);
+        foreach (var job in jobs)
+        {
+            var script = await SetJobParameterHandler.GetScriptAsync(
+                scriptRepository,
+                job.ScriptDefinitionId,
+                cancellationToken);
+            results.Add(GetJobHandler.Map(job, script));
+        }
+
+        return results;
+    }
+}
+
+public sealed class GetApprovalReviewHandler(
+    IJobRepository jobRepository,
+    IScriptDefinitionRepository scriptRepository,
+    IJobFingerprintService fingerprintService)
+{
+    public async Task<ApprovalReviewResponse> HandleAsync(
+        GetApprovalReviewQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var job = await AddJobTargetHandler.GetJobAsync(
+            jobRepository,
+            query.JobId,
+            cancellationToken);
+        var script = await SetJobParameterHandler.GetScriptAsync(
+            scriptRepository,
+            job.ScriptDefinitionId,
+            cancellationToken);
+        var expectedFingerprint = await fingerprintService.CreateFingerprintAsync(
+            job,
+            cancellationToken);
+        return new ApprovalReviewResponse(GetJobHandler.Map(job, script), expectedFingerprint);
     }
 }

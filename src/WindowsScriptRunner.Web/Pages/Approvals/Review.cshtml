@@ -1,0 +1,45 @@
+@page "{jobId:guid}"
+@model WindowsScriptRunner.Web.Pages.Approvals.ReviewModel
+@{
+    ViewData["Title"] = "Approval review";
+}
+
+<h1>Approval review</h1>
+<dl class="row">
+    <dt class="col-sm-3">Job ID</dt><dd class="col-sm-9">@Model.Review.Job.Id</dd>
+    <dt class="col-sm-3">Requester</dt><dd class="col-sm-9">@Model.Review.Job.RequestedBy</dd>
+    <dt class="col-sm-3">Description</dt><dd class="col-sm-9">@Model.Review.Job.Description</dd>
+    <dt class="col-sm-3">Change reference</dt><dd class="col-sm-9">@Model.Review.Job.ChangeReference</dd>
+</dl>
+
+<h2>Targets</h2>
+<ul>
+@foreach (var target in Model.Review.Job.Targets)
+{
+    <li>@target.Name</li>
+}
+</ul>
+
+<h2>Parameters</h2>
+<table class="table">
+    <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+    <tbody>
+    @foreach (var parameter in Model.Review.Job.Parameters)
+    {
+        <tr><td>@parameter.Name</td><td>@parameter.ParameterType</td><td>@parameter.DisplayValue</td></tr>
+    }
+    </tbody>
+</table>
+
+<form method="post">
+    <input type="hidden" name="jobId" value="@Model.Review.Job.Id" />
+    <input type="hidden" name="expectedFingerprint" value="@Model.Review.ExpectedFingerprint" />
+    <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+    <div class="mb-3">
+        <label asp-for="Comment">Comment</label>
+        <textarea asp-for="Comment" class="form-control" maxlength="2000"></textarea>
+        <span asp-validation-for="Comment" class="text-danger"></span>
+    </div>
+    <button type="submit" asp-page-handler="Approve" class="btn btn-primary">Approve</button>
+    <button type="submit" asp-page-handler="Reject" class="btn btn-outline-danger">Reject</button>
+</form>

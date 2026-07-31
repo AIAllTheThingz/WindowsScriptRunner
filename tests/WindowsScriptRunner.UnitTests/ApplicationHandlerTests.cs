@@ -775,30 +775,37 @@ public sealed class ApplicationHandlerTests
             new ApproveJobCommand(
                 fixture.Jobs.Job!.Id,
                 TestDomainFactory.Fingerprint,
-                "Reviewed.",
-                TestDomainFactory.OtherUser),
+                "Reviewed."),
             CancellationToken.None);
 
         Assert.Equal(JobStatus.Approved, fixture.Jobs.Job.Status);
-        Assert.Equal(ApprovalDecision.Approved, Assert.Single(fixture.Jobs.Job.Approvals).Decision);
+        var approval = Assert.Single(fixture.Jobs.Job.Approvals);
+        Assert.Equal(ApprovalDecision.Approved, approval.Decision);
+        Assert.Equal(fixture.CurrentUser.User, approval.Approver);
+        Assert.Equal(TestDomainFactory.Fingerprint, approval.ApprovalFingerprint);
         Assert.Equal("JobApproved", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(fixture.CurrentUser.User, Assert.Single(fixture.Audits.Events).Actor);
         Assert.Equal(1, fixture.Jobs.UpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
     }
 
-    [Fact]
-    public async Task FailedApprovalDoesNotPersistAuditOrCommit()
+    [Theory]
+    [InlineData(RiskLevel.Medium)]
+    [InlineData(RiskLevel.High)]
+    [InlineData(RiskLevel.Critical)]
+    public async Task RequesterCannotSelfApproveElevatedRiskThroughTheServerHandler(RiskLevel riskLevel)
     {
-        var fixture = HandlerFixture.WithAwaitingApprovalJob(RiskLevel.High);
+        var fixture = HandlerFixture.WithAwaitingApprovalJob(riskLevel);
+        fixture.CurrentUser.User = TestDomainFactory.User;
 
-        await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
+        var exception = await Assert.ThrowsAsync<ApplicationConflictException>(
             () => fixture.ApproveHandler.HandleAsync(
                 new ApproveJobCommand(
                     fixture.Jobs.Job!.Id,
                     TestDomainFactory.Fingerprint,
-                    null,
-                    TestDomainFactory.User),
+                    null),
                 CancellationToken.None));
+        Assert.IsType<Domain.Exceptions.DomainValidationException>(exception.InnerException);
 
         Assert.Equal(JobStatus.AwaitingApproval, fixture.Jobs.Job!.Status);
         Assert.Empty(fixture.Jobs.Job.Approvals);
@@ -816,15 +823,112 @@ public sealed class ApplicationHandlerTests
             new RejectJobCommand(
                 fixture.Jobs.Job!.Id,
                 TestDomainFactory.Fingerprint,
-                "Rejected after review.",
-                TestDomainFactory.OtherUser),
+                "Rejected after review."),
             CancellationToken.None);
 
         Assert.Equal(JobStatus.Rejected, fixture.Jobs.Job.Status);
-        Assert.Equal(ApprovalDecision.Rejected, Assert.Single(fixture.Jobs.Job.Approvals).Decision);
+        var rejection = Assert.Single(fixture.Jobs.Job.Approvals);
+        Assert.Equal(ApprovalDecision.Rejected, rejection.Decision);
+        Assert.Equal(fixture.CurrentUser.User, rejection.Approver);
+        Assert.Equal(TestDomainFactory.Fingerprint, rejection.ApprovalFingerprint);
         Assert.Equal("JobRejected", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(fixture.CurrentUser.User, Assert.Single(fixture.Audits.Events).Actor);
         Assert.Equal(1, fixture.Jobs.UpdateCount);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")]
+    [InlineData("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")]
+    public async Task StaleOrMalformedApprovalFingerprintDoesNotPersistAuditOrCommit(string expectedFingerprint)
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.ApproveHandler.HandleAsync(
+                new ApproveJobCommand(
+                    fixture.Jobs.Job!.Id,
+                    expectedFingerprint,
+                    "Reviewed."),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.AwaitingApproval, fixture.Jobs.Job!.Status);
+        Assert.Empty(fixture.Jobs.Job.Approvals);
+        Assert.Equal(1, fixture.Fingerprints.CallCount);
+        Assert.Equal(0, fixture.Clock.CoordinationReadCount);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task StaleRejectionFingerprintDoesNotPersistAuditOrCommit()
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.RejectHandler.HandleAsync(
+                new RejectJobCommand(
+                    fixture.Jobs.Job!.Id,
+                    new string('c', 64),
+                    "Rejected after review."),
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.AwaitingApproval, fixture.Jobs.Job!.Status);
+        Assert.Empty(fixture.Jobs.Job.Approvals);
+        Assert.Equal(1, fixture.Fingerprints.CallCount);
+        Assert.Equal(0, fixture.Clock.CoordinationReadCount);
+        Assert.Equal(0, fixture.Jobs.UpdateCount);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Fact]
+    public async Task AwaitingApprovalListIsBoundedAndContainsOnlyTypedAwaitingJobs()
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        var jobs = await fixture.ListAwaitingApprovalHandler.HandleAsync(
+            new ListAwaitingApprovalJobsQuery(1),
+            CancellationToken.None);
+
+        var job = Assert.Single(jobs);
+        Assert.Equal(fixture.Jobs.Job!.Id.Value, job.Id);
+        Assert.Equal(nameof(JobStatus.AwaitingApproval), job.Status);
+        Assert.All(jobs, item => Assert.Equal(nameof(JobStatus.AwaitingApproval), item.Status));
+        Assert.Equal(1, fixture.Jobs.ApprovalListCallCount);
+        Assert.Equal(1, fixture.Jobs.LastApprovalListMaximumCount);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public async Task AwaitingApprovalListRejectsOutOfRangeBoundsBeforeRepositoryAccess(int maximumCount)
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.ListAwaitingApprovalHandler.HandleAsync(
+                new ListAwaitingApprovalJobsQuery(maximumCount),
+                CancellationToken.None));
+
+        Assert.Equal(0, fixture.Jobs.ApprovalListCallCount);
+    }
+
+    [Fact]
+    public async Task ApprovalReviewReturnsTypedJobDetailAndServerFingerprint()
+    {
+        var fixture = HandlerFixture.WithAwaitingApprovalJob();
+
+        var review = await fixture.GetApprovalReviewHandler.HandleAsync(
+            new GetApprovalReviewQuery(fixture.Jobs.Job!.Id),
+            CancellationToken.None);
+
+        Assert.Equal(fixture.Jobs.Job.Id.Value, review.Job.Id);
+        Assert.Equal(nameof(JobStatus.AwaitingApproval), review.Job.Status);
+        Assert.Equal(TestDomainFactory.Fingerprint, review.ExpectedFingerprint);
+        Assert.Equal(1, fixture.Fingerprints.CallCount);
     }
 
     [Fact]
@@ -1404,8 +1508,22 @@ public sealed class ApplicationHandlerTests
                 Audits,
                 UnitOfWork,
                 Clock);
-            ApproveHandler = new ApproveJobHandler(Jobs, Audits, UnitOfWork, Clock);
-            RejectHandler = new RejectJobHandler(Jobs, Audits, UnitOfWork, Clock);
+            ApproveHandler = new ApproveJobHandler(
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock,
+                Fingerprints,
+                CurrentUser);
+            RejectHandler = new RejectJobHandler(
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock,
+                Fingerprints,
+                CurrentUser);
+            ListAwaitingApprovalHandler = new ListAwaitingApprovalJobsHandler(Jobs, Scripts);
+            GetApprovalReviewHandler = new GetApprovalReviewHandler(Jobs, Scripts, Fingerprints);
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
@@ -1425,6 +1543,8 @@ public sealed class ApplicationHandlerTests
         public FakeAuditWriter Audits { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public TestClock Clock { get; } = new(TestDomainFactory.Time.AddHours(1));
+        public FixedJobFingerprintService Fingerprints { get; } = new(TestDomainFactory.Fingerprint);
+        public FixedCurrentUser CurrentUser { get; } = new(TestDomainFactory.OtherUser);
         public CreateDraftJobHandler CreateHandler { get; }
         public AddJobTargetHandler AddTargetHandler { get; }
         public SetJobParameterHandler SetParameterHandler { get; }
@@ -1432,6 +1552,8 @@ public sealed class ApplicationHandlerTests
         public TransitionJobHandler TransitionHandler { get; }
         public ApproveJobHandler ApproveHandler { get; }
         public RejectJobHandler RejectHandler { get; }
+        public ListAwaitingApprovalJobsHandler ListAwaitingApprovalHandler { get; }
+        public GetApprovalReviewHandler GetApprovalReviewHandler { get; }
         public CompleteReadOnlyJobHandler CompleteReadOnlyHandler { get; }
         public CompleteValidationJobHandler CompleteValidationHandler { get; }
         public CompleteDryRunJobHandler CompleteDryRunHandler { get; }
@@ -1445,7 +1567,8 @@ public sealed class ApplicationHandlerTests
                 .Concat(Workers.ObservedTokens)
                 .Concat(Audits.ObservedTokens)
                 .Concat(UnitOfWork.ObservedTokens)
-                .Concat(Clock.ObservedTokens);
+                .Concat(Clock.ObservedTokens)
+                .Concat(Fingerprints.ObservedTokens);
 
         public static HandlerFixture WithDraftJob(ScriptParameterDefinition? parameter = null)
         {
@@ -1562,16 +1685,51 @@ public sealed class ApplicationHandlerTests
         }
     }
 
+    private sealed class FixedCurrentUser(UserIdentity user) : ICurrentUser
+    {
+        public UserIdentity User { get; set; } = user;
+    }
+
+    private sealed class FixedJobFingerprintService(string fingerprint) : IJobFingerprintService
+    {
+        public string Fingerprint { get; set; } = fingerprint;
+        public int CallCount { get; private set; }
+        public List<CancellationToken> ObservedTokens { get; } = [];
+
+        public Task<string> CreateFingerprintAsync(Job job, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(job);
+            ObservedTokens.Add(cancellationToken);
+            CallCount++;
+            return Task.FromResult(Fingerprint);
+        }
+    }
+
     private sealed class FakeJobRepository : IJobRepository
     {
         public Job? Job { get; set; }
         public int UpdateCount { get; private set; }
+        public int ApprovalListCallCount { get; private set; }
+        public int? LastApprovalListMaximumCount { get; private set; }
         public List<CancellationToken> ObservedTokens { get; } = [];
 
         public Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken)
         {
             ObservedTokens.Add(cancellationToken);
             return Task.FromResult(Job?.Id == id ? Job : null);
+        }
+
+        public Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            ObservedTokens.Add(cancellationToken);
+            ApprovalListCallCount++;
+            LastApprovalListMaximumCount = maximumCount;
+            IReadOnlyList<Job> jobs = Job is { Status: JobStatus.AwaitingApproval } job
+                ? [job]
+                : [];
+            return Task.FromResult(jobs);
         }
 
         public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken)

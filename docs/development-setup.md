@@ -24,11 +24,23 @@ dotnet format --verify-no-changes
 dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build
 ```
 
-The merged Phase 7 baseline is 654 passing tests.
+The current Phase 8 validation evidence is recorded in [validation report](validation-report.md).
 
 ## Local database
 
 Web and Worker require `ConnectionStrings:WindowsScriptRunner`. For a disposable LocalDB database, configure the connection string through user secrets or a process environment variable. Do not commit credentials or workstation-specific connection strings.
+
+Web also requires approved Windows authorization groups outside the `Testing` environment. Use protected environment-specific configuration; these placeholders are intentionally not usable SIDs and must not be copied as production values:
+
+```powershell
+$env:ConnectionStrings__WindowsScriptRunner = '<protected SQL Server connection string>'
+$env:WindowsAuthorization__OperatorGroupSids__0 = '<operator-group-sid>'
+$env:WindowsAuthorization__ReportReaderGroupSids__0 = '<report-reader-group-sid>'
+$env:WindowsAuthorization__ApproverGroupSids__0 = '<approver-group-sid>'
+$env:WindowsAuthorization__AdministratorGroupSids__0 = '<administrator-group-sid>'
+```
+
+Use group SIDs, not user names, display names, or role strings. Startup rejects malformed, duplicate, broad, anonymous, and service-account group SIDs, and requires an administrator group outside tests. See [Windows authentication](windows-authentication.md).
 
 Apply the reviewed migrations:
 
@@ -44,13 +56,15 @@ dotnet tool run dotnet-ef database update --project .\src\WindowsScriptRunner.In
 dotnet run --project .\src\WindowsScriptRunner.Web\WindowsScriptRunner.Web.csproj
 ```
 
-The development launch profile uses `http://localhost:5093` and `https://localhost:7127`. Available health routes are:
+The development launch profile uses `http://localhost:5093` and `https://localhost:7127`. Web uses Windows Negotiate and protects portal routes by default. Available anonymous health routes are:
 
 - `/health`
 - `/health/live`
 - `/health/ready`
 
-Readiness requires SQL connectivity and no pending migrations. The current Razor Pages are an unauthenticated functional shell; reports and approvals are intentionally not exposed.
+Readiness requires SQL connectivity and no pending migrations. The protected portal includes safe sign-out guidance, access-denied behavior, an Administrator-only page, job detail, typed Local Host Inventory list/lookup/detail, and approval queue/review/decision pages. Exact policies and URLs are in [authorization matrix](authorization-matrix.md).
+
+The local launch profile is not an IIS, TLS, Kerberos/SPN, browser-zone, service-account, or production-hosting validation. Test-only synthetic Windows identities exist only in the security-test project; use a real Windows-authenticated browser and approved group SID configuration for local manual checks. Negotiate does not create an application session to sign out; follow host policy to switch or end the Windows/browser session.
 
 ## Start Worker
 

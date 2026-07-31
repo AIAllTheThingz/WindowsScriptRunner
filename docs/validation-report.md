@@ -1629,3 +1629,29 @@ Validation date: 2026-07-30, America/Chicago.
 - `dotnet test --configuration Release --no-build`: exit 0; 654 passed, 0 failed, 0 skipped: Unit 381, PowerShell 110, Security 57, Worker 51, SQL Server 52, Integration 3.
 - `dotnet format --verify-no-changes --no-restore`: exit 0.
 - `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes.
+
+## Phase 8 protected portal, Windows identity, and approval evidence
+
+Validation date: 2026-07-31. Times are America/Chicago (`-05:00`). The implementation is local and pending review; no commit, deployment, production rollout, pull request, or GitHub state change was performed.
+
+- Web now registers Application and Infrastructure, Windows Negotiate, SID group policy authorization, and resource authorization without adding a Worker, Automation, PowerShell, Reporting, remoting, credential, secret-retrieval, arbitrary-upload, or arbitrary-execution reference/path.
+- Stable `sid:<canonical-sid>` mapping fails closed for malformed, ambiguous, missing, or built-in-group user SIDs. Valid token groups are canonicalized as SIDs; configuration rejects duplicate/broad/service groups. Test-only synthetic authentication is isolated to the security-test project.
+- Protected Razor Pages cover safe sign-out/access-denied behavior, an Administrator-only Administration page, job detail, bounded typed Local Host Inventory list/lookup/detail, and antiforgery-protected approval/rejection review. The report view model intentionally omits raw stdout/stderr, arbitrary JSON, provenance/lease/fencing/execution/digest fields, working files, and secure references.
+- Application calculates `windows-script-runner-approval-v1` SHA-256 evidence from current trusted job/script/policy/target/parameter/execution data. Decision handlers obtain the authenticated actor from `ICurrentUser`, recompute evidence, compare it in constant time, then preserve Domain separation-of-duties and the existing audit/unit-of-work boundary.
+- Focused Web test-host coverage passed 7/7. It covers anonymous challenge, policy/resource matrix, list/lookup/detail filtering, safe rendered report surface, antiforgery, forged form fields, authenticated actor, POST-Redirect-GET, replay safety, and self-approval conflict. Focused identity/resource/Web coverage passed 47/47, including the real current Windows token group fallback.
+- A full-suite run initially exposed three stale Unit assertions that expected the pre-Phase-8 `DomainValidationException` from an Application approval handler. The implementation intentionally wraps Domain decision failures as `ApplicationConflictException` for the Web boundary. The test-only correction now asserts the Application conflict and its Domain validation inner exception while retaining the no-update/no-audit/no-commit checks. Focused regression: 3/3 passed.
+
+Required commands, final run:
+
+- `dotnet tool restore`: exit 0; dotnet-ef `10.0.10` restored (1.1 seconds).
+- `dotnet restore`: exit 0; all projects up to date (2.5 seconds).
+- `dotnet build --configuration Release`: exit 0; 0 warnings and 0 errors (4.04 seconds elapsed).
+- `dotnet test --configuration Release`: exit 0; 727 passed, 0 failed, 0 skipped (43.3 seconds wall time): Unit 405, Security 104, SQL Server 54, Worker 51, PowerShell boundary 110, Integration 3.
+- `dotnet format`: exit 0; mechanical repository formatting was applied after initial verification identified line-ending/whitespace drift in Phase 8 files.
+- `dotnet format --verify-no-changes`: exit 0 (30.1 seconds wall time).
+- `dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build`: exit 0; no pending model changes (5.5 seconds).
+- Post-format `dotnet build --configuration Release --no-restore`: exit 0; 0 warnings and 0 errors (4.66 seconds elapsed).
+- Post-format `dotnet test --configuration Release --no-build`: exit 0; the same 727 tests passed, 0 failed, 0 skipped (39.7 seconds wall time).
+- Local Markdown-link validation and `git diff --check`: exit 0.
+
+No EF Core model or migration was added. Residual risks intentionally deferred to Phase 9 include IIS/HTTPS configuration, Windows service installation, SPN/Kerberos/browser-zone/delegation validation, service identities, production SQL rollout and rollback, backup/restore rehearsal, secret integration, observability, operational runbooks, and production hosting verification. Existing Phase 5 process-containment, filesystem TOCTOU, lack-of-OS-sandbox, and at-least-once execution limitations remain unchanged.

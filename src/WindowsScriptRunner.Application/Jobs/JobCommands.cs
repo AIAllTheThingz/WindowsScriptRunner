@@ -33,15 +33,13 @@ public sealed record TransitionJobCommand(
 
 public sealed record ApproveJobCommand(
     JobId JobId,
-    string ApprovalFingerprint,
-    string? Comment,
-    UserIdentity ActingUser);
+    string ExpectedFingerprint,
+    string? Comment);
 
 public sealed record RejectJobCommand(
     JobId JobId,
-    string ApprovalFingerprint,
-    string? Comment,
-    UserIdentity ActingUser);
+    string ExpectedFingerprint,
+    string? Comment);
 
 public sealed record CompleteReadOnlyJobCommand(JobId JobId, UserIdentity ActingUser);
 
@@ -63,3 +61,7 @@ public sealed record RecordExecutionOutcomeCommand(
     UserIdentity ActingUser);
 
 public sealed record GetJobQuery(JobId JobId);
+
+public sealed record ListAwaitingApprovalJobsQuery(int MaximumCount);
+
+public sealed record GetApprovalReviewQuery(JobId JobId);

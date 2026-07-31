@@ -614,6 +614,19 @@ internal sealed class FakeJobRepository : IJobRepository
         return Task.FromResult(Jobs.GetValueOrDefault(id));
     }
 
+    public Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+        int maximumCount,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        IReadOnlyList<Job> jobs = Jobs.Values
+            .Where(job => job.Status == JobStatus.AwaitingApproval)
+            .OrderBy(job => job.UpdatedUtc)
+            .Take(maximumCount)
+            .ToArray();
+        return Task.FromResult(jobs);
+    }
+
     public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

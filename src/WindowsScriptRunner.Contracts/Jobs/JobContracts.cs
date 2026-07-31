@@ -38,12 +38,12 @@ public sealed record RecordExecutionOutcomeRequest(
 
 public sealed record ApproveJobRequest(
     Guid JobId,
-    string ApprovalFingerprint,
+    string ExpectedFingerprint,
     string? Comment);
 
 public sealed record RejectJobRequest(
     Guid JobId,
-    string ApprovalFingerprint,
+    string ExpectedFingerprint,
     string? Comment);
 
 public sealed record JobSummaryResponse(
@@ -104,3 +104,7 @@ public sealed record JobApprovalResponse(
     string Approver,
     DateTimeOffset DecisionUtc,
     string? Comment);
+
+public sealed record ApprovalReviewResponse(
+    JobDetailResponse Job,
+    string ExpectedFingerprint);

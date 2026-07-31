@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Reports;
@@ -34,6 +35,28 @@ public sealed class SqlJobReportRepository(
             item => item.JobId == jobId.Value,
             cancellationToken);
         return Map(entity);
+    }
+
+    public async Task<IReadOnlyList<JobReport>> ListLocalHostInventoryAsync(
+        int maximumCount,
+        CancellationToken cancellationToken)
+    {
+        if (maximumCount is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumCount));
+        }
+
+        var entities = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.JobReports
+                .Where(entity => entity.ReportType == nameof(Domain.JobReportType.LocalHostInventory))
+                .OrderByDescending(entity => entity.CreatedUtc)
+                .ThenBy(entity => entity.Id)
+                .Take(maximumCount)
+                .Include(entity => entity.Inventory)
+                .AsNoTracking()
+                .ToListAsync(cancellationToken),
+            logger);
+        return entities.Select(entity => Map(entity)!).ToArray();
     }
 
     public Task AddAsync(

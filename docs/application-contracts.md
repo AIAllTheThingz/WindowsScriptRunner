@@ -7,7 +7,7 @@
 - `SetJobParameterCommand` locates the pinned script version and exact `ScriptParameterDefinition` before interpreting input. Null, empty, and whitespace input is canonical absence: the pinned definition first accepts or rejects that absence, an accepted clear removes the explicit binding, and no type parsing or credential lookup occurs. Present values are validated against the pinned definition; present `SecureReference` values must be canonical non-empty IDs that resolve to enabled credential references. Stored data remains only the canonical name/value binding.
 - `SubmitJobCommand` validates targets, enabled script definition, published version, requested-phase support, Execute-with-DryRun support, and required/typed parameters, then captures trusted script policy.
 - `TransitionJobCommand` is restricted to explicitly enumerated operational transitions that require no separate evidence. It rejects Submitted, Approved, Rejected, Executing, Completed, and CompletedWithWarnings. If a job is Executing, PostValidation, or has an active execution attempt, terminal statuses must be recorded through `RecordExecutionOutcomeCommand` instead of the generic transition command.
-- `ApproveJobCommand` and `RejectJobCommand` record a structurally validated fingerprint, optional comment, and actor through dedicated aggregate operations. They contain no caller-selected risk.
+- `ApproveJobCommand` and `RejectJobCommand` carry only job ID, browser-echoed expected fingerprint, and optional comment. Their handlers reload trusted state, recalculate the fingerprint, obtain the actor from `ICurrentUser`, and delegate the decision to Domain; they accept no caller actor, risk, role, or separation-of-duties claim.
 - `CompleteReadOnlyJobCommand` invokes the dedicated trusted read-only completion rule and contains no caller-selected risk or Execute capability.
 - `CompleteValidationJobCommand` and `CompleteDryRunJobCommand` complete requested validation-only and dry-run-only work through explicit operations. They contain no arbitrary target status.
 - `StartExecutionAttemptCommand` validates an optional worker reference and starts the single execution attempt that moves a claimed Execute job into Executing.
@@ -15,6 +15,9 @@
 - `CompleteLocalHostInventoryDryRunCommand` validates the fenced DryRun lease, persists the typed local-host inventory report, completes the job, removes the lease, writes the audit event, and commits all changes atomically.
 - `GetJobQuery` maps a job to `JobDetailResponse` by loading the pinned script definition/version and deriving parameter type, sensitivity, and redaction from the pinned definitions. Inconsistent or corrupted parameter bindings fail closed without returning raw values.
 - `GetLocalHostInventoryReportByIdQuery` and `GetLocalHostInventoryReportByJobIdQuery` return the typed local-host inventory report projection. Missing or inconsistent detail rows fail closed instead of returning a partial report.
+- `ListLocalHostInventoryReportsQuery` accepts only a 1–100 bound and returns only persisted Local Host Inventory response records.
+- `ListAwaitingApprovalJobsQuery` accepts only a 1–100 bound and returns only jobs whose persisted state is `AwaitingApproval`.
+- `GetApprovalReviewQuery` returns typed job detail and server-calculated `ApprovalReviewResponse.ExpectedFingerprint`; it does not accept a fingerprint from the caller.
 
 Handlers load required entities, validate related references, perform the domain operation, construct safe audit events, update repositories, write success audit events, and commit only after the operation succeeds. Domain or application validation failures therefore do not produce misleading success audit records or commits.
 
@@ -22,7 +25,7 @@ Accepted clears write `JobParameterCleared` rather than misleading set semantics
 
 ## Boundaries
 
-`IJobRepository`, `IScriptDefinitionRepository`, `IWorkerNodeRepository`, `ICredentialReferenceRepository`, and `IJobReportRepository` are domain-specific async interfaces. `ICredentialReferenceRepository` is used only to verify that a supplied secure parameter references an existing enabled credential reference; it does not return or store raw credential values. `IJobReportRepository` adds immutable typed reports and supports lookup by report or job ID; it intentionally exposes no update operation. `IAuditWriter` records audit events, `IUnitOfWork` defines the commit boundary, `IClock` supplies process-local time for scheduling and bounded elapsed windows, `IWorkerCoordinationClock` supplies shared authoritative time for persisted job and distributed worker state, `ICurrentUser` represents an actor, and `IJobFingerprintService` defines the approval-fingerprint boundary that Phase 8 must compose from trusted inputs.
+`IJobRepository`, `IScriptDefinitionRepository`, `IWorkerNodeRepository`, `ICredentialReferenceRepository`, and `IJobReportRepository` are domain-specific async interfaces. `IJobRepository.ListAwaitingApprovalAsync` and `IJobReportRepository.ListLocalHostInventoryAsync` are bounded read methods; neither permits generic listing. `ICredentialReferenceRepository` is used only to verify that a supplied secure parameter references an existing enabled credential reference; it does not return or store raw credential values. `IJobReportRepository` adds immutable typed reports and supports lookup by report or job ID; it intentionally exposes no update operation. `IAuditWriter` records audit events, `IUnitOfWork` defines the commit boundary, `IClock` supplies process-local time for scheduling and bounded elapsed windows, `IWorkerCoordinationClock` supplies shared authoritative time for persisted job and distributed worker state, `ICurrentUser` represents the authenticated Web actor, and `IJobFingerprintService` is implemented by Application from trusted persisted inputs.
 
 No generic repository or SQL terminology is exposed through Application. SQL Server implementations remain entirely in Infrastructure. Repository methods load or stage tracked aggregate graphs and propagate cancellation; they do not commit. The scoped `IUnitOfWork` performs the one atomic commit for aggregate, typed report, lease, and audit changes.
 
@@ -38,7 +41,7 @@ Serialized `StringArray` parameter values use a JSON array of strings, for examp
 
 Domain and application boundaries reject undefined enum values before they can be captured into policy snapshots, job requests, parameters, approvals, execution outcomes, or operational transitions. Contract DTOs continue to expose enum names as strings; parsing and validation are expected at the eventual API boundary.
 
-`LocalHostInventoryReportResponse` exposes only typed, bounded fields from the reviewed report schema. Raw stdout, raw JSON, script paths, hashes, lease credentials, and database entities do not cross the Contracts boundary.
+`LocalHostInventoryReportResponse` exposes the immutable typed report envelope and bounded payload from the reviewed report schema. Raw stdout, raw JSON, script paths, execution working files, lease credentials, and database entities do not cross the Contracts boundary. The protected Web report view projects only its safe presentation subset and deliberately omits provenance identifiers and digest.
 
 ## Worker and queue contracts
 

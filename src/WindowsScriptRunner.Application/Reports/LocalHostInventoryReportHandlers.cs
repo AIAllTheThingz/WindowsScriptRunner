@@ -28,6 +28,8 @@ public sealed record GetLocalHostInventoryReportByIdQuery(JobReportId ReportId);
 
 public sealed record GetLocalHostInventoryReportByJobIdQuery(JobId JobId);
 
+public sealed record ListLocalHostInventoryReportsQuery(int MaximumCount);
+
 public sealed class CompleteLocalHostInventoryDryRunHandler(
     IJobRepository jobRepository,
     IScriptDefinitionRepository scriptRepository,
@@ -326,7 +328,7 @@ public sealed class GetLocalHostInventoryReportHandler(
         return ToResponse(report);
     }
 
-    private static LocalHostInventoryReportResponse ToResponse(JobReport report) =>
+    internal static LocalHostInventoryReportResponse ToResponse(JobReport report) =>
         new(
             report.Id.Value,
             report.JobId.Value,
@@ -349,4 +351,27 @@ public sealed class GetLocalHostInventoryReportHandler(
             report.Inventory.OsArchitecture.ToString(),
             report.Inventory.PowerShellVersion,
             report.Sha256);
+}
+
+public sealed class ListLocalHostInventoryReportsHandler(
+    IJobReportRepository reportRepository)
+{
+    private const int MaximumReportCount = 100;
+
+    public async Task<IReadOnlyList<LocalHostInventoryReportResponse>> HandleAsync(
+        ListLocalHostInventoryReportsQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (query.MaximumCount is < 1 or > MaximumReportCount)
+        {
+            throw new ApplicationValidationException(
+                $"Report list size must be between 1 and {MaximumReportCount}.");
+        }
+
+        var reports = await reportRepository.ListLocalHostInventoryAsync(
+            query.MaximumCount,
+            cancellationToken);
+        return reports.Select(GetLocalHostInventoryReportHandler.ToResponse).ToArray();
+    }
 }

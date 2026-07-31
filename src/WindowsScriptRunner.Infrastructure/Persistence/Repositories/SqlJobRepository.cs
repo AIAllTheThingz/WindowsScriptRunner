@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Infrastructure.Persistence.Entities;
@@ -79,6 +80,39 @@ public sealed class SqlJobRepository(
             stopwatch.ElapsedMilliseconds,
             exists ? "Found" : "NotFound");
         return exists;
+    }
+
+    public async Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
+        int maximumCount,
+        CancellationToken cancellationToken)
+    {
+        if (maximumCount is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumCount));
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        var entities = await SqlExceptionTranslator.ExecuteAsync(
+            () => dbContext.Jobs
+                .Where(item => item.Status == nameof(JobStatus.AwaitingApproval))
+                .OrderBy(item => item.UpdatedUtc)
+                .ThenBy(item => item.Id)
+                .Take(maximumCount)
+                .Include(item => item.Targets)
+                .Include(item => item.Parameters)
+                .Include(item => item.Executions)
+                .Include(item => item.Approvals)
+                .Include(item => item.Lease)
+                .AsNoTrackingWithIdentityResolution()
+                .AsSplitQuery()
+                .ToListAsync(cancellationToken),
+            logger);
+        logger.LogDebug(
+            "Repository operation {Operation} completed in {DurationMs} ms with {ResultCount} results.",
+            nameof(ListAwaitingApprovalAsync),
+            stopwatch.ElapsedMilliseconds,
+            entities.Count);
+        return entities.Select(PersistenceMapper.ToDomain).ToArray();
     }
 
     public Task AddAsync(Job job, CancellationToken cancellationToken)

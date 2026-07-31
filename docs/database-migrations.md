@@ -71,3 +71,7 @@ The down migration drops the typed detail before the envelope and otherwise leav
 - no pending EF model changes.
 
 Dropping Phase 7 destroys durable reports, so a production rollback requires a reviewed backup and explicit data-retention decision even though the structural down migration is correct.
+
+## Phase 8 migration decision
+
+Phase 8 adds no EF Core model or schema change and therefore adds no migration. Stable identity is derived from the authenticated Windows token at the Web boundary; role mappings remain protected environment configuration; approval fingerprints are recomputed from the existing job, pinned script/policy, targets, parameters, and execution evidence. The pending-model validation command remains required and must report no changes.
