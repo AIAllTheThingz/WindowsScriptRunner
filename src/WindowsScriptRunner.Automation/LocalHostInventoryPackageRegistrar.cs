@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -8,13 +10,32 @@ using WindowsScriptRunner.Domain.ValueObjects;
 namespace WindowsScriptRunner.Automation;
 
 internal sealed class LocalHostInventoryPackageRegistrar(
-    IScriptDefinitionRepository scriptRepository,
-    IAuditWriter auditWriter,
-    IUnitOfWork unitOfWork,
-    IWorkerCoordinationClock coordinationClock)
+    IServiceScopeFactory scopeFactory)
 {
     internal async Task<bool> RegisterAsync(CancellationToken cancellationToken)
     {
+        try
+        {
+            return await RegisterInFreshScopeAsync(cancellationToken);
+        }
+        catch (ApplicationConflictException)
+        {
+            return await RegisterInFreshScopeAsync(cancellationToken);
+        }
+    }
+
+    private async Task<bool> RegisterInFreshScopeAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var scriptRepository = scope.ServiceProvider
+            .GetRequiredService<IScriptDefinitionRepository>();
+        var auditWriter = scope.ServiceProvider
+            .GetRequiredService<IAuditWriter>();
+        var unitOfWork = scope.ServiceProvider
+            .GetRequiredService<IUnitOfWork>();
+        var coordinationClock = scope.ServiceProvider
+            .GetRequiredService<IWorkerCoordinationClock>();
         var existing = await scriptRepository.GetByIdAsync(
             LocalHostInventoryPackageMetadata.DefinitionId,
             cancellationToken);

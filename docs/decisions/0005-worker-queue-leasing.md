@@ -23,7 +23,7 @@ Leases are renewed periodically. Unstarted work can release safely. Expired acti
 - Sequence gaps and duplicate delivery attempts are expected.
 - The system provides at-least-once coordination, not exactly-once effects.
 - Future handlers must be cancellation-aware and make downstream effects idempotent or fenced.
-- Production processes only routes deliberately registered by reviewed Worker-side composition.
+- Production only processes routes deliberately registered by reviewed Worker-side composition.
 
 ## Alternatives not selected
 

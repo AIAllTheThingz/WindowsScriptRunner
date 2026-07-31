@@ -114,6 +114,31 @@ public sealed class PowerShellContractAndOptionsTests
             () => provider.GetRequiredService<IPowerShellExecutionBoundary>());
     }
 
+    [Fact]
+    public void ReviewedArtifactFactoryRejectsRootedArtifactPathBeforeCombining()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "WindowsScriptRunner.ReviewedArtifactTests");
+        var options = Options.Create(
+            new PowerShellExecutionOptions
+            {
+                AllowedScriptRoot = Path.Combine(root, "allowed"),
+                WorkingRoot = Path.Combine(root, "working"),
+            });
+        var factory = new ReviewedPowerShellArtifactFactory(
+            options,
+            new PowerShellScriptTrustValidator(options));
+        var artifact = new ReviewedPowerShellArtifact(
+            "rooted-artifact",
+            $"{Path.DirectorySeparatorChar}Windows{Path.DirectorySeparatorChar}evil.ps1",
+            new string('a', 64),
+            []);
+
+        Assert.Throws<PowerShellScriptTrustException>(
+            () => factory.Resolve(artifact));
+    }
+
     [Theory]
     [MemberData(nameof(InvalidOptions))]
     public void UnsafeOptionsAreRejected(Action<PowerShellExecutionOptions> change)

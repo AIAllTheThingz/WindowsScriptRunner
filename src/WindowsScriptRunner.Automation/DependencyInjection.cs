@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Queue;
@@ -37,10 +38,10 @@ public static class DependencyInjection
             return services;
         }
 
-        EnsureCompatibleMinimumPowerShellVersion(configuration);
+        EnsureCompatiblePowerShellConfiguration(configuration);
         services.AddPowerShellExecutionBoundary(configuration);
         services.AddSingleton<LocalHostInventoryArtifactCatalog>();
-        services.AddTransient<LocalHostInventoryPackageRegistrar>();
+        services.AddSingleton<LocalHostInventoryPackageRegistrar>();
         services.AddSingleton<IJobWorkHandler, LocalHostInventoryJobWorkHandler>();
         services.AddHostedService<LocalHostInventoryPackageStartupService>();
         return services;
@@ -60,12 +61,13 @@ public static class DependencyInjection
                 $"Configuration value '{section.Path}:{key}' must be true or false.");
     }
 
-    private static void EnsureCompatibleMinimumPowerShellVersion(
+    private static void EnsureCompatiblePowerShellConfiguration(
         IConfiguration configuration)
     {
+        var defaults = new PowerShellExecutionOptions();
         var configuredValue = configuration[
             $"{PowerShellExecutionOptions.SectionName}:{nameof(PowerShellExecutionOptions.MinimumVersion)}"]
-            ?? new PowerShellExecutionOptions().MinimumVersion;
+            ?? defaults.MinimumVersion;
         if (!Version.TryParse(configuredValue, out var configuredMinimum) ||
             !Version.TryParse(
                 LocalHostInventoryPackageMetadata.MinimumPowerShellVersion,
@@ -74,6 +76,21 @@ public static class DependencyInjection
         {
             throw new InvalidOperationException(
                 "The enabled automation package requires a compatible minimum PowerShell version.");
+        }
+
+        var maximumTimeoutValue = configuration[
+            $"{PowerShellExecutionOptions.SectionName}:{nameof(PowerShellExecutionOptions.MaximumTimeoutSeconds)}"]
+            ?? defaults.MaximumTimeoutSeconds.ToString(CultureInfo.InvariantCulture);
+        if (!int.TryParse(
+                maximumTimeoutValue,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var maximumTimeoutSeconds) ||
+            maximumTimeoutSeconds <
+                LocalHostInventoryPackageMetadata.DefaultTimeoutMinutes * 60)
+        {
+            throw new InvalidOperationException(
+                "The enabled automation package requires a compatible maximum execution timeout.");
         }
     }
 }

@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
@@ -181,11 +183,12 @@ public sealed class Phase6AutomationTests
         var scripts = new RecordingScriptRepository();
         var audits = new RecordingAuditWriter();
         var unitOfWork = new RecordingUnitOfWork();
-        var registrar = new LocalHostInventoryPackageRegistrar(
+        using var provider = RegistrationProvider(
             scripts,
             audits,
-            unitOfWork,
-            new FixedCoordinationClock(Time));
+            unitOfWork);
+        var registrar = new LocalHostInventoryPackageRegistrar(
+            provider.GetRequiredService<IServiceScopeFactory>());
 
         Assert.True(await registrar.RegisterAsync(CancellationToken.None));
         Assert.False(await registrar.RegisterAsync(CancellationToken.None));
@@ -201,6 +204,41 @@ public sealed class Phase6AutomationTests
             property =>
                 property.Key.Contains("Path", StringComparison.OrdinalIgnoreCase) ||
                 property.Key.Contains("Hash", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task PackageRegistrationReloadsAfterConcurrentInsertConflict()
+    {
+        var scripts = new RecordingScriptRepository();
+        var audits = new RecordingAuditWriter();
+        var unitOfWork = new ConflictOnceUnitOfWork();
+        using var provider = RegistrationProvider(
+            scripts,
+            audits,
+            unitOfWork);
+        var registrar = new LocalHostInventoryPackageRegistrar(
+            provider.GetRequiredService<IServiceScopeFactory>());
+
+        Assert.False(await registrar.RegisterAsync(CancellationToken.None));
+        Assert.Equal(1, unitOfWork.CommitCount);
+        var definition = Assert.IsType<ScriptDefinition>(scripts.Definition);
+        LocalHostInventoryArtifactCatalog.ValidatePackage(
+            definition,
+            Assert.Single(definition.Versions));
+    }
+
+    private static ServiceProvider RegistrationProvider(
+        RecordingScriptRepository scripts,
+        RecordingAuditWriter audits,
+        IUnitOfWork unitOfWork)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IScriptDefinitionRepository>(scripts);
+        services.AddSingleton<IAuditWriter>(audits);
+        services.AddSingleton(unitOfWork);
+        services.AddSingleton<IWorkerCoordinationClock>(
+            new FixedCoordinationClock(Time));
+        return services.BuildServiceProvider();
     }
 
     private static Job SubmittedJob(
@@ -319,6 +357,19 @@ public sealed class Phase6AutomationTests
         {
             CommitCount++;
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ConflictOnceUnitOfWork : IUnitOfWork
+    {
+        internal int CommitCount { get; private set; }
+
+        public Task CommitAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CommitCount++;
+            throw new ApplicationConflictException(
+                "A concurrent package registration committed first.");
         }
     }
 
