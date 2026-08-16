@@ -1,0 +1,21 @@
+  WindowsScriptRunner.Contracts -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Contracts/bin/Release/net10.0/WindowsScriptRunner.Contracts.dll
+  WindowsScriptRunner.Domain -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Domain/bin/Release/net10.0/WindowsScriptRunner.Domain.dll
+  WindowsScriptRunner.PowerShell -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.PowerShell/bin/Release/net10.0/WindowsScriptRunner.PowerShell.dll
+  WindowsScriptRunner.Reporting -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Reporting/bin/Release/net10.0/WindowsScriptRunner.Reporting.dll
+  WindowsScriptRunner.Application -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Application/bin/Release/net10.0/WindowsScriptRunner.Application.dll
+  WindowsScriptRunner.Automation -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Automation/bin/Release/net10.0/WindowsScriptRunner.Automation.dll
+  WindowsScriptRunner.Infrastructure -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Infrastructure/bin/Release/net10.0/WindowsScriptRunner.Infrastructure.dll
+  WindowsScriptRunner.PowerShellTests -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.PowerShellTests/bin/Release/net10.0/WindowsScriptRunner.PowerShellTests.dll
+  WindowsScriptRunner.SqlServerTests -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.SqlServerTests/bin/Release/net10.0/WindowsScriptRunner.SqlServerTests.dll
+  WindowsScriptRunner.IntegrationTests -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.IntegrationTests/bin/Release/net10.0/WindowsScriptRunner.IntegrationTests.dll
+  WindowsScriptRunner.Worker -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Worker/bin/Release/net10.0/WindowsScriptRunner.Worker.dll
+  WindowsScriptRunner.WorkerTests -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.WorkerTests/bin/Release/net10.0/WindowsScriptRunner.WorkerTests.dll
+  WindowsScriptRunner.Web -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Web/bin/Release/net10.0/WindowsScriptRunner.Web.dll
+  WindowsScriptRunner.UnitTests -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.UnitTests/bin/Release/net10.0/WindowsScriptRunner.UnitTests.dll
+  WindowsScriptRunner.SecurityTests -> /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.SecurityTests/bin/Release/net10.0/WindowsScriptRunner.SecurityTests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:38.84

@@ -1,0 +1,102 @@
+# Project Standards Composition Index
+
+Project: **WindowsScriptRunner**
+
+This file was generated as a traceable standards composition index. It does not invent project facts, grant authorization, or replace project-specific root and nested instructions.
+
+## Selected composition
+
+- Primary profile: `INTERNAL_AUTOMATION`
+- Languages: `csharp`, `dotnet`, `powershell`
+- Disciplines: `application-security`, `testing`, `documentation`, `observability`, `ci-cd`, `supply-chain`, `architecture`, `integration`, `release-engineering`, `sre`, `privacy`
+- Frameworks: `aspnet-core`
+- Platforms: none declared
+- Virtualization: none declared
+- Operating systems: `windows-server`
+- Networking: none declared
+
+## Source standards
+
+- `disciplines/application-security/AGENTS.md` (`sha256:cfb19c409679602c97aac4455f532dad69081e4baba9c81556e2349f4ecdd763`)
+- `disciplines/application-security/MANIFEST.md` (`sha256:a57de8881ad923566e412ace894b109d7b6b662c69e6dc7e69b626eed2b17585`)
+- `disciplines/application-security/README.md` (`sha256:c488a9e311f7485de3ad9c08d11c1cad65fe475b30a5eb3b0912917d8198dac4`)
+- `disciplines/architecture/AGENTS.md` (`sha256:b2f058e1d4165db9b52bd1962499574ad9c8393bdd5dbfd1e63bba1a082eebc6`)
+- `disciplines/architecture/MANIFEST.md` (`sha256:bbdc05f9ffc3079bb65f1c3c4e3a65fcf6fb1e879d0ce6dcc639f447432a026f`)
+- `disciplines/architecture/README.md` (`sha256:e5fd5ff4d955d287e207a18594b41a57e7a77177243a7689d545825456afd862`)
+- `disciplines/ci-cd/AGENTS.md` (`sha256:b16cbb59f4f2678cf545ee36d177b30bc245d6e592e641a513a69fdfdca6659a`)
+- `disciplines/ci-cd/MANIFEST.md` (`sha256:c3b5198de302f3f587515def40f4b896d244bab44f4c0a182df13bd5fdcc5b01`)
+- `disciplines/ci-cd/README.md` (`sha256:826defe5213566c5e162dd0fc29343fc41c8e6b27f5e6cb6080a76cbcd8e82fc`)
+- `disciplines/documentation/AGENTS.md` (`sha256:ed3a1455a65ce9702290a9076cc0ffb3da023a67c8f1318d17ce04fcedc29452`)
+- `disciplines/documentation/MANIFEST.md` (`sha256:d9af0d68f3f5838ac76739e839a674ad080a456bc1d8b76dd56d357ae31ffb2d`)
+- `disciplines/documentation/README.md` (`sha256:1f9150a2e4f42736c2347ccd7d375185119a9e4de1f7729812fe9cc657659280`)
+- `disciplines/integration/AGENTS.md` (`sha256:4b11dd062b39cad6143cabfc9250cbc8ecfcb22ffdddab64e354aaadf73ce6d3`)
+- `disciplines/integration/MANIFEST.md` (`sha256:aeb8e6a656f24c970d9e38b544dc83702f114bce0485b3ba24c52a067b41623a`)
+- `disciplines/integration/README.md` (`sha256:59f5426261f999ec80f862d09619ee874ff43c5c4644a1774a1e8d4ef1205a48`)
+- `disciplines/observability/AGENTS.md` (`sha256:5b004def80bdc839b14a5fbe49385dd1b83ca0da931335e82a5e8e108a63656d`)
+- `disciplines/observability/MANIFEST.md` (`sha256:5c0a41481718e706bef8bd1eddc1cf3f0c8570ad9bbfc83ae8763a5ed187f30e`)
+- `disciplines/observability/README.md` (`sha256:e908184e8b21119170d522504300fede2d92a1ce2d95779413a905b84b3f0e2d`)
+- `disciplines/privacy/AGENTS.md` (`sha256:f5a44c42cc3045f822e2847eedead07e6692b7b12b5ffab06d2f24e50fc3fd5f`)
+- `disciplines/privacy/MANIFEST.md` (`sha256:1bf36f3070e11a33ac91b560bdd46f473d929527bf49b76654b008d91c644878`)
+- `disciplines/privacy/README.md` (`sha256:994a8de3f54f1474ca901d1ee26909ef500c77bba0896971a70b66ee9a3d224c`)
+- `disciplines/release-engineering/AGENTS.md` (`sha256:49b48960ab521d058a88a650abab567d4c5dbfa3f891898c05ac0c07383443ac`)
+- `disciplines/release-engineering/MANIFEST.md` (`sha256:ba3435202c06edbd567663384c7fedd70f070167b8f2245c1e0cdb4c84dde43c`)
+- `disciplines/release-engineering/README.md` (`sha256:1faf6268e8558242c8b76c921ed0f48030267bf2b1c6ff51a9f95eeb323fb218`)
+- `disciplines/sre/AGENTS.md` (`sha256:412fddcc772e85fe1203179101d5cbcb545261ebd520954db755e5bec4265e36`)
+- `disciplines/sre/MANIFEST.md` (`sha256:a0092a86f28464eff88fcc050ecb16126ba87c5975372a55f142daae9d99fc57`)
+- `disciplines/sre/README.md` (`sha256:90d640c442869bdd0c99b3131cd2ea4a717c7d75bc586787c9d81671a47227eb`)
+- `disciplines/supply-chain/AGENTS.md` (`sha256:a237f1ef486b06c474e3a7eb24872c09a3df1102e0c25e289b7064ac97e0c7a0`)
+- `disciplines/supply-chain/MANIFEST.md` (`sha256:51fbe90975d67a127278c80f06ea341a7fc70c683a5ee5dc7eab879de13f8699`)
+- `disciplines/supply-chain/README.md` (`sha256:44b4c02ad21b0cf89d3e95a59fa520e8a8edeecabf94d0e50bb67335192877fe`)
+- `disciplines/testing/AGENTS.md` (`sha256:aa9461a783cc3d105f43fca1e4f667e2cd9e188240e31702183de3179af67c43`)
+- `disciplines/testing/MANIFEST.md` (`sha256:fbcadf47ff1773fb1ac9446b30294d667fe72c88968fa1c6550727d210815029`)
+- `disciplines/testing/README.md` (`sha256:f7452b2ccd2baa781e5b857063729dde882e417cd16ca041ea327b1173bd7eb0`)
+- `frameworks/aspnet-core/AGENTS.md` (`sha256:101257ee80802d8ecb59d1a04cf4cf4c2dee88ed955b16c80592c439f575d093`)
+- `frameworks/aspnet-core/MANIFEST.md` (`sha256:395a4d463397f9cc0ceb6aa5f24c06f742cd3e10b1d7ce95868d4143edaad6d3`)
+- `frameworks/aspnet-core/README.md` (`sha256:779147c95c0a3ab43759d82b56c0458d8088e6aea69bb6486aa594b486bf5457`)
+- `governance/AGENT_WORKING_METHOD.md` (`sha256:10c398a9e9d33a2b7887cb9dc2e4345fe9285a99c30e4c62bff9a649e6d60c4e`)
+- `governance/AI_GENERATED_CODE_POLICY.md` (`sha256:747ce35c89b9d3b9d8c260aaac945f9d4b9ec5c1c76ebacdcc65ff562bc2c412`)
+- `governance/COMPLETION_EVIDENCE.md` (`sha256:7a4f72d14dec9404d02787250a698a81e01b670cda12d95f1165a23e181c956b`)
+- `governance/HUMAN_REVIEW_POLICY.md` (`sha256:e22c80b50e2c99144df54e970a0d159af750b54657325bcfd2bc2dec67bc7556`)
+- `governance/ORGANIZATION_CONTRACT.md` (`sha256:d947e3d7df9d7e5ff6c8e8f52801537a030db24b938c7c72197ba3ea35594c4d`)
+- `governance/PRODUCTION_READINESS.md` (`sha256:f8fe4defec015f61175020ddb2cfd926a08c5a6ceb7dbcf1bb4901d6e9413e9e`)
+- `governance/RISK_CLASSIFICATION.md` (`sha256:b3b3d8dc0591c8ace597d84440d9b4a921afdf4b3a223e88bb82aae8054c9aab`)
+- `languages/csharp/AGENTS.md` (`sha256:20ad8e84c52b4d9cb94d348f19bc39a635b532b838888d42c5f803ab0032f01a`)
+- `languages/csharp/MANIFEST.md` (`sha256:01f747bd426f6758c941fccb3b7c2e2593eec26c9f7182b0b273a8a1936bbab6`)
+- `languages/csharp/README.md` (`sha256:f4ac483322d89c2d446bfdbd9b3335929c252248018e7a0e58f6b02c3b92de7a`)
+- `languages/dotnet/AGENTS.md` (`sha256:70baa0c2ed062a66c2bcce26342be2c034141260533eb7426403d1bd1fb8c47c`)
+- `languages/dotnet/MANIFEST.md` (`sha256:3c7bada1cfe944d5f833a7c08f29cbee6442d1eabef001541a3db044f9f35921`)
+- `languages/dotnet/README.md` (`sha256:0579dd811c91ddac59a929a84dac17a4b71d3dbdd34a52b1c37fe4c7df910956`)
+- `languages/powershell/AGENTS.md` (`sha256:26d8d524046fe3f1c8f65cacbdea36b90e9267d0a73485bbb657d55b9783fe15`)
+- `languages/powershell/README.md` (`sha256:beb955192f07c40e09acf355cedb1cf61dddc338b54020014515794f971529cc`)
+- `operating-systems/windows-server/AGENTS.md` (`sha256:6a1332a1dc4e86fd4cf4e9195fa8ca8631a82b0b8768b158b8f75e856c5f0c38`)
+- `operating-systems/windows-server/MANIFEST.md` (`sha256:0f829ecd3a5a4d7421c6b95b7db4459aee233e09b9b5be5dbb5f03864cb7d264`)
+- `operating-systems/windows-server/README.md` (`sha256:ed07023ffb98a63e7dc7b43d95ab91d782e8f7c1f0aef5da6ffb83330522457e`)
+- `profiles/INTERNAL_AUTOMATION.md` (`sha256:1ca2b426f7bab1b7fe66c4a8cfa2c46693957a3c457c4ffd5b3f9ba20cc80174`)
+- `profiles/internal-automation/AGENTS.md` (`sha256:222a101baafd76e162a0ee60bedd4de89356762054d8499126c8e5404507d6db`)
+- `profiles/internal-automation/MANIFEST.md` (`sha256:9df967616fbb2680a81f6186608937622b1c1f00c9a30c819f2fcb1fb374a03e`)
+- `profiles/internal-automation/README.md` (`sha256:8e35cc666a46025011c2cc9a3c381d30cfe20f062362ad98bab6935b58def63a`)
+
+## Required project tailoring
+
+Before using this bundle as project instructions, define and review:
+
+- project purpose and non-goals
+- authoritative owners and reviewers
+- supported runtimes and versions
+- deployment environments and target boundaries
+- sensitive data and privileged operations
+- exact validation commands
+- evidence location and retention
+- authorization, rollback, recovery, and escalation
+- compatibility and migration commitments
+- nested instruction scopes
+
+Unknown facts must remain unknown. Do not convert missing information into plausible prose.
+
+## Precedence
+
+Applicable law, contracts, explicit authorization, repository governance, and parent instructions remain authoritative. More-specific nested instructions may strengthen but may not silently weaken shared controls.
+
+## Completion boundary
+
+The bundle proves only which source files were selected and copied. It does not prove that the project is secure, compliant, validated, reviewed, authorized, deployable, or production-ready.

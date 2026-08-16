@@ -1,0 +1,54 @@
+{
+  "findings": [],
+  "metadata": {
+    "manifest": {
+      "disciplines": [
+        "application-security",
+        "testing",
+        "documentation",
+        "observability",
+        "ci-cd",
+        "supply-chain",
+        "architecture",
+        "integration",
+        "release-engineering",
+        "sre",
+        "privacy"
+      ],
+      "frameworks": [
+        "aspnet-core"
+      ],
+      "languages": [
+        "csharp",
+        "dotnet",
+        "powershell"
+      ],
+      "name": "WindowsScriptRunner",
+      "operatingSystems": [
+        "windows-server"
+      ],
+      "profile": "INTERNAL_AUTOMATION",
+      "schemaVersion": "1.1.0",
+      "secondaryProfiles": [
+        "WEB_APPLICATION"
+      ]
+    },
+    "output": "/home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/docs/public-ai-governance/project-manifest.json",
+    "schema": "schemas/v1/project-manifest.schema.json"
+  },
+  "status": "passed",
+  "summary": {
+    "disciplines": 11,
+    "dryRun": false,
+    "frameworks": 1,
+    "languages": 3,
+    "networking": 0,
+    "operatingSystems": 1,
+    "platforms": 0,
+    "profile": "INTERNAL_AUTOMATION",
+    "virtualization": 0,
+    "written": true
+  },
+  "tool": "generate-manifest",
+  "version": "1.1.0"
+}

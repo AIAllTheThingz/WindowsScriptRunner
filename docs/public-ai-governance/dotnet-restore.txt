@@ -1,0 +1,16 @@
+  Determining projects to restore...
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.SqlServerTests/WindowsScriptRunner.SqlServerTests.csproj (in 4.41 sec).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.UnitTests/WindowsScriptRunner.UnitTests.csproj (in 4.41 sec).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.PowerShellTests/WindowsScriptRunner.PowerShellTests.csproj (in 9 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.IntegrationTests/WindowsScriptRunner.IntegrationTests.csproj (in 5 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Worker/WindowsScriptRunner.Worker.csproj (in 13 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Web/WindowsScriptRunner.Web.csproj (in 11 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.WorkerTests/WindowsScriptRunner.WorkerTests.csproj (in 15 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Reporting/WindowsScriptRunner.Reporting.csproj (in 4 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.PowerShell/WindowsScriptRunner.PowerShell.csproj (in 11 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/tests/WindowsScriptRunner.SecurityTests/WindowsScriptRunner.SecurityTests.csproj (in 167 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Domain/WindowsScriptRunner.Domain.csproj (in 1 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Contracts/WindowsScriptRunner.Contracts.csproj (in 1 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Automation/WindowsScriptRunner.Automation.csproj (in 9 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Application/WindowsScriptRunner.Application.csproj (in 3 ms).
+  Restored /home/runner/work/WindowsScriptRunner/WindowsScriptRunner/downstream/src/WindowsScriptRunner.Infrastructure/WindowsScriptRunner.Infrastructure.csproj (in 1.45 sec).
