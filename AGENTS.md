@@ -6,6 +6,20 @@ This repository adopts **Public Access Agents `v0.10.0`** from `AIAllTheThingz/P
 
 Repository facts and explicit local design decisions remain authoritative. The external standards baseline strengthens review, safety, testing, and evidence behavior but does not authorize production deployment or invent system facts.
 
+### Mandatory pinned upstream extensions
+
+The local `AGENTS.md` hierarchy is the composition layer that makes the external baseline applicable to repository work. The generated bundle is a traceable index and hash record; because the pilot used `--no-copy-sources`, it is not an automatic parent instruction scope for application files.
+
+Before changing code, tests, automation, configuration, deployment assets, or documentation, agents must:
+
+1. Read `docs/public-ai-governance/standards-bundle/COMPOSITION_MANIFEST.json`.
+2. Retrieve and read every upstream source path listed there from exactly `AIAllTheThingz/Public-AI-Governance` at tag `v0.10.0` / source commit `83c73f3ab9a049ff2321d463164fcf98fb453a9c`.
+3. Follow applicable supporting standards referenced by each selected upstream `AGENTS.md`, using that same pinned release.
+4. Apply those requirements together with project facts and any more-specific local `AGENTS.md` files.
+5. If an exact pinned source or required supporting standard cannot be obtained or read, record the external-baseline review as **`Blocked`** and do not claim the Public Access Agents baseline was applied.
+
+Do not silently substitute `main`, a newer release, or the generated index for the exact pinned source.
+
 ## Project facts
 
 - Windows-hosted .NET 10 application for controlled automation.
