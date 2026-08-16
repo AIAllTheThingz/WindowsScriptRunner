@@ -73,6 +73,5 @@ jobs:
           git config user.name "AIAllTheThingz"
           git config user.email "aiallthethingz@gmail.com"
           git add docs/public-ai-governance .github/workflows/public-ai-governance-pilot.yml
-          git diff --cached --check
           git commit -m "test: capture Public-AI-Governance adoption evidence"
           git push origin HEAD:adoption/public-ai-governance-v0.10.0
