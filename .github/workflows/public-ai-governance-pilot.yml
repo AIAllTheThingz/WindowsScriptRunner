@@ -42,130 +42,8 @@ jobs:
           set -euo pipefail
           OUT="$GITHUB_WORKSPACE/downstream/docs/public-ai-governance"
           mkdir -p "$OUT"
-          python standards/tools/generate-manifest/generate_manifest.py \
-            --root standards \
-            --name WindowsScriptRunner \
-            --profile INTERNAL_AUTOMATION \
-            --secondary-profile WEB_APPLICATION \
-            --language csharp \
-            --language dotnet \
-            --language powershell \
-            --framework aspnet-core \
-            --operating-system windows-server \
-            --include-profile-required \
-            --manifest-output "$OUT/project-manifest.json" \
-            --format json > "$OUT/generate-manifest-result.json"
-          python standards/tools/compose-agents/compose_agents.py \
-            --root standards \
-            --manifest "$OUT/project-manifest.json" \
-            --output-dir "$OUT/standards-bundle" \
-            --no-copy-sources \
-            --format json > "$OUT/compose-result.json"
-
-      - name: Measure secondary-profile discipline expansion
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, re
-          from pathlib import Path
-          manifest = json.loads(Path('downstream/docs/public-ai-governance/project-manifest.json').read_text())
-          pattern = re.compile(r'disciplines/([^/]+)/AGENTS\.md')
-          required = {}
-          for name in ('INTERNAL_AUTOMATION', 'WEB_APPLICATION'):
-              text = Path(f'standards/profiles/{name}.md').read_text(encoding='utf-8')
-              required[name] = sorted(set(pattern.findall(text.split('## Conditionally required disciplines', 1)[0])))
-          selected = set(manifest.get('disciplines', []))
-          gap = {
-              'primaryProfile': manifest['profile'],
-              'secondaryProfiles': manifest.get('secondaryProfiles', []),
-              'selectedDisciplines': sorted(selected),
-              'requiredByProfile': required,
-              'missingPrimaryRequired': sorted(set(required['INTERNAL_AUTOMATION']) - selected),
-              'missingSecondaryRequired': sorted(set(required['WEB_APPLICATION']) - selected),
-          }
-          Path('downstream/docs/public-ai-governance/secondary-profile-discipline-gap.json').write_text(json.dumps(gap, indent=2) + '\n', encoding='utf-8')
-          PY
-
-      - name: Apply tailored AGENTS hierarchy
-        shell: bash
-        run: |
-          cat > downstream/AGENTS.md <<'EOF'
-          # WindowsScriptRunner Agent Instructions
-
-          ## Adopted engineering baseline
-
-          This repository adopts **Public Access Agents `v0.10.0`** from `AIAllTheThingz/Public-AI-Governance`, source commit `83c73f3ab9a049ff2321d463164fcf98fb453a9c`. The generated manifest, traceable composition, and adoption evidence are under `docs/public-ai-governance/`.
-
-          Repository facts and explicit local design decisions remain authoritative. The external standards baseline strengthens review, safety, testing, and evidence behavior but does not authorize production deployment or invent system facts.
-
-          ## Project facts
-
-          - Windows-hosted .NET 10 application for controlled automation.
-          - Razor Pages web portal plus worker/service execution paths.
-          - C#/.NET application code and PowerShell 7.4+ out-of-process automation boundary.
-          - SQL Server persistence, queue coordination, transactional auditing, and typed report storage.
-          - Windows Negotiate authentication with SID-based authorization.
-          - Production automation is intentionally constrained to reviewed, versioned, hash-pinned packages; arbitrary script upload/execution is not a supported capability.
-          - Phase 9 deployment hardening is in progress; production rollout is not complete.
-
-          ## Working rules
-
-          - Preserve the .NET 10, PowerShell 7.4+, SQL Server, Windows authentication, and reviewed-package boundaries unless migration is explicitly in scope.
-          - Treat authorization, job approval, package identity/hash, worker leases, SQL transactions, trusted paths, process execution, reporting, and deployment configuration as security-sensitive.
-          - Do not widen the system into generic arbitrary-script execution without explicit architecture, threat, compatibility, and authorization review.
-          - Keep secrets and environment-specific credentials outside source and generated evidence.
-          - Require target identity and explicit authorization before consequential automation.
-          - Preserve safe defaults: production automation disabled until explicitly enabled/configured; startup migrations remain off by default outside controlled environments.
-          - Record validation that actually ran. Environment-dependent checks remain `NotRun` or `Blocked` when unavailable.
-          - A successful build, test run, or standards composition does not establish production readiness.
-
-          ## Validation baseline
-
-          Prefer the repository-defined validation sequence:
-
-          ```powershell
-          dotnet tool restore
-          dotnet restore
-          dotnet build --configuration Release
-          dotnet test --configuration Release
-          dotnet format --verify-no-changes
-          ```
-
-          Run Windows/IIS/SQL/PowerShell integration and deployment checks only where the required environment exists, and report their exact status.
-
-          ## Profile composition note
-
-          This project genuinely spans `INTERNAL_AUTOMATION` and `WEB_APPLICATION`. The adoption record documents a `v0.10.0` generator limitation: `--include-profile-required` expands required disciplines only for the primary profile. Until upstream tooling is corrected, reviewers must explicitly evaluate required overlays from both profiles rather than assuming the generated discipline list is complete.
-          EOF
-
-          mkdir -p downstream/src/WindowsScriptRunner.PowerShell
-          cat > downstream/src/WindowsScriptRunner.PowerShell/AGENTS.md <<'EOF'
-          # PowerShell Execution Boundary Instructions
-
-          These instructions apply to `src/WindowsScriptRunner.PowerShell/` in addition to the root `AGENTS.md`.
-
-          - Maintain PowerShell as a bounded out-of-process execution boundary; do not silently replace it with in-process arbitrary execution.
-          - Preserve explicit executable path, argument, working-directory, timeout, cancellation, stdout/stderr, and exit-code handling.
-          - Never interpolate untrusted input into shell command text when structured argument passing is available.
-          - Do not disable certificate/TLS verification, execution safety, or path validation as a shortcut.
-          - Treat output as untrusted until parsed and validated against the expected package/result contract.
-          - Tests must cover timeout, cancellation, nonzero exit, malformed output, path rejection, and cleanup behavior where applicable.
-          - Real PowerShell execution tests must remain isolated from production targets and credentials.
-          EOF
-
-          mkdir -p downstream/deployment
-          cat > downstream/deployment/AGENTS.md <<'EOF'
-          # Deployment Scope Instructions
-
-          These instructions apply under `deployment/` in addition to the root `AGENTS.md`.
-
-          - Deployment work is privileged operational automation and must remain separate from a claim that the application is production-ready.
-          - Require explicit target environment, service identity, SQL boundary, Windows/IIS configuration, certificate/SPN/Kerberos assumptions, rollback/recovery, and operator approval before consequential execution.
-          - Preserve secrets outside source and logs.
-          - Run prerequisite/discovery and validation phases before installation or mutation.
-          - Record Windows-only validation as `NotRun` or `Blocked` when executed from a non-Windows CI runner.
-          - Do not infer successful production deployment from repository build/test evidence.
-          EOF
+          python standards/tools/generate-manifest/generate_manifest.py --root standards --name WindowsScriptRunner --profile INTERNAL_AUTOMATION --secondary-profile WEB_APPLICATION --language csharp --language dotnet --language powershell --framework aspnet-core --operating-system windows-server --include-profile-required --manifest-output "$OUT/project-manifest.json" --format json > "$OUT/generate-manifest-result.json"
+          python standards/tools/compose-agents/compose_agents.py --root standards --manifest "$OUT/project-manifest.json" --output-dir "$OUT/standards-bundle" --no-copy-sources --format json > "$OUT/compose-result.json"
 
       - name: Capture downstream validation evidence
         working-directory: downstream
@@ -179,111 +57,14 @@ jobs:
           TOOL_RESTORE_RC=$?
           dotnet restore > docs/public-ai-governance/dotnet-restore.txt 2>&1
           RESTORE_RC=$?
-          if [ "$RESTORE_RC" -eq 0 ]; then
-            dotnet build --configuration Release --no-restore > docs/public-ai-governance/dotnet-build.txt 2>&1
-            BUILD_RC=$?
-          else
-            BUILD_RC=125
-            printf 'NotRun: restore did not pass; build was not attempted.\n' > docs/public-ai-governance/dotnet-build.txt
-          fi
-          if [ "$BUILD_RC" -eq 0 ]; then
-            dotnet test --configuration Release --no-build > docs/public-ai-governance/dotnet-test.txt 2>&1
-            TEST_RC=$?
-          else
-            TEST_RC=125
-            printf 'NotRun: build did not pass; tests were not attempted.\n' > docs/public-ai-governance/dotnet-test.txt
-          fi
-          if [ "$TOOL_RESTORE_RC" -eq 0 ]; then
-            dotnet format --verify-no-changes > docs/public-ai-governance/dotnet-format.txt 2>&1
-            FORMAT_RC=$?
-          else
-            FORMAT_RC=125
-            printf 'NotRun: dotnet tool restore did not pass; format verification was not attempted.\n' > docs/public-ai-governance/dotnet-format.txt
-          fi
-          if command -v pwsh >/dev/null 2>&1; then
-            pwsh -NoProfile -Command '$errs=@(); Get-ChildItem automation,src,tests,deployment -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in ".ps1", ".psm1" } | ForEach-Object { $tokens=$null; $parseErr=$null; [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$parseErr); if($parseErr){$errs += $parseErr} }; if($errs.Count){$errs | Format-List | Out-String | Write-Error; exit 1}; "PowerShell parse: Passed"' > docs/public-ai-governance/powershell-parse.txt 2>&1
-            PS_RC=$?
-          else
-            PS_RC=125
-            printf 'Blocked: pwsh is not available on the validation runner.\n' > docs/public-ai-governance/powershell-parse.txt
-          fi
+          if [ "$RESTORE_RC" -eq 0 ]; then dotnet build --configuration Release --no-restore > docs/public-ai-governance/dotnet-build.txt 2>&1; BUILD_RC=$?; else BUILD_RC=125; printf 'NotRun: restore did not pass; build was not attempted.\n' > docs/public-ai-governance/dotnet-build.txt; fi
+          if [ "$BUILD_RC" -eq 0 ]; then dotnet test --configuration Release --no-build > docs/public-ai-governance/dotnet-test.txt 2>&1; TEST_RC=$?; else TEST_RC=125; printf 'NotRun: build did not pass; tests were not attempted.\n' > docs/public-ai-governance/dotnet-test.txt; fi
+          if [ "$TOOL_RESTORE_RC" -eq 0 ]; then dotnet format --verify-no-changes > docs/public-ai-governance/dotnet-format.txt 2>&1; FORMAT_RC=$?; else FORMAT_RC=125; printf 'NotRun: dotnet tool restore did not pass; format verification was not attempted.\n' > docs/public-ai-governance/dotnet-format.txt; fi
+          if command -v pwsh >/dev/null 2>&1; then pwsh -NoProfile -Command '$errs=@(); Get-ChildItem automation,src,tests,deployment -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in ".ps1", ".psm1" } | ForEach-Object { $t=$null; $e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$t,[ref]$e); if($e){$errs += $e} }; if($errs.Count){$errs | Out-String | Write-Error; exit 1}; "PowerShell parse: Passed"' > docs/public-ai-governance/powershell-parse.txt 2>&1; PS_RC=$?; else PS_RC=125; printf 'Blocked: pwsh is not available on the validation runner.\n' > docs/public-ai-governance/powershell-parse.txt; fi
           printf 'DOTNET_INFO_RC=%s\nTOOL_RESTORE_RC=%s\nRESTORE_RC=%s\nBUILD_RC=%s\nTEST_RC=%s\nFORMAT_RC=%s\nPS_RC=%s\n' "$DOTNET_INFO_RC" "$TOOL_RESTORE_RC" "$RESTORE_RC" "$BUILD_RC" "$TEST_RC" "$FORMAT_RC" "$PS_RC" > docs/public-ai-governance/validation-status.env
           exit 0
 
-      - name: Write durable adoption record
-        working-directory: downstream
-        shell: bash
-        run: |
-          set -euo pipefail
-          source docs/public-ai-governance/validation-status.env
-          status_name() { if [ "$1" -eq 0 ]; then printf 'Passed'; elif [ "$1" -eq 125 ]; then printf 'NotRun/Blocked'; else printf 'Failed'; fi; }
-          MISSING_SECONDARY=$(python - <<'PY'
-          import json
-          from pathlib import Path
-          gap=json.loads(Path('docs/public-ai-governance/secondary-profile-discipline-gap.json').read_text())
-          print(', '.join(gap['missingSecondaryRequired']) or 'none')
-          PY
-          )
-          cat > docs/public-ai-governance/ADOPTION_RECORD.md <<EOF
-          # Public-AI-Governance downstream adoption record
-
-          ## Pilot identity
-
-          - Downstream repository: \`AIAllTheThingz/WindowsScriptRunner\`
-          - Pilot shape: mixed application/infrastructure system
-          - Downstream source revision before adoption: \`8694698829aa33640abc2f798233f47d71a77e39\`
-          - Public Access Agents release: \`v0.10.0\`
-          - Public Access Agents source commit: \`83c73f3ab9a049ff2321d463164fcf98fb453a9c\`
-          - Adoption date: 2026-08-16
-
-          ## Selected composition
-
-          - Primary profile: \`INTERNAL_AUTOMATION\`
-          - Secondary profile: \`WEB_APPLICATION\`
-          - Languages: \`csharp\`, \`dotnet\`, \`powershell\`
-          - Framework: \`aspnet-core\`
-          - Operating system boundary: \`windows-server\`
-          - Profile-required disciplines: requested through \`--include-profile-required\`
-
-          The exact manifest is \`project-manifest.json\`; the traceable composition is under \`standards-bundle/\` without flattened source copies.
-
-          ## Commands exercised
-
-          - Published standards checkout at \`v0.10.0\`
-          - \`tools/generate-manifest/generate_manifest.py\`: Passed
-          - \`tools/compose-agents/compose_agents.py --no-copy-sources\`: Passed
-          - \`dotnet --info\`: $(status_name "$DOTNET_INFO_RC")
-          - \`dotnet tool restore\`: $(status_name "$TOOL_RESTORE_RC")
-          - \`dotnet restore\`: $(status_name "$RESTORE_RC")
-          - \`dotnet build --configuration Release --no-restore\`: $(status_name "$BUILD_RC")
-          - \`dotnet test --configuration Release --no-build\`: $(status_name "$TEST_RC")
-          - \`dotnet format --verify-no-changes\`: $(status_name "$FORMAT_RC")
-          - PowerShell parser check: $(status_name "$PS_RC")
-
-          Detailed command output is retained beside this record.
-
-          ## Adoption outcome
-
-          A real root \`AGENTS.md\` hierarchy was added for the mixed system, with tighter scopes for the PowerShell execution boundary and deployment tooling. The standards composition correctly captures both profiles and the language/framework/OS selections.
-
-          ## Friction and findings
-
-          1. **Upstream tooling defect:** \`generate-manifest --include-profile-required\` expands required disciplines from the primary profile only. The generated manifest retains \`WEB_APPLICATION\` in \`secondaryProfiles\`, but required disciplines unique to that secondary profile remain missing. Missing secondary-profile required disciplines observed in this pilot: **$MISSING_SECONDARY**. Exact evidence is in \`secondary-profile-discipline-gap.json\`.
-          2. **Adopter-specific tailoring:** WindowsScriptRunner's reviewed-package hash boundary, SQL-authoritative leases, Windows Negotiate/SID authorization, typed-report persistence, and intentionally disabled production automation are project facts that the generic composition correctly does not infer.
-          3. **Validation boundary:** Linux CI can exercise .NET and PowerShell parsing, but IIS/Kerberos/SPN/Windows Service/LocalDB/production SQL deployment evidence remains environment-dependent and must not be inferred.
-
-          ## Limitations
-
-          - No production deployment, IIS configuration, Kerberos/SPN validation, Windows Service installation, production SQL rollout, or live automation target was exercised.
-          - Any downstream command shown as Failed or NotRun/Blocked remains unresolved evidence, not a passing claim.
-          - This pilot does not by itself justify stable maturity promotion.
-
-          ## Follow-up
-
-          Public-AI-Governance should correct profile-required discipline expansion so \`--include-profile-required\` accounts for both primary and secondary profiles, with regression coverage for mixed systems. Until corrected, adopters must manually review secondary-profile required overlays.
-          EOF
-
-      - name: Commit pilot artifacts and remove one-shot workflow
+      - name: Commit machine evidence and remove one-shot workflow
         working-directory: downstream
         shell: bash
         run: |
@@ -291,7 +72,7 @@ jobs:
           rm -f .github/workflows/public-ai-governance-pilot.yml
           git config user.name "AIAllTheThingz"
           git config user.email "aiallthethingz@gmail.com"
-          git add AGENTS.md src/WindowsScriptRunner.PowerShell/AGENTS.md deployment/AGENTS.md docs/public-ai-governance .github/workflows/public-ai-governance-pilot.yml
+          git add docs/public-ai-governance .github/workflows/public-ai-governance-pilot.yml
           git diff --cached --check
-          git commit -m "docs: adopt Public-AI-Governance v0.10.0 baseline"
+          git commit -m "test: capture Public-AI-Governance adoption evidence"
           git push origin HEAD:adoption/public-ai-governance-v0.10.0
