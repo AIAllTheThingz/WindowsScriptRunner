@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.1.0",
+  "name": "WindowsScriptRunner",
+  "profile": "INTERNAL_AUTOMATION",
+  "languages": [
+    "csharp",
+    "dotnet",
+    "powershell"
+  ],
+  "disciplines": [
+    "application-security",
+    "testing",
+    "documentation",
+    "observability",
+    "ci-cd",
+    "supply-chain",
+    "architecture",
+    "integration",
+    "release-engineering",
+    "sre",
+    "privacy"
+  ],
+  "secondaryProfiles": [
+    "WEB_APPLICATION"
+  ],
+  "frameworks": [
+    "aspnet-core"
+  ],
+  "operatingSystems": [
+    "windows-server"
+  ]
+}

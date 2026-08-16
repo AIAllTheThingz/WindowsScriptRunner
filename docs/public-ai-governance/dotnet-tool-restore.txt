@@ -1,0 +1,5 @@
+Tool 'dotnet-ef' (version '10.0.10') was restored. Available commands: dotnet-ef
+
+A newer version of tool 'dotnet-ef' is available (version '10.0.11'). Consider updating your manifest file.
+
+Restore was successful.
