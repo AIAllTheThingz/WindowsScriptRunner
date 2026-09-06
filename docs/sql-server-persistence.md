@@ -59,6 +59,6 @@ Startup migration is registered behind `Persistence:ApplyMigrationsOnStartup`, w
 
 ## SQL Server tests
 
-Tests use `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` when supplied. Otherwise they use the installed `MSSQLLocalDB` instance. Every test creates a unique disposable database, applies migrations, and deletes the database afterward. SQLite and EF InMemory are not used as SQL Server evidence.
+Tests use `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` when supplied. Otherwise they use the default SQL Server instance on `localhost`. Every test creates a unique disposable database, applies migrations, and deletes the database afterward. SQLite and EF InMemory are not used as SQL Server evidence.
 
 Durable polling, fenced claiming, lease recovery, the reviewed PowerShell package, typed local-host inventory reporting, and bounded Web-facing report/approval queries are implemented. Phase 8 does not persist a Web identity, browser session, role, or approval-fingerprint table; trusted Windows SID mapping and fingerprint calculation occur above this persistence layer. Production migration orchestration, backup/restore procedures, least-privilege database identities, and rollback runbooks remain Phase 9 deployment work.
