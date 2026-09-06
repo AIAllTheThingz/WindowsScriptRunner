@@ -199,7 +199,7 @@ public sealed class MigrationTests
 
         Assert.DoesNotContain("Password=", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("User ID=", script, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("MSSQLLocalDB", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Server=localhost", script, StringComparison.OrdinalIgnoreCase);
         await database.ApplySqlScriptAsync(script);
         await database.ApplySqlScriptAsync(script);
 

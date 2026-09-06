@@ -7,9 +7,9 @@ Install:
 - Git;
 - the .NET SDK selected by `global.json` (`10.0.302`, or a later patch in the same `10.0.3xx` feature band);
 - PowerShell 7.4 or later; and
-- SQL Server or SQL Server LocalDB.
+- SQL Server.
 
-PowerShell 7 is required for the real execution tests. SQL Server LocalDB is supported for development and the SQL test suite.
+PowerShell 7 is required for the real execution tests. SQL Server is required for development and the SQL test suite.
 
 Verify the selected SDK before restoring:
 
@@ -41,7 +41,7 @@ The historical Phase 8 validation evidence is recorded in [validation report](va
 
 ## Local database
 
-Web and Worker require `ConnectionStrings:WindowsScriptRunner`. For a disposable LocalDB database, configure the connection string through user secrets or a process environment variable. Do not commit credentials or workstation-specific connection strings.
+Web and Worker require `ConnectionStrings:WindowsScriptRunner`. For a disposable development database, configure the connection string through user secrets or a process environment variable. Do not commit credentials or workstation-specific connection strings.
 
 Web also requires approved Windows authorization groups outside the `Testing` environment. Use protected environment-specific configuration; these placeholders are intentionally not usable SIDs and must not be copied as production values:
 

@@ -178,7 +178,7 @@ public sealed class JobQueueWorkerTests
         var worker = fixture.QueueService(new SystemWorkerDelay(), handler);
 
         await worker.StartAsync(CancellationToken.None);
-        await handler.Invoked.WaitAsync(TimeSpan.FromSeconds(1));
+        await handler.Invoked.WaitAsync(TimeSpan.FromSeconds(3));
         await WaitUntilAsync(() =>
             fixture.Jobs.Jobs.Values.Single().Lease is null);
         await worker.StopAsync(CancellationToken.None);

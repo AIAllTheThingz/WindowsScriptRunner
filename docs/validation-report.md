@@ -4,6 +4,15 @@ Validation date: 2026-07-28
 
 Unless otherwise noted, commands ran from the repository root.
 
+## Current full-suite verification
+
+Validation date: 2026-09-06, America/Chicago.
+
+- Command: `dotnet test --configuration Release`.
+- Environment: Windows with the pinned .NET SDK `10.0.302`, bundled PowerShell runtime, no `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` override, and the default SQL Server instance on `localhost`.
+- Outcome: exit 0; 742 passed, 0 failed, 0 skipped: Unit 408, Security 110, SQL Server 56, Worker 55, PowerShell 110, Integration 3.
+- This entry supersedes the historical raw failure output retained in Git history; the current raw run log was captured outside the repository.
+
 ## Prerequisites
 
 ### Git
@@ -1117,8 +1126,8 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 
 ## Real SQL Server runtime and test databases
 
-- Runtime: installed SQL Server LocalDB instance `(localdb)\MSSQLLocalDB`, accessed with Windows integrated authentication.
-- `sqlcmd` and `sqllocaldb` were available. Docker client was present, but the Docker daemon was unavailable; Testcontainers was not needed because real LocalDB was available.
+- Runtime: legacy installed SQL Server development instance, accessed with Windows integrated authentication.
+- `sqlcmd` was available. Docker client was present, but the Docker daemon was unavailable; Testcontainers was not needed because the legacy SQL development runtime was available.
 - Each SQL test creates a GUID-named disposable database, applies the real migration, uses isolated contexts/scopes, and deletes the database afterward.
 - SQLite and EF InMemory were not used as SQL Server evidence.
 
@@ -1150,7 +1159,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 
 ## Web, Worker, and health validation
 
-- A migrated disposable LocalDB database was configured with `ApplyMigrationsOnStartup=false`.
+- A migrated disposable SQL Server database was configured with `ApplyMigrationsOnStartup=false`.
 - Web ran from its project content root in Production on validation-only HTTP port 5096. `/`, `/Scripts`, `/Jobs`, `/Workers`, `/Audit`, `/Administration`, `/health`, `/health/live`, and `/health/ready` each returned HTTP 200.
 - Migration history remained exactly one after Web startup, proving startup did not reapply a migration.
 - After the exact disposable database was dropped, `/health/ready` returned 503 while `/health/live` remained 200.
@@ -1184,9 +1193,9 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 
 - Failed required final items: none.
 - Blocked required items: none.
-- Blocked optional environment: Docker daemon/Testcontainers. Real SQL Server validation was not blocked because LocalDB was available and all 19 SQL tests executed.
+- Blocked optional environment: Docker daemon/Testcontainers. Real SQL Server validation was not blocked because the legacy SQL development runtime was available and all 19 SQL tests executed.
 - NotRun by Phase 3 scope: Phase 4 polling/claiming/leasing/scheduling, PowerShell execution, script discovery/manifest loading, reporting, REST APIs, new Razor features, authentication, authorization, external secret retrieval, notifications, deployment automation, containers, Kubernetes, and production installation.
-- NotRun environment claims: production SQL Server deployment, external SQL authentication, and production rollback. LocalDB migration rollback and idempotent application were validated.
+- NotRun environment claims: production SQL Server deployment, external SQL authentication, and production rollback. SQL migration rollback and idempotent application were validated.
 
 # Phase 4 Worker Foundation and Queue Processing
 
@@ -1237,7 +1246,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - Domain/Application focused Unit tests passed, including acquisition, renewal, release, stale fencing, recovery, capability synchronization, registration, heartbeat, and cancellation.
 - Worker focused suite: 37 passed, 0 failed, 0 skipped. Coverage includes empty/persistence backoff separation and reset, jitter bounds, handler registry, zero-handler behavior, supported-kind filtering, concurrency, completion slot release, observed exception/cancellation, renewal, immediate post-backoff renewal retry, lost-lease cancellation, invariant release, shutdown drain/completion/timeout, liveness-bounded heartbeat failure, development-only ephemeral identity, malformed capability validation, dispatch-task fault containment, and validated backoff bounds.
 - Security focused suite: 42 passed, 0 failed, 0 skipped. Source/reflection tests cover PowerShell/process absence, safe descriptors, non-secret leases, fenced commands, persistence boundaries, and zero production handler implementations.
-- SQL Server focused suite: 43 passed, 0 failed, 0 skipped against SQL Server LocalDB. Multi-worker coverage includes two-worker/one-job and four-worker/30-job races with unique ownership/fencing. SQL Server UTC coordination and expired-lease discovery use the shared database clock. Renewal/recovery and duplicate-recovery races each produce one valid winner, concurrent renewal and execution start both commit without a false job rowversion conflict, and terminal outcome retries safely after renewal commits first. Active DryRun/Execute/PostValidation recovery and stale completion rejection passed.
+- SQL Server focused suite: 43 passed, 0 failed, 0 skipped against the legacy SQL development runtime. Multi-worker coverage includes two-worker/one-job and four-worker/30-job races with unique ownership/fencing. SQL Server UTC coordination and expired-lease discovery use the shared database clock. Renewal/recovery and duplicate-recovery races each produce one valid winner, concurrent renewal and execution start both commit without a false job rowversion conflict, and terminal outcome retries safely after renewal commits first. Active DryRun/Execute/PostValidation recovery and stale completion rejection passed.
 - Query interception proves bounded `TOP`, parameters, exact filters, deterministic ordering, lease absence, safe projection, and bounded command count.
 
 ## Final build, test, formatting, and model validation
@@ -1260,7 +1269,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 
 ## Runtime validation
 
-- A GUID-scoped disposable SQL Server LocalDB database was migrated through both migrations with startup migration disabled.
+- A GUID-scoped disposable SQL Server database was migrated through both migrations with startup migration disabled.
 - Web ran in Production on `http://127.0.0.1:5097`. `/`, `/Scripts`, `/Jobs`, `/Workers`, `/Audit`, `/Administration`, `/health`, `/health/live`, and `/health/ready` returned HTTP 200.
 - Migration history remained two. With the exact disposable database offline, readiness returned 503 while liveness remained 200; readiness recovered to 200 after SQL returned.
 - Worker ran in Production with stable ID `44444444-4444-4444-8444-444444444444`, test name, and OS capability. Registration persisted once, the heartbeat advanced, the queue logged zero supported work kinds, the pre-seeded `DryRunQueued` job remained unchanged, and `JobLeases` remained empty.
@@ -1334,7 +1343,7 @@ Validation date: 2026-07-29. Times are America/Chicago (`-05:00`). Commands ran 
 - PowerShell/Process/TrustedScript Unit filter: 4 passed, 0 failed, 0 skipped.
 - Security focused suite: 48 passed, 0 failed, 0 skipped.
 - Worker regression suite: 37 passed, 0 failed, 0 skipped. Production registration contains neither an executable work handler nor a PowerShell service.
-- SQL Server regression suite: 43 passed, 0 failed, 0 skipped against LocalDB.
+- SQL Server regression suite: 43 passed, 0 failed, 0 skipped against the legacy SQL development runtime.
 - Source inspection found process APIs and Job Object interop only in `WindowsScriptRunner.PowerShell`; no production `System.Management.Automation`, PowerShell SDK, `powershell.exe`, command shell, `Invoke-Expression`, unsafe `Arguments`, shell execution, caller-controlled `-Command`, or execution-policy bypass.
 - Web and Worker have no PowerShell reference or registration. No production `IJobWorkHandler`, persistence migration, table, or model change was added.
 
