@@ -5,11 +5,24 @@
 Install:
 
 - Git;
-- a stable .NET 10 SDK;
+- the .NET SDK selected by `global.json` (`10.0.302`, or a later patch in the same `10.0.3xx` feature band);
 - PowerShell 7.4 or later; and
 - SQL Server or SQL Server LocalDB.
 
 PowerShell 7 is required for the real execution tests. SQL Server LocalDB is supported for development and the SQL test suite.
+
+Verify the selected SDK before restoring:
+
+```powershell
+dotnet --version
+```
+
+If the pinned SDK is installed under the user profile instead of a system location, configure it for the current PowerShell session before running the commands below:
+
+```powershell
+$env:DOTNET_ROOT = Join-Path $env:USERPROFILE '.dotnet'
+$env:PATH = "$env:DOTNET_ROOT;$env:PATH"
+```
 
 ## Restore and validate
 
@@ -24,7 +37,7 @@ dotnet format --verify-no-changes
 dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build
 ```
 
-The current Phase 8 validation evidence is recorded in [validation report](validation-report.md).
+The historical Phase 8 validation evidence is recorded in [validation report](validation-report.md). Current local refactor validation is recorded in [local refactor validation](local-refactor-validation.md).
 
 ## Local database
 

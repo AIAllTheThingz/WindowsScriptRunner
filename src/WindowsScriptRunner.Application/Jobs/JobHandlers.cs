@@ -1,6 +1,5 @@
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
-using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -48,7 +47,7 @@ public sealed class CreateDraftJobHandler(
 
         await jobRepository.AddAsync(job, cancellationToken);
         await auditWriter.WriteAsync(
-            CreateAudit(
+            Audit(
                 "JobDraftCreated",
                 job,
                 requester,
@@ -87,7 +86,7 @@ public sealed class CreateDraftJobHandler(
         }
     }
 
-    private static AuditEvent CreateAudit(
+    internal static AuditEvent Audit(
         string eventType,
         Job job,
         UserIdentity actor,
@@ -103,15 +102,6 @@ public sealed class CreateDraftJobHandler(
             occurredUtc,
             summary,
             properties);
-
-    internal static AuditEvent Audit(
-        string eventType,
-        Job job,
-        UserIdentity actor,
-        DateTimeOffset occurredUtc,
-        string summary,
-        IReadOnlyDictionary<string, string>? properties = null) =>
-        CreateAudit(eventType, job, actor, occurredUtc, summary, properties);
 }
 
 public sealed class AddJobTargetHandler(
@@ -611,97 +601,6 @@ public sealed class CompleteDryRunJobHandler(
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }
-}
-
-public sealed class StartExecutionAttemptHandler(
-    IJobRepository jobRepository,
-    IAuditWriter auditWriter,
-    IUnitOfWork unitOfWork,
-    IWorkerCoordinationClock coordinationClock)
-{
-    public async Task HandleAsync(
-        StartExecutionAttemptCommand command,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        var job = await AddJobTargetHandler.GetJobAsync(
-            jobRepository,
-            command.JobId,
-            cancellationToken);
-        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
-        var execution = job.StartLeasedExecutionAttempt(
-            command.LeaseCredentials,
-            command.ActingUser,
-            now);
-        var audit = CreateDraftJobHandler.Audit(
-            "ExecutionAttemptStarted",
-            job,
-            command.ActingUser,
-            now,
-            "A job execution attempt was started.",
-            new Dictionary<string, string>
-            {
-                ["AttemptNumber"] = execution.AttemptNumber.ToString(
-                    System.Globalization.CultureInfo.InvariantCulture),
-                ["WorkerNodeIdPresent"] = (execution.WorkerNodeId is not null).ToString(),
-            });
-
-        await jobRepository.UpdateAsync(job, cancellationToken);
-        await auditWriter.WriteAsync(audit, cancellationToken);
-        await unitOfWork.CommitAsync(cancellationToken);
-    }
-}
-
-public sealed class RecordExecutionOutcomeHandler(
-    IJobRepository jobRepository,
-    IAuditWriter auditWriter,
-    IUnitOfWork unitOfWork,
-    IWorkerCoordinationClock coordinationClock)
-{
-    public async Task HandleAsync(
-        RecordExecutionOutcomeCommand command,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        var job = await AddJobTargetHandler.GetJobAsync(
-            jobRepository,
-            command.JobId,
-            cancellationToken);
-        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
-        var execution = job.RecordTerminalExecutionOutcome(
-            command.LeaseCredentials,
-            command.Outcome,
-            command.ExitCode,
-            command.Summary,
-            command.ActingUser,
-            now);
-        await QueueHandlerSupport.CommitTerminalJobAuditAsync(
-            jobRepository,
-            auditWriter,
-            unitOfWork,
-            job,
-            command.LeaseCredentials,
-            "ExecutionOutcomeRecorded",
-            command.ActingUser,
-            now,
-            "The active execution attempt was completed.",
-            CreateExecutionOutcomeAuditProperties(command, execution),
-            cancellationToken);
-    }
-
-    private static IReadOnlyDictionary<string, string> CreateExecutionOutcomeAuditProperties(
-        RecordExecutionOutcomeCommand command,
-        JobExecution execution) =>
-        new Dictionary<string, string>
-        {
-            ["Outcome"] = command.Outcome.ToString(),
-            ["ExitCodePresent"] = command.ExitCode.HasValue.ToString(),
-            ["ExitCode"] = command.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(null)",
-            ["SummaryProvided"] = (!string.IsNullOrWhiteSpace(command.Summary)).ToString(),
-            ["SummaryLength"] = (command.Summary?.Length ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["AttemptNumber"] = execution.AttemptNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["WorkerNodeIdPresent"] = (execution.WorkerNodeId is not null).ToString(),
-        };
 }
 
 public sealed class GetJobHandler(

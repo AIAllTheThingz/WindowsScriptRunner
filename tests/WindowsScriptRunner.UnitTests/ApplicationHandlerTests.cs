@@ -2,6 +2,7 @@ using System.Reflection;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
+using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -1195,14 +1196,14 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
-    public async Task StartExecutionAttemptHandlerCreatesAuditsPersistsAndCommitsAttempt()
+    public async Task StartLeasedExecutionHandlerCreatesAuditsPersistsAndCommitsAttempt()
     {
         var fixture = HandlerFixture.WithClaimedJob();
         var workerNodeId = fixture.Jobs.Job!.Lease!.WorkerNodeId;
         using var source = new CancellationTokenSource();
 
-        await fixture.StartExecutionAttemptHandler.HandleAsync(
-            new StartExecutionAttemptCommand(
+        await fixture.StartLeasedExecutionHandler.HandleAsync(
+            new StartLeasedExecutionCommand(
                 fixture.Jobs.Job!.Id,
                 fixture.Jobs.Job.Lease!.Credentials,
                 TestDomainFactory.OtherUser),
@@ -1234,16 +1235,16 @@ public sealed class ApplicationHandlerTests
         fixture.Clock.UtcNow = lease.ExpiresUtc.AddHours(1);
         fixture.Clock.CoordinationUtcNow = executionStartedUtc;
 
-        await fixture.StartExecutionAttemptHandler.HandleAsync(
-            new StartExecutionAttemptCommand(
+        await fixture.StartLeasedExecutionHandler.HandleAsync(
+            new StartLeasedExecutionCommand(
                 fixture.Jobs.Job.Id,
                 lease.Credentials,
                 TestDomainFactory.OtherUser),
             CancellationToken.None);
 
         fixture.Clock.CoordinationUtcNow = executionCompletedUtc;
-        await fixture.RecordExecutionOutcomeHandler.HandleAsync(
-            new RecordExecutionOutcomeCommand(
+        await fixture.RecordLeasedExecutionOutcomeHandler.HandleAsync(
+            new RecordLeasedExecutionOutcomeCommand(
                 fixture.Jobs.Job.Id,
                 lease.Credentials,
                 ExecutionOutcome.Succeeded,
@@ -1259,14 +1260,14 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
-    public async Task StartExecutionAttemptHandlerRejectsWrongLeaseWorkerWithoutMutation()
+    public async Task StartLeasedExecutionHandlerRejectsWrongLeaseWorkerWithoutMutation()
     {
         var fixture = HandlerFixture.WithClaimedJob();
         var current = fixture.Jobs.Job!.Lease!.Credentials;
 
         await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
-            () => fixture.StartExecutionAttemptHandler.HandleAsync(
-                new StartExecutionAttemptCommand(
+            () => fixture.StartLeasedExecutionHandler.HandleAsync(
+                new StartLeasedExecutionCommand(
                     fixture.Jobs.Job!.Id,
                     new JobLeaseCredentials(
                         current.LeaseId,
@@ -1283,14 +1284,14 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
-    public async Task StartExecutionAttemptHandlerRejectsStaleFencingTokenWithoutMutation()
+    public async Task StartLeasedExecutionHandlerRejectsStaleFencingTokenWithoutMutation()
     {
         var fixture = HandlerFixture.WithClaimedJob();
         var current = fixture.Jobs.Job!.Lease!.Credentials;
 
         await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
-            () => fixture.StartExecutionAttemptHandler.HandleAsync(
-                new StartExecutionAttemptCommand(
+            () => fixture.StartLeasedExecutionHandler.HandleAsync(
+                new StartLeasedExecutionCommand(
                     fixture.Jobs.Job!.Id,
                     new JobLeaseCredentials(
                         current.LeaseId,
@@ -1307,13 +1308,13 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
-    public async Task StartExecutionAttemptHandlerDoesNotPersistWhenJobIsNotClaimed()
+    public async Task StartLeasedExecutionHandlerDoesNotPersistWhenJobIsNotClaimed()
     {
         var fixture = HandlerFixture.WithSubmittedJob();
 
         await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
-            () => fixture.StartExecutionAttemptHandler.HandleAsync(
-                new StartExecutionAttemptCommand(
+            () => fixture.StartLeasedExecutionHandler.HandleAsync(
+                new StartLeasedExecutionCommand(
                     fixture.Jobs.Job!.Id,
                     new JobLeaseCredentials(
                         JobLeaseId.New(),
@@ -1335,7 +1336,7 @@ public sealed class ApplicationHandlerTests
     [InlineData(ExecutionOutcome.TimedOut, JobStatus.TimedOut, null)]
     [InlineData(ExecutionOutcome.Blocked, JobStatus.Blocked, null)]
     [InlineData(ExecutionOutcome.NotRun, JobStatus.NotRun, null)]
-    public async Task RecordExecutionOutcomeHandlerPersistsTerminalOutcome(
+    public async Task RecordLeasedExecutionOutcomeHandlerPersistsTerminalOutcome(
         ExecutionOutcome outcome,
         JobStatus expectedStatus,
         int? exitCode)
@@ -1343,8 +1344,8 @@ public sealed class ApplicationHandlerTests
         var fixture = HandlerFixture.WithExecutingJob();
         using var source = new CancellationTokenSource();
 
-        await fixture.RecordExecutionOutcomeHandler.HandleAsync(
-            new RecordExecutionOutcomeCommand(
+        await fixture.RecordLeasedExecutionOutcomeHandler.HandleAsync(
+            new RecordLeasedExecutionOutcomeCommand(
                 fixture.Jobs.Job!.Id,
                 fixture.Jobs.Job.Lease!.Credentials,
                 outcome,
@@ -1362,6 +1363,9 @@ public sealed class ApplicationHandlerTests
         Assert.Equal("ExecutionOutcomeRecorded", audit.EventType);
         Assert.Equal(outcome.ToString(), audit.Properties["Outcome"]);
         Assert.Equal((exitCode is not null).ToString(), audit.Properties["ExitCodePresent"]);
+        Assert.Equal(
+            exitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(null)",
+            audit.Properties["ExitCode"]);
         Assert.Equal("True", audit.Properties["SummaryProvided"]);
         Assert.Equal("22", audit.Properties["SummaryLength"]);
         Assert.Equal("1", audit.Properties["AttemptNumber"]);
@@ -1373,15 +1377,15 @@ public sealed class ApplicationHandlerTests
     }
 
     [Fact]
-    public async Task InvalidExecutionOutcomeHandlerDoesNotPersistAuditOrCommit()
+    public async Task InvalidLeasedExecutionOutcomeHandlerDoesNotPersistAuditOrCommit()
     {
         var fixture = HandlerFixture.WithExecutingJob();
         var execution = Assert.Single(fixture.Jobs.Job!.Executions);
         var updated = fixture.Jobs.Job.UpdatedUtc;
 
         await Assert.ThrowsAsync<Domain.Exceptions.DomainValidationException>(
-            () => fixture.RecordExecutionOutcomeHandler.HandleAsync(
-                new RecordExecutionOutcomeCommand(
+            () => fixture.RecordLeasedExecutionOutcomeHandler.HandleAsync(
+                new RecordLeasedExecutionOutcomeCommand(
                     fixture.Jobs.Job.Id,
                     fixture.Jobs.Job.Lease!.Credentials,
                     (ExecutionOutcome)999,
@@ -1475,8 +1479,8 @@ public sealed class ApplicationHandlerTests
             () => fixture.CompleteReadOnlyHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.CompleteValidationHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.CompleteDryRunHandler.HandleAsync(null!, CancellationToken.None),
-            () => fixture.StartExecutionAttemptHandler.HandleAsync(null!, CancellationToken.None),
-            () => fixture.RecordExecutionOutcomeHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.StartLeasedExecutionHandler.HandleAsync(null!, CancellationToken.None),
+            () => fixture.RecordLeasedExecutionOutcomeHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.GetHandler.HandleAsync(null!, CancellationToken.None),
         ];
 
@@ -1542,12 +1546,16 @@ public sealed class ApplicationHandlerTests
             CompleteReadOnlyHandler = new CompleteReadOnlyJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteValidationHandler = new CompleteValidationJobHandler(Jobs, Audits, UnitOfWork, Clock);
             CompleteDryRunHandler = new CompleteDryRunJobHandler(Jobs, Audits, UnitOfWork, Clock);
-            StartExecutionAttemptHandler = new StartExecutionAttemptHandler(
+            StartLeasedExecutionHandler = new StartLeasedExecutionHandler(
                 Jobs,
                 Audits,
                 UnitOfWork,
                 Clock);
-            RecordExecutionOutcomeHandler = new RecordExecutionOutcomeHandler(Jobs, Audits, UnitOfWork, Clock);
+            RecordLeasedExecutionOutcomeHandler = new RecordLeasedExecutionOutcomeHandler(
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock);
             GetHandler = new GetJobHandler(Jobs, Scripts);
         }
 
@@ -1572,8 +1580,8 @@ public sealed class ApplicationHandlerTests
         public CompleteReadOnlyJobHandler CompleteReadOnlyHandler { get; }
         public CompleteValidationJobHandler CompleteValidationHandler { get; }
         public CompleteDryRunJobHandler CompleteDryRunHandler { get; }
-        public StartExecutionAttemptHandler StartExecutionAttemptHandler { get; }
-        public RecordExecutionOutcomeHandler RecordExecutionOutcomeHandler { get; }
+        public StartLeasedExecutionHandler StartLeasedExecutionHandler { get; }
+        public RecordLeasedExecutionOutcomeHandler RecordLeasedExecutionOutcomeHandler { get; }
         public GetJobHandler GetHandler { get; }
         public IEnumerable<CancellationToken> ObservedTokens =>
             Jobs.ObservedTokens

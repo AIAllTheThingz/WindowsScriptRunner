@@ -1,6 +1,7 @@
 using System.Globalization;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Workers;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
@@ -40,7 +41,7 @@ public sealed class AcquireJobLeaseHandler(
             throw new ApplicationValidationException("Job work kind must be defined.");
         }
 
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -112,7 +113,7 @@ public sealed class RenewJobLeaseHandler(
             throw new ApplicationValidationException("Lease duration must be positive.");
         }
 
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -145,7 +146,7 @@ public sealed class ReleaseUnstartedJobLeaseHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -189,7 +190,7 @@ public sealed class RecoverExpiredJobLeaseHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(command.Candidate);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.Candidate.JobId,
             cancellationToken);
@@ -243,7 +244,7 @@ public sealed class InspectJobLeaseHandler(IJobRepository jobRepository)
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             query.JobId,
             cancellationToken);
@@ -267,7 +268,7 @@ public sealed class StartLeasedDryRunHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -282,6 +283,7 @@ public sealed class StartLeasedDryRunHandler(
             command.ActingUser,
             now,
             "The leased dry-run work started.",
+            null,
             cancellationToken);
     }
 }
@@ -297,7 +299,7 @@ public sealed class CompleteLeasedDryRunHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -329,7 +331,7 @@ public sealed class CompleteLeasedReadOnlyDryRunHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -362,7 +364,7 @@ public sealed class TerminateLeasedDryRunHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -401,7 +403,7 @@ public sealed class StartLeasedExecutionHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -419,6 +421,11 @@ public sealed class StartLeasedExecutionHandler(
             command.ActingUser,
             now,
             "The leased execution attempt started.",
+            new Dictionary<string, string>
+            {
+                ["AttemptNumber"] = execution.AttemptNumber.ToString(CultureInfo.InvariantCulture),
+                ["WorkerNodeIdPresent"] = (execution.WorkerNodeId is not null).ToString(),
+            },
             cancellationToken);
         return execution;
     }
@@ -435,7 +442,7 @@ public sealed class BeginLeasedPostValidationHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -450,6 +457,7 @@ public sealed class BeginLeasedPostValidationHandler(
             command.ActingUser,
             now,
             "The leased execution entered post-validation.",
+            null,
             cancellationToken);
     }
 }
@@ -465,7 +473,7 @@ public sealed class RecordLeasedExecutionOutcomeHandler(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        var job = await QueueHandlerSupport.GetJobAsync(
+        var job = await AddJobTargetHandler.GetJobAsync(
             jobRepository,
             command.JobId,
             cancellationToken);
@@ -487,23 +495,30 @@ public sealed class RecordLeasedExecutionOutcomeHandler(
             command.ActingUser,
             now,
             "The leased execution attempt completed and resolved its lease.",
-            null,
+            CreateExecutionOutcomeAuditProperties(command, execution),
             cancellationToken);
         return execution;
     }
+
+    private static IReadOnlyDictionary<string, string> CreateExecutionOutcomeAuditProperties(
+        RecordLeasedExecutionOutcomeCommand command,
+        JobExecution execution) =>
+        new Dictionary<string, string>
+        {
+            ["Outcome"] = command.Outcome.ToString(),
+            ["ExitCodePresent"] = command.ExitCode.HasValue.ToString(),
+            ["ExitCode"] = command.ExitCode?.ToString(CultureInfo.InvariantCulture) ?? "(null)",
+            ["SummaryProvided"] = (!string.IsNullOrWhiteSpace(command.Summary)).ToString(),
+            ["SummaryLength"] = (command.Summary?.Length ?? 0).ToString(CultureInfo.InvariantCulture),
+            ["AttemptNumber"] = execution.AttemptNumber.ToString(CultureInfo.InvariantCulture),
+            ["WorkerNodeIdPresent"] = (execution.WorkerNodeId is not null).ToString(),
+        };
 }
 
 internal static class QueueHandlerSupport
 {
     internal static UserIdentity LeaseRecoveryActor { get; } =
         new("system:lease-recovery");
-
-    internal static async Task<Job> GetJobAsync(
-        IJobRepository repository,
-        JobId jobId,
-        CancellationToken cancellationToken) =>
-        await repository.GetByIdAsync(jobId, cancellationToken)
-        ?? throw new EntityNotFoundException(nameof(Job), jobId.ToString());
 
     internal static ClaimedJobWork ToClaimedWork(Job job, JobLease lease) =>
         new(
@@ -557,6 +572,7 @@ internal static class QueueHandlerSupport
         UserIdentity actor,
         DateTimeOffset occurredUtc,
         string summary,
+        IReadOnlyDictionary<string, string>? properties,
         CancellationToken cancellationToken)
     {
         await jobRepository.UpdateAsync(job, cancellationToken);
@@ -568,7 +584,8 @@ internal static class QueueHandlerSupport
                 job.Id.ToString(),
                 actor,
                 occurredUtc,
-                summary),
+                summary,
+                properties),
             cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
     }

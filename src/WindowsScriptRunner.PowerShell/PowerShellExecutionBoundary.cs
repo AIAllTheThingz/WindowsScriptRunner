@@ -70,10 +70,6 @@ internal sealed class PowerShellExecutionBoundary(
                     new InvalidOperationException("Process.Start returned false."));
             }
         }
-        catch (PowerShellExecutionException)
-        {
-            throw;
-        }
         catch (Exception exception) when (
             exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {

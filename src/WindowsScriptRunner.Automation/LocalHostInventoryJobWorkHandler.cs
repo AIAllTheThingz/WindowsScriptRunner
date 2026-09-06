@@ -61,37 +61,25 @@ internal sealed class LocalHostInventoryJobWorkHandler(
                 ExecutionOutcome.Cancelled,
                 CancellationToken.None);
         }
-        catch (AutomationPackageTrustException)
+        catch (Exception exception) when (exception is
+            AutomationPackageTrustException or
+            PowerShellScriptTrustException or
+            DomainException)
         {
             await TerminateAsync(work, ExecutionOutcome.Blocked, CancellationToken.None);
         }
-        catch (PowerShellScriptTrustException)
-        {
-            await TerminateAsync(work, ExecutionOutcome.Blocked, CancellationToken.None);
-        }
-        catch (PowerShellRuntimeNotFoundException)
-        {
-            await TerminateAsync(work, ExecutionOutcome.NotRun, CancellationToken.None);
-        }
-        catch (PowerShellRuntimeValidationException)
+        catch (Exception exception) when (exception is
+            PowerShellRuntimeNotFoundException or
+            PowerShellRuntimeValidationException or
+            PowerShellProcessStartException)
         {
             await TerminateAsync(work, ExecutionOutcome.NotRun, CancellationToken.None);
         }
-        catch (PowerShellProcessStartException)
-        {
-            await TerminateAsync(work, ExecutionOutcome.NotRun, CancellationToken.None);
-        }
-        catch (PowerShellExecutionException)
+        catch (Exception exception) when (exception is
+            PowerShellExecutionException or
+            LocalHostInventoryReportValidationException)
         {
             await TerminateAsync(work, ExecutionOutcome.Failed, CancellationToken.None);
-        }
-        catch (LocalHostInventoryReportValidationException)
-        {
-            await TerminateAsync(work, ExecutionOutcome.Failed, CancellationToken.None);
-        }
-        catch (DomainException)
-        {
-            await TerminateAsync(work, ExecutionOutcome.Blocked, CancellationToken.None);
         }
     }
 

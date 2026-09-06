@@ -481,7 +481,7 @@ public sealed class QueuePersistenceTests
             renewal.Jobs,
             new CoordinatedUnitOfWork(renewal.UnitOfWork, barrier),
             new FixedClock(operationTime));
-        var executionHandler = new StartExecutionAttemptHandler(
+        var executionHandler = new StartLeasedExecutionHandler(
             execution.Jobs,
             execution.Audits,
             new CoordinatedUnitOfWork(execution.UnitOfWork, barrier),
@@ -498,8 +498,8 @@ public sealed class QueuePersistenceTests
             CaptureOperationAsync(
                 async () =>
                 {
-                    await executionHandler.HandleAsync(
-                        new StartExecutionAttemptCommand(
+                    _ = await executionHandler.HandleAsync(
+                        new StartLeasedExecutionCommand(
                             seeded.JobId,
                             seeded.Work.Credentials,
                             new UserIdentity("worker:concurrency")),
