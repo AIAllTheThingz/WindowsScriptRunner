@@ -7,6 +7,11 @@ namespace WindowsScriptRunner.PowerShellTests;
 public sealed class PowerShellExecutionIntegrationTests(
     PowerShellIntegrationFixture fixture)
 {
+    private static readonly TimeSpan SpawnChildTimeout = TimeSpan.FromSeconds(5);
+
+    // Allow real PowerShell startup while keeping teardown bounded relative to its timeout.
+    private static readonly TimeSpan SpawnChildTimeoutAllowance = TimeSpan.FromSeconds(5);
+
     [Fact]
     public async Task FallbackProbeTerminatesTreeAfterSuccessfulProbe()
     {
@@ -294,7 +299,7 @@ public sealed class PowerShellExecutionIntegrationTests(
                     new PowerShellArgument("Mode", "SpawnChild"),
                     new PowerShellArgument("SleepSeconds", "10"),
                 ],
-                TimeSpan.FromSeconds(1)),
+                SpawnChildTimeout),
             CancellationToken.None);
         var parentId = ProcessTest.ParseProcessId(result.StandardOutput, "PARENT_PID");
         var childId = ProcessTest.ParseProcessId(result.StandardOutput, "CHILD_PID");
@@ -319,14 +324,17 @@ public sealed class PowerShellExecutionIntegrationTests(
                     new PowerShellArgument("Mode", "SpawnChild"),
                     new PowerShellArgument("SleepSeconds", "0"),
                 ],
-                TimeSpan.FromSeconds(1)),
+                SpawnChildTimeout),
             CancellationToken.None);
         var parentId = ProcessTest.ParseProcessId(result.StandardOutput, "PARENT_PID");
         var childId = ProcessTest.ParseProcessId(result.StandardOutput, "CHILD_PID");
 
         Assert.Equal(PowerShellTerminationReason.TimedOut, result.TerminationReason);
         Assert.Null(result.ExitCode);
-        Assert.InRange(result.Duration, TimeSpan.Zero, TimeSpan.FromSeconds(6));
+        Assert.InRange(
+            result.Duration,
+            TimeSpan.Zero,
+            SpawnChildTimeout + SpawnChildTimeoutAllowance);
         Assert.False(
             Directory.Exists(Path.Combine(fixture.WorkingRoot, executionId.ToString())));
         await ProcessTest.AssertExitedAsync(parentId);
@@ -344,15 +352,24 @@ public sealed class PowerShellExecutionIntegrationTests(
             boundary.Request(
                 executionId,
                 "SpawnChild",
-                TimeSpan.FromSeconds(1),
+                SpawnChildTimeout,
                 new PowerShellArgument("SleepSeconds", "0")),
             CancellationToken.None);
+        Assert.True(
+            result.StandardOutput.Contains("PARENT_PID=", StringComparison.Ordinal) &&
+            result.StandardOutput.Contains("CHILD_PID=", StringComparison.Ordinal),
+            $"Expected fixture process IDs. Termination reason: {result.TerminationReason}; " +
+            $"exit code: {result.ExitCode}; duration: {result.Duration}; " +
+            $"stdout: {result.StandardOutput}; stderr: {result.StandardError}");
         var parentId = ProcessTest.ParseProcessId(result.StandardOutput, "PARENT_PID");
         var childId = ProcessTest.ParseProcessId(result.StandardOutput, "CHILD_PID");
 
         Assert.Equal(PowerShellTerminationReason.TimedOut, result.TerminationReason);
         Assert.Null(result.ExitCode);
-        Assert.InRange(result.Duration, TimeSpan.Zero, TimeSpan.FromSeconds(6));
+        Assert.InRange(
+            result.Duration,
+            TimeSpan.Zero,
+            SpawnChildTimeout + SpawnChildTimeoutAllowance);
         Assert.False(
             Directory.Exists(
                 Path.Combine(boundary.Options.WorkingRoot!, executionId.ToString())));

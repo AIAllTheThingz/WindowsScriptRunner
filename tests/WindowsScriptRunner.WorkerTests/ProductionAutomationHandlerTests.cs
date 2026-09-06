@@ -167,22 +167,34 @@ public sealed class ProductionAutomationHandlerTests
     }
 
     [Theory]
-    [InlineData("runtime")]
-    [InlineData("startup")]
-    public async Task RuntimeDiscoveryAndStartupFailuresBecomeNotRun(string failure)
+    [InlineData("runtime", JobStatus.NotRun)]
+    [InlineData("runtime-validation", JobStatus.NotRun)]
+    [InlineData("startup", JobStatus.NotRun)]
+    [InlineData("execution", JobStatus.Failed)]
+    [InlineData("trust", JobStatus.Blocked)]
+    public async Task PowerShellExceptionsResolveLeaseWithExpectedOutcome(
+        string failure,
+        JobStatus expectedStatus)
     {
-        Exception exception = failure == "runtime"
-            ? new PowerShellRuntimeNotFoundException("Runtime unavailable.")
-            : new PowerShellProcessStartException(
+        Exception exception = failure switch
+        {
+            "runtime" => new PowerShellRuntimeNotFoundException("Runtime unavailable."),
+            "runtime-validation" => new PowerShellRuntimeValidationException(
+                "Runtime validation failed."),
+            "startup" => new PowerShellProcessStartException(
                 "Process did not start.",
-                new InvalidOperationException());
+                new InvalidOperationException()),
+            "execution" => new PowerShellExecutionException("Execution failed."),
+            "trust" => new PowerShellScriptTrustException("Script trust failed."),
+            _ => throw new InvalidOperationException(),
+        };
         using var fixture = new AutomationHandlerFixture(exception);
 
         await fixture.Handler.HandleAsync(
             fixture.Work,
             CancellationToken.None);
 
-        Assert.Equal(JobStatus.NotRun, fixture.Job.Status);
+        Assert.Equal(expectedStatus, fixture.Job.Status);
         Assert.Null(fixture.Job.Lease);
     }
 

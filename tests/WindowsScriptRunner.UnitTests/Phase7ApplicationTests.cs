@@ -3,7 +3,6 @@ using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
-using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Reports;
@@ -524,32 +523,6 @@ public sealed class Phase7ApplicationTests
 
             AddCount++;
             Report = report;
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeAuditWriter : IAuditWriter
-    {
-        internal List<AuditEvent> Events { get; } = [];
-
-        public Task WriteAsync(
-            AuditEvent auditEvent,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Events.Add(auditEvent);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeUnitOfWork : IUnitOfWork
-    {
-        internal int CommitCount { get; private set; }
-
-        public Task CommitAsync(CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            CommitCount++;
             return Task.CompletedTask;
         }
     }

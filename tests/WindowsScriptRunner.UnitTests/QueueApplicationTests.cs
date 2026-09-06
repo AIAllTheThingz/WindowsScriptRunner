@@ -3,7 +3,6 @@ using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Application.Workers;
 using WindowsScriptRunner.Domain;
-using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
@@ -454,30 +453,6 @@ public sealed class QueueApplicationTests
             cancellationToken.ThrowIfCancellationRequested();
             UpdateCount++;
             Worker = workerNode;
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeAuditWriter : IAuditWriter
-    {
-        public List<AuditEvent> Events { get; } = [];
-
-        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Events.Add(auditEvent);
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeUnitOfWork : IUnitOfWork
-    {
-        public int CommitCount { get; private set; }
-
-        public Task CommitAsync(CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            CommitCount++;
             return Task.CompletedTask;
         }
     }
