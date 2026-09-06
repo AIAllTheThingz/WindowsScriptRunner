@@ -34,7 +34,7 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var supplied = baseConnectionString ??
             Environment.GetEnvironmentVariable("WINDOWSSCRIPTRUNNER_TEST_SQLSERVER");
-        var runtimeName = "SQL Server LocalDB MSSQLLocalDB";
+        var runtimeName = "SQL Server default instance at localhost";
         if (!string.IsNullOrWhiteSpace(baseConnectionString))
         {
             runtimeName = "explicit test SQL Server endpoint";
@@ -45,7 +45,7 @@ internal sealed class SqlServerDatabase : IAsyncDisposable
         }
 
         var baseConnection = string.IsNullOrWhiteSpace(supplied)
-            ? "Server=(localdb)\\MSSQLLocalDB;Integrated Security=true;Encrypt=false"
+            ? "Server=localhost;Integrated Security=true;Encrypt=false"
             : supplied;
         var builder = new SqlConnectionStringBuilder(baseConnection)
         {
