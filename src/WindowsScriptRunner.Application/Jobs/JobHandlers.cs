@@ -1,5 +1,7 @@
+using System.Security.Principal;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -10,6 +12,82 @@ using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.Application.Jobs;
+
+public sealed class RequestLocalHostInventoryHandler(
+    IScriptDefinitionRepository scriptRepository,
+    IJobRepository jobRepository,
+    IAuditWriter auditWriter,
+    IUnitOfWork unitOfWork,
+    IWorkerCoordinationClock coordinationClock,
+    ICurrentUser currentUser)
+{
+    private static readonly TargetName LocalWorkerTarget = new("local-worker");
+
+    public async Task<JobId> HandleAsync(
+        RequestLocalHostInventoryCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var requester = currentUser.User;
+        if (!IsCanonicalWindowsUserSid(requester))
+        {
+            throw new ApplicationValidationException(
+                "Local Host Inventory requests require an authenticated Windows SID.");
+        }
+
+        var definition = await scriptRepository.GetByIdAsync(
+            LocalHostInventoryPackagePolicy.DefinitionId,
+            cancellationToken)
+            ?? throw new ApplicationConflictException(
+                "The reviewed Local Host Inventory package is unavailable.");
+        var version = LocalHostInventoryPackagePolicy.Validate(definition);
+        var now = await coordinationClock.GetUtcNowAsync(cancellationToken);
+        var job = Job.CreateDraft(
+            JobId.New(),
+            definition.Id,
+            version.Id,
+            Domain.ExecutionPhase.DryRun,
+            requester,
+            now);
+        job.AddTarget(LocalWorkerTarget, requester, now);
+        job.Submit(definition, requester, now);
+        job.MarkValidated(requester, now);
+        job.QueueDryRun(requester, now);
+
+        await jobRepository.AddAsync(job, cancellationToken);
+        await auditWriter.WriteAsync(
+            CreateDraftJobHandler.Audit(
+                "LocalHostInventoryRequested",
+                job,
+                requester,
+                now,
+                "A reviewed local host inventory DryRun was requested."),
+            cancellationToken);
+        await unitOfWork.CommitAsync(cancellationToken);
+        return job.Id;
+    }
+
+    private static bool IsCanonicalWindowsUserSid(UserIdentity user)
+    {
+        const string Prefix = "sid:";
+        if (!OperatingSystem.IsWindows() ||
+            !user.Value.StartsWith(Prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            var sid = new SecurityIdentifier(user.Value[Prefix.Length..]);
+            return string.Equals(Prefix + sid.Value, user.Value, StringComparison.Ordinal) &&
+                !user.Value.StartsWith("sid:S-1-5-32-", StringComparison.Ordinal);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+}
 
 public sealed class CreateDraftJobHandler(
     IScriptDefinitionRepository scriptRepository,

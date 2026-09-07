@@ -40,6 +40,7 @@ public static class DependencyInjection
     public static IServiceCollection AddWebPortalApplication(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.AddTransient<RequestLocalHostInventoryHandler>();
         services.AddScoped<IJobFingerprintService, ApprovalFingerprintService>();
         services.AddTransient<ApproveJobHandler>();
         services.AddTransient<RejectJobHandler>();

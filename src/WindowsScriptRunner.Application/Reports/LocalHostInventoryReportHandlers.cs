@@ -42,18 +42,6 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
     IUnitOfWork unitOfWork,
     IWorkerCoordinationClock coordinationClock)
 {
-    private const string ExpectedScriptPath =
-        "windows.local-host-inventory/1.0.0/Collect-LocalHostInventory.ps1";
-    private const string ExpectedScriptSha256 =
-        "b85b29bbfc04dfb9c85f3fcc391e58c1ea0ef8aeeddcb5b796d8968b3729c368";
-    private const string ExpectedMinimumPowerShellVersion = "7.4.0";
-    private static readonly Guid ExpectedDefinitionId =
-        Guid.Parse("7fc1cf27-4d30-48b2-9ae5-6b41a7f57758");
-    private static readonly Guid ExpectedScriptVersionId =
-        Guid.Parse("6f1e7581-b7e2-4114-aa0f-28f90c95e6af");
-    private static readonly ScriptVersionNumber ExpectedVersion =
-        ScriptVersionNumber.Parse(JobReport.LocalHostInventoryPackageVersion);
-
     public async Task<LocalHostInventoryReportCompletion> HandleAsync(
         CompleteLocalHostInventoryDryRunCommand command,
         CancellationToken cancellationToken)
@@ -172,48 +160,14 @@ public sealed class CompleteLocalHostInventoryDryRunHandler(
             cancellationToken)
             ?? throw new ApplicationConflictException(
                 "The pinned Local Host Inventory definition is unavailable.");
-        var version = definition.Versions.SingleOrDefault(
-            candidate => candidate.Id == job.ScriptVersionId)
-            ?? throw new ApplicationConflictException(
-                "The pinned Local Host Inventory version is unavailable.");
-        var valid =
-            definition.Id == job.ScriptDefinitionId &&
-            definition.Id.Value == ExpectedDefinitionId &&
-            definition.IsEnabled &&
-            string.Equals(
-                definition.Name.Value,
-                JobReport.LocalHostInventoryPackageId,
-                StringComparison.Ordinal) &&
-            definition.RiskLevel == RiskLevel.ReadOnly &&
-            version.Id == job.ScriptVersionId &&
-            version.Id.Value == ExpectedScriptVersionId &&
-            version.IsPublished &&
-            version.Version == ExpectedVersion &&
-            string.Equals(
-                version.RelativeScriptPath,
-                ExpectedScriptPath,
-                StringComparison.Ordinal) &&
-            string.Equals(
-                version.Sha256,
-                ExpectedScriptSha256,
-                StringComparison.Ordinal) &&
-            string.Equals(
-                version.MinimumPowerShellVersion,
-                ExpectedMinimumPowerShellVersion,
-                StringComparison.Ordinal) &&
-            version.DefaultTimeoutMinutes == 1 &&
-            version.ParameterDefinitions.Count == 0 &&
-            version.SupportedPhases.Count == 1 &&
-            version.SupportedPhases.Contains(ExecutionPhase.DryRun) &&
-            version.SupportedReportFormats.Count == 1 &&
-            version.SupportedReportFormats.Contains(ReportFormat.Json);
-        if (!valid)
+        if (definition.Id != job.ScriptDefinitionId ||
+            job.ScriptVersionId != LocalHostInventoryPackagePolicy.VersionId)
         {
             throw new ApplicationConflictException(
                 "The pinned script is not the reviewed Local Host Inventory package.");
         }
 
-        return version;
+        return LocalHostInventoryPackagePolicy.Validate(definition);
     }
 
     private static void EnsureExactReplay(

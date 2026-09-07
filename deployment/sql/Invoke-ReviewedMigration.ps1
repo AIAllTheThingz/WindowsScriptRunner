@@ -12,6 +12,9 @@ param(
     [Parameter(Mandatory)]
     [string]$BackupPath,
 
+    [Parameter(Mandatory)]
+    [string]$ExpectedMachineGuid,
+
     [string]$SqlCmdPath = 'sqlcmd.exe',
     [switch]$OverwriteBackup
 )
@@ -20,6 +23,7 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '..\common\DeploymentAssertions.ps1')
 
 Assert-WindowsDeploymentHost
+Assert-DeploymentTargetMachine $ExpectedMachineGuid
 $resolvedSqlScriptPath = Resolve-DeploymentAbsolutePath $SqlScriptPath 'SqlScriptPath'
 $resolvedBackupPath = Resolve-DeploymentAbsolutePath $BackupPath 'BackupPath'
 Assert-DeploymentFile $resolvedSqlScriptPath 'SQL migration script'
@@ -59,10 +63,12 @@ if ($null -eq $sqlcmd) {
 $quotedDatabase = $Database.Replace(']', ']]')
 $quotedBackupPath = $resolvedBackupPath.Replace("'", "''")
 $backupQuery = "BACKUP DATABASE [$quotedDatabase] TO DISK = N'$quotedBackupPath' WITH COPY_ONLY, INIT, CHECKSUM;"
+$verifyBackupQuery = "RESTORE VERIFYONLY FROM DISK = N'$quotedBackupPath' WITH CHECKSUM;"
 $backupCreated = $false
+$backupVerified = $false
 $migrationApplied = $false
 
-if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Create COPY_ONLY SQL backup at $resolvedBackupPath")) {
+if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Create and verify a COPY_ONLY SQL backup, then apply the reviewed migration")) {
     Invoke-DeploymentNativeCommand $sqlcmd.Source @(
         '-S', $ServerInstance,
         '-d', 'master',
@@ -71,12 +77,16 @@ if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Create COPY_ONLY SQL b
         '-Q', $backupQuery
     )
     $backupCreated = $true
-}
 
-if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Apply reviewed idempotent migration $resolvedSqlScriptPath")) {
-    if (-not $backupCreated -and -not $WhatIfPreference) {
-        throw 'Migration cannot run until the backup completes successfully.'
-    }
+    Invoke-DeploymentNativeCommand $sqlcmd.Source @(
+        '-S', $ServerInstance,
+        '-d', 'master',
+        '-E',
+        '-b',
+        '-Q', $verifyBackupQuery
+    )
+    $backupVerified = $true
+
     Invoke-DeploymentNativeCommand $sqlcmd.Source @(
         '-S', $ServerInstance,
         '-d', $Database,
@@ -87,12 +97,24 @@ if ($PSCmdlet.ShouldProcess("$ServerInstance/$Database", "Apply reviewed idempot
     $migrationApplied = $true
 }
 
+$status = if ($migrationApplied) {
+    'Applied'
+}
+elseif ($WhatIfPreference) {
+    'WhatIf'
+}
+else {
+    'Declined'
+}
+
 [pscustomobject]@{
     ServerInstance = $ServerInstance
     Database = $Database
     BackupPath = $resolvedBackupPath
     SqlScriptPath = $resolvedSqlScriptPath
     SqlCmdPath = $sqlcmd.Source
+    Status = $status
     BackupCreated = $backupCreated
+    BackupVerified = $backupVerified
     MigrationApplied = $migrationApplied
 }

@@ -4,6 +4,47 @@ Validation date: 2026-07-28
 
 Unless otherwise noted, commands ran from the repository root.
 
+## Latest full-suite verification
+
+Validation date: 2026-09-07, America/Chicago.
+
+- Environment: Windows 11 Pro build `10.0.26200`; user-local pinned SDK `10.0.302` from
+  `C:\Users\mez\.dotnet`; bundled PowerShell 7.6.5; default local `MSSQLSERVER` instance running;
+  `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` was unset.
+- MCP note: `dotnet-dev` Stable Contract v1 was used for read-only solution inspection, but its fixed
+  system `dotnet` host could not resolve the pinned SDK. The required validation commands therefore
+  used the pinned user-local CLI as the documented fallback.
+- `dotnet tool restore`: exit 0; `dotnet-ef` 10.0.10 restored.
+- `dotnet restore`: exit 0; all projects restored.
+- `dotnet build --configuration Release`: exit 0; 0 warnings and 0 errors.
+- `dotnet test --configuration Release`: exit 0; 752 passed, 0 failed, 0 skipped: Unit 414,
+  Security 113, SQL Server 57, Worker 55, PowerShell 110, Integration 3.
+- Final post-fix `dotnet test --configuration Release --no-restore`: exit 0; the same 752 passed,
+  0 failed, 0 skipped. Raw final-suite output is in
+  `%TEMP%\WindowsScriptRunner-validation-final-20260907\dotnet-test-release-final.log`.
+- `dotnet format --verify-no-changes`: exit 0.
+- EF pending-model check: exit 0; no changes have been made to the model since the last migration.
+- Native 64-bit Windows PowerShell 5.1 deployment regression run used
+  `Import-Module Pester -MinimumVersion 5.8.0` before
+  `Invoke-Pester .\deployment\tests\DeploymentRegression.Tests.ps1 -Output Detailed`: 19 passed,
+  0 failed, 0 skipped, 0 inconclusive, 0 not run; host exit 0. PSScriptAnalyzer 1.25 reported
+  0 errors and 0 warnings for current and baseline-changed production PowerShell scripts. Raw
+  Pester output is in `%TEMP%\WindowsScriptRunner-Phase9B-Pester-final-20260907-123422.log`.
+- PowerShell 7 and native Windows PowerShell 5.1 parser checks both passed.
+- Scoped Medium security review findings were resolved: IIS names and DNS handling are bounded,
+  terminal line endings are rejected, shared SNI and exact SSL flags are verified, denied Jobs
+  POST behavior is covered, and SQL job/audit submission remains atomic.
+- Pony Ultra review removed the unnecessary global `$LASTEXITCODE` reset and null branch while
+  retaining required guards and the shared package policy; no dependencies or speculative abstractions were
+  added.
+- The native Pester `Run.Exit=true` host confirmation was a separate receipt from the raw Pester log;
+  it confirms the 19-test run independently and is not attributed to the earlier logged wrapper exit.
+- Raw command logs were captured outside the repository under
+  `%TEMP%\WindowsScriptRunner-validation-20260907`; no secrets or connection values were printed.
+- This validates the current source and local test boundary only. IIS, representative Windows Server
+  deployment, production configuration, production SQL rollout, and production approval remain
+  unvalidated.
+
 ## Current full-suite verification
 
 Validation date: 2026-09-06, America/Chicago.

@@ -11,6 +11,8 @@ public sealed record CreateDraftJobCommand(
     string? Description = null,
     ChangeReference? ChangeReference = null);
 
+public sealed record RequestLocalHostInventoryCommand;
+
 public sealed record AddJobTargetCommand(
     JobId JobId,
     TargetName TargetName,

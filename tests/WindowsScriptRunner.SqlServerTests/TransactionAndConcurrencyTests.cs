@@ -3,6 +3,7 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -16,6 +17,46 @@ namespace WindowsScriptRunner.SqlServerTests;
 
 public sealed class TransactionAndConcurrencyTests
 {
+    [Fact]
+    public async Task InventoryRequestRevalidatesPinnedPackageAndRollsBackJobAndAudit()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var script = LocalHostInventoryPackageMetadata.CreateDefinition(SqlServerTestData.Time);
+        await using (var seed = new PersistenceTestScope(database))
+        {
+            await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.UnitOfWork.CommitAsync(CancellationToken.None);
+        }
+
+        await using (var request = new PersistenceTestScope(database))
+        {
+            var handler = new RequestLocalHostInventoryHandler(
+                request.Scripts,
+                request.Jobs,
+                request.Audits,
+                new ConcurrentScriptDisableUnitOfWork(
+                    database,
+                    request.UnitOfWork,
+                    script.Id),
+                new FixedClock(SqlServerTestData.Time.AddMinutes(1)),
+                new FixedCurrentUser(SqlServerTestData.Requester));
+
+            await Assert.ThrowsAsync<ApplicationConflictException>(
+                () => handler.HandleAsync(
+                    new RequestLocalHostInventoryCommand(),
+                    CancellationToken.None));
+        }
+
+        await using var verification = new PersistenceTestScope(database);
+        Assert.False(await verification.Context.Jobs.AnyAsync());
+        Assert.False(await verification.Context.AuditEvents.AnyAsync(
+            item => item.EventType == "LocalHostInventoryRequested"));
+        Assert.False(
+            Assert.IsType<ScriptDefinition>(
+                await verification.Scripts.GetByIdAsync(script.Id, CancellationToken.None))
+                .IsEnabled);
+    }
+
     [Fact]
     public async Task JobAndAuditCommitAtomically()
     {
@@ -649,6 +690,11 @@ public sealed class TransactionAndConcurrencyTests
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(UtcNow);
         }
+    }
+
+    private sealed class FixedCurrentUser(UserIdentity user) : ICurrentUser
+    {
+        public UserIdentity User { get; } = user;
     }
 
     private sealed class ConcurrentScriptDisableUnitOfWork(

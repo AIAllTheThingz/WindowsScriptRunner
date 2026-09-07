@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
@@ -36,6 +37,151 @@ public sealed class PortalWebFlowTests
     private const string ReportReaderGroupSid = "S-1-5-32-545";
     private const string ApproverGroupSid = "S-1-5-32-546";
     private const string AdministratorGroupSid = "S-1-5-32-544";
+
+    [Fact]
+    public async Task InventoryRequestRequiresOperatorAndAntiforgeryBeforeWriting()
+    {
+        using var factory = new PortalWebApplicationFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+
+        var denied = await SendAsAsync(client, HttpMethod.Get, "/Jobs", RequesterSid);
+        var get = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid);
+        var token = ExtractAntiforgeryToken(await get.Content.ReadAsStringAsync());
+        var post = await SendAsAsync(
+            client,
+            HttpMethod.Post,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid,
+            new Dictionary<string, string>());
+        var wrongRolePost = await SendAsAsync(
+            client,
+            HttpMethod.Post,
+            "/Jobs",
+            RequesterSid,
+            form: new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = token,
+            });
+        var invalidTokenPost = await SendAsAsync(
+            client,
+            HttpMethod.Post,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = "invalid",
+            });
+        var anonymousPost = await client.PostAsync(
+            "/Jobs",
+            new FormUrlEncodedContent(new Dictionary<string, string>()));
+
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Contains("Request inventory", await get.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, post.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, wrongRolePost.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidTokenPost.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousPost.StatusCode);
+        Assert.Null(factory.State.RequestedJob);
+        Assert.Equal(0, factory.State.AuditCount);
+        Assert.Equal(0, factory.State.CommitCount);
+    }
+
+    [Fact]
+    public async Task InventoryRequestUsesOnlyAuthenticatedActorAndPinnedValues()
+    {
+        using var factory = new PortalWebApplicationFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        var get = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid);
+        var form = new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = ExtractAntiforgeryToken(
+                await get.Content.ReadAsStringAsync()),
+            ["scriptVersionId"] = Guid.NewGuid().ToString("D"),
+            ["requestedPhase"] = nameof(ExecutionPhase.Execute),
+            ["target"] = "remote-host",
+            ["requestedBy"] = $"sid:{OtherUserSid}",
+            ["parameter"] = "forged",
+        };
+
+        var response = await SendAsAsync(
+            client,
+            HttpMethod.Post,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid,
+            form);
+
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        var job = Assert.IsType<Job>(factory.State.RequestedJob);
+        Assert.Equal($"/Jobs/Details/{job.Id.Value:D}", response.Headers.Location?.OriginalString);
+        Assert.Equal(LocalHostInventoryPackageMetadata.DefinitionId, job.ScriptDefinitionId);
+        Assert.Equal(LocalHostInventoryPackageMetadata.VersionId, job.ScriptVersionId);
+        Assert.Equal(ExecutionPhase.DryRun, job.RequestedPhase);
+        Assert.Equal(JobStatus.DryRunQueued, job.Status);
+        Assert.Equal($"sid:{RequesterSid}", job.RequestedBy.Value);
+        Assert.Equal("local-worker", Assert.Single(job.Targets).Name.Value);
+        Assert.Empty(job.Parameters);
+        Assert.Equal(1, factory.State.AuditCount);
+        Assert.Equal(1, factory.State.CommitCount);
+    }
+
+    [Fact]
+    public async Task InventoryRequestReportsUnavailablePinnedPackageWithoutWriting()
+    {
+        using var factory = new PortalWebApplicationFactory();
+        factory.State.InventoryScript.Disable(DateTimeOffset.MaxValue);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        var get = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid);
+        var form = new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = ExtractAntiforgeryToken(
+                await get.Content.ReadAsStringAsync()),
+        };
+
+        var response = await SendAsAsync(
+            client,
+            HttpMethod.Post,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid,
+            form);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains(
+            "Local Host Inventory package is unavailable",
+            await response.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+        Assert.Null(factory.State.RequestedJob);
+        Assert.Equal(0, factory.State.AuditCount);
+        Assert.Equal(0, factory.State.CommitCount);
+    }
 
     [Fact]
     public async Task AnonymousPortalRequestsAreChallenged()
@@ -667,6 +813,7 @@ public sealed class PortalWebFlowTests
         private PortalState(
             Job job,
             ScriptDefinition script,
+            ScriptDefinition inventoryScript,
             JobReport report,
             JobReport otherReport,
             UserIdentity otherRequester,
@@ -674,6 +821,7 @@ public sealed class PortalWebFlowTests
         {
             Job = job;
             Script = script;
+            InventoryScript = inventoryScript;
             Report = report;
             OtherReport = otherReport;
             OtherRequester = otherRequester;
@@ -682,11 +830,14 @@ public sealed class PortalWebFlowTests
 
         internal Job Job { get; }
         internal ScriptDefinition Script { get; }
+        internal ScriptDefinition InventoryScript { get; }
+        internal Job? RequestedJob { get; set; }
         internal JobReport Report { get; }
         internal JobReport OtherReport { get; }
         internal UserIdentity OtherRequester { get; }
         internal string SecureReference { get; }
         internal int AuditCount { get; set; }
+        internal int CommitCount { get; set; }
         internal int RequesterReportListCount { get; set; }
 
         internal static PortalState Create()
@@ -695,6 +846,7 @@ public sealed class PortalWebFlowTests
             var requester = new UserIdentity($"sid:{RequesterSid}");
             var otherRequester = new UserIdentity($"sid:{SecondRequesterSid}");
             var system = new UserIdentity("system:portal-test");
+            var inventoryScript = LocalHostInventoryPackageMetadata.CreateDefinition(started);
             var parameter = new ScriptParameterDefinition(
                 ScriptParameterDefinitionId.New(),
                 "Credential",
@@ -792,6 +944,7 @@ public sealed class PortalWebFlowTests
             return new PortalState(
                 job,
                 script,
+                inventoryScript,
                 report,
                 otherReport,
                 otherRequester,
@@ -802,7 +955,10 @@ public sealed class PortalWebFlowTests
     private sealed class PortalJobRepository(PortalState state) : IJobRepository
     {
         public Task<Job?> GetByIdAsync(JobId id, CancellationToken cancellationToken) =>
-            Task.FromResult<Job?>(state.Job.Id == id ? state.Job : null);
+            Task.FromResult<Job?>(
+                state.Job.Id == id
+                    ? state.Job
+                    : state.RequestedJob?.Id == id ? state.RequestedJob : null);
 
         public Task<IReadOnlyList<Job>> ListAwaitingApprovalAsync(
             int maximumCount,
@@ -813,10 +969,13 @@ public sealed class PortalWebFlowTests
                     : []);
 
         public Task<bool> ExistsAsync(JobId id, CancellationToken cancellationToken) =>
-            Task.FromResult(state.Job.Id == id);
+            Task.FromResult(state.Job.Id == id || state.RequestedJob?.Id == id);
 
-        public Task AddAsync(Job job, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+        public Task AddAsync(Job job, CancellationToken cancellationToken)
+        {
+            state.RequestedJob = job;
+            return Task.CompletedTask;
+        }
 
         public Task UpdateAsync(Job job, CancellationToken cancellationToken)
         {
@@ -838,7 +997,10 @@ public sealed class PortalWebFlowTests
         public Task<ScriptDefinition?> GetByIdAsync(
             ScriptDefinitionId id,
             CancellationToken cancellationToken) =>
-            Task.FromResult<ScriptDefinition?>(state.Script.Id == id ? state.Script : null);
+            Task.FromResult<ScriptDefinition?>(
+                state.Script.Id == id
+                    ? state.Script
+                    : state.InventoryScript.Id == id ? state.InventoryScript : null);
 
         public Task AddAsync(ScriptDefinition definition, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
@@ -923,9 +1085,13 @@ public sealed class PortalWebFlowTests
         }
     }
 
-    private sealed class PortalUnitOfWork : IUnitOfWork
+    private sealed class PortalUnitOfWork(PortalState state) : IUnitOfWork
     {
-        public Task CommitAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CommitAsync(CancellationToken cancellationToken)
+        {
+            state.CommitCount++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class PortalClock : IWorkerCoordinationClock

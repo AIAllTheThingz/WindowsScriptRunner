@@ -4,3 +4,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WindowsScriptRunner.WorkerTests")]
 [assembly: InternalsVisibleTo("WindowsScriptRunner.PowerShellTests")]
 [assembly: InternalsVisibleTo("WindowsScriptRunner.SqlServerTests")]
+[assembly: InternalsVisibleTo("WindowsScriptRunner.SecurityTests")]

@@ -3,6 +3,7 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -33,6 +34,73 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(leaseId, request.LeaseId);
         Assert.Equal(workerNodeId, request.WorkerNodeId);
         Assert.Equal(42, request.FencingToken);
+    }
+
+    [Fact]
+    public async Task LocalHostInventoryRequestCreatesOnlyThePinnedQueuedDryRun()
+    {
+        var fixture = new HandlerFixture();
+        fixture.Scripts.Script = LocalHostInventoryPackageMetadata.CreateDefinition(
+            fixture.Clock.CoordinationUtcNow);
+        using var source = new CancellationTokenSource();
+
+        var id = await fixture.RequestLocalHostInventoryHandler.HandleAsync(
+            new RequestLocalHostInventoryCommand(),
+            source.Token);
+
+        var job = Assert.IsType<Job>(fixture.Jobs.Job);
+        Assert.Equal(id, job.Id);
+        Assert.Equal(LocalHostInventoryPackageMetadata.DefinitionId, job.ScriptDefinitionId);
+        Assert.Equal(LocalHostInventoryPackageMetadata.VersionId, job.ScriptVersionId);
+        Assert.Equal(ExecutionPhase.DryRun, job.RequestedPhase);
+        Assert.Equal(JobStatus.DryRunQueued, job.Status);
+        Assert.Equal(fixture.CurrentUser.User, job.RequestedBy);
+        Assert.Equal("local-worker", Assert.Single(job.Targets).Name.Value);
+        Assert.Empty(job.Parameters);
+        Assert.Equal("LocalHostInventoryRequested", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
+    }
+
+    [Fact]
+    public async Task LocalHostInventoryRequestRejectsTamperedPackageWithoutWrites()
+    {
+        var fixture = new HandlerFixture();
+        var definition = LocalHostInventoryPackageMetadata.CreateDefinition(
+            fixture.Clock.CoordinationUtcNow);
+        definition.Disable(fixture.Clock.CoordinationUtcNow);
+        fixture.Scripts.Script = definition;
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
+                new RequestLocalHostInventoryCommand(),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Theory]
+    [InlineData("DOMAIN\\operator")]
+    [InlineData("sid:S-1-garbage")]
+    [InlineData("sid:S-1-5-21-01001-1002-1003-1004")]
+    [InlineData("sid:S-1-5-32-544")]
+    public async Task LocalHostInventoryRequestRejectsNonCanonicalUserSidBeforeRepositoryAccess(
+        string requester)
+    {
+        var fixture = new HandlerFixture();
+        fixture.CurrentUser.User = new UserIdentity(requester);
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
+                new RequestLocalHostInventoryCommand(),
+                CancellationToken.None));
+
+        Assert.Empty(fixture.Scripts.ObservedTokens);
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]
@@ -1469,6 +1537,7 @@ public sealed class ApplicationHandlerTests
         var fixture = new HandlerFixture();
         Func<Task>[] calls =
         [
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.CreateHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.AddTargetHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.SetParameterHandler.HandleAsync(null!, CancellationToken.None),
@@ -1507,6 +1576,13 @@ public sealed class ApplicationHandlerTests
         public HandlerFixture()
         {
             CreateHandler = new CreateDraftJobHandler(
+                Scripts,
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock,
+                CurrentUser);
+            RequestLocalHostInventoryHandler = new RequestLocalHostInventoryHandler(
                 Scripts,
                 Jobs,
                 Audits,
@@ -1569,6 +1645,7 @@ public sealed class ApplicationHandlerTests
         public FixedJobFingerprintService Fingerprints { get; } = new(TestDomainFactory.Fingerprint);
         public FixedCurrentUser CurrentUser { get; } = new(TestDomainFactory.OtherUser);
         public CreateDraftJobHandler CreateHandler { get; }
+        public RequestLocalHostInventoryHandler RequestLocalHostInventoryHandler { get; }
         public AddJobTargetHandler AddTargetHandler { get; }
         public SetJobParameterHandler SetParameterHandler { get; }
         public SubmitJobHandler SubmitHandler { get; }
