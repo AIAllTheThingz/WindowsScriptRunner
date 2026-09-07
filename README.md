@@ -1,6 +1,6 @@
 # Windows Script Runner
 
-Windows Script Runner is a Windows-hosted .NET application for controlled automation. Phase 8 is complete and merged into `main`; it has not been deployed or rolled out. Phase 9 production hardening and deployment are in progress.
+Windows Script Runner is a Windows-hosted .NET application for controlled automation. Phases 1–8 and the Phase 9 deployment-tooling foundation are merged into `main`; the application has not been deployed or rolled out.
 
 ## Current status
 
@@ -16,7 +16,7 @@ The solution includes:
 
 The inventory package is ReadOnly, local-only, parameterless, and DryRun-only. Its successful result is validated against the exact schema and stored as one typed SQL report in the same transaction that completes the job, removes the lease, and records bounded audit metadata. Raw stdout, stderr, and arbitrary JSON are not persisted.
 
-Phases 1–8 are implemented, validated, reviewed, and merged into `main`. Phase 9 is the current production-hardening and deployment phase, but no production rollout is claimed.
+Phases 1–8 and the Phase 9 deployment-tooling foundation are implemented and merged into `main`. Representative-environment validation, backup/restore and rollback rehearsal, operational ownership, and production approval remain the current Phase 9 work. No production rollout is claimed.
 
 ## Solution structure
 
@@ -52,7 +52,7 @@ dotnet format --verify-no-changes
 dotnet tool run dotnet-ef migrations has-pending-model-changes --project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --startup-project .\src\WindowsScriptRunner.Infrastructure\WindowsScriptRunner.Infrastructure.csproj --configuration Release --no-build
 ```
 
-The Phase 8 validation evidence and final test count are recorded in [validation report](docs/validation-report.md).
+The current full-suite evidence and historical phase validation are recorded in the [validation report](docs/validation-report.md).
 
 See [development setup](docs/development-setup.md) for local configuration and startup instructions.
 

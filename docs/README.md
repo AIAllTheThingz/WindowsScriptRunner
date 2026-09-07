@@ -1,12 +1,11 @@
 # Documentation
 
-This directory documents the implementation validated and merged through Phase 8 and the Phase 9 deployment foundation now in progress. Historical phase evidence remains in `validation-report.md`; current-state documents describe the repository as it exists now.
+This directory documents the implementation merged through Phase 8, the merged Phase 9 deployment-tooling foundation, and the remaining production-readiness work. Historical phase evidence remains in `validation-report.md`; current-state documents describe the repository as it exists now.
 
 ## Start here
 
-- [Roadmap](roadmap.md) — completed phases, next phase, and production-readiness sequence
+- [Roadmap](roadmap.md) — authoritative project status, execution order, and exit gates
 - [Phase 9 deployment runbook](phase-9-deployment.md) — release layout, deployment order, and remaining production boundary
-- [Implementation roadmap](implementation-roadmap.md) — technical scope by phase
 - [Development setup](development-setup.md) — prerequisites, validation, local database, Web, and Worker startup
 - [Architecture](architecture.md) — project boundaries and runtime flow
 - [Security](security.md) — trust boundaries, protected data, and residual risks
@@ -48,4 +47,4 @@ This directory documents the implementation validated and merged through Phase 8
 
 ## Deployment status
 
-The `deployment` directory records the Phase 9 boundary. The repository contains buildable Web and Worker projects and reviewed EF migrations, but it does not yet contain production IIS configuration, Windows Service installation, SQL rollout automation, or PowerShell artifact installation tooling.
+The `deployment` directory contains operator-run IIS, Windows Service, reviewed SQL migration, and hash-pinned PowerShell artifact installation tooling. Those scripts are building blocks; representative-host deployment, environment-specific configuration, operational validation, backup/restore and rollback rehearsal, and production approval remain outstanding.
