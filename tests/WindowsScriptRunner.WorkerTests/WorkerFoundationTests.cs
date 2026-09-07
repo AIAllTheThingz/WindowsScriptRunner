@@ -765,6 +765,7 @@ internal sealed class FakeCandidateSource(FakeJobRepository jobs) : IJobQueueCan
 
     public Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
         IReadOnlySet<JobWorkRoute> supportedRoutes,
+        WorkerNodeId workerNodeId,
         int maximumCount,
         DateTimeOffset now,
         CancellationToken cancellationToken)

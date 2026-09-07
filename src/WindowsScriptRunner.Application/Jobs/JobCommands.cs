@@ -13,6 +13,8 @@ public sealed record CreateDraftJobCommand(
 
 public sealed record RequestLocalHostInventoryCommand;
 
+public sealed record LocalHostInventoryRequestTarget(WorkerNodeId? WorkerNodeId);
+
 public sealed record AddJobTargetCommand(
     JobId JobId,
     TargetName TargetName,

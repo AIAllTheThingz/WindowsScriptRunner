@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Exceptions;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -16,11 +17,13 @@ public sealed class SqlJobQueueCandidateSource(
 
     public async Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
         IReadOnlySet<JobWorkRoute> supportedRoutes,
+        WorkerNodeId workerNodeId,
         int maximumCount,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(supportedRoutes);
+        ArgumentNullException.ThrowIfNull(workerNodeId);
         cancellationToken.ThrowIfCancellationRequested();
         if (maximumCount is < 1 or > MaximumCandidateCount)
         {
@@ -52,11 +55,24 @@ public sealed class SqlJobQueueCandidateSource(
             .Select(route => route.ScriptVersionId.Value)
             .Distinct()
             .ToArray();
+        var targetedVersionIds = supportedRoutes
+            .Where(route =>
+                LocalHostInventoryWorkerTargetPolicy.RequiresTarget(route.ScriptVersionId))
+            .Select(route => route.ScriptVersionId.Value)
+            .Distinct()
+            .ToArray();
+        var workerTarget = LocalHostInventoryWorkerTargetPolicy
+            .CreateTarget(workerNodeId)
+            .Value
+            .ToUpperInvariant();
         var candidates = await SqlExceptionTranslator.ExecuteAsync(
             () => dbContext.Jobs
                 .AsNoTracking()
                 .Where(job =>
                     job.Lease == null &&
+                    (!targetedVersionIds.Contains(job.ScriptVersionId) ||
+                     (job.Targets.Count == 1 &&
+                      job.Targets.Any(target => target.NormalizedName == workerTarget))) &&
                     ((job.Status == nameof(JobStatus.DryRunQueued) &&
                       dryRunVersionIds.Contains(job.ScriptVersionId)) ||
                      (job.Status == nameof(JobStatus.ExecutionQueued) &&

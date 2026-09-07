@@ -3,6 +3,7 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
@@ -55,11 +56,41 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(ExecutionPhase.DryRun, job.RequestedPhase);
         Assert.Equal(JobStatus.DryRunQueued, job.Status);
         Assert.Equal(fixture.CurrentUser.User, job.RequestedBy);
-        Assert.Equal("local-worker", Assert.Single(job.Targets).Name.Value);
+        Assert.Equal(
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(fixture.TargetWorkerNodeId),
+            Assert.Single(job.Targets).Name);
         Assert.Empty(job.Parameters);
         Assert.Equal("LocalHostInventoryRequested", Assert.Single(fixture.Audits.Events).EventType);
         Assert.Equal(1, fixture.UnitOfWork.CommitCount);
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
+    }
+
+    [Theory]
+    [InlineData("unconfigured")]
+    [InlineData("missing")]
+    [InlineData("disabled")]
+    public async Task LocalHostInventoryRequestRejectsUnavailableWorkerWithoutWrites(string state)
+    {
+        var fixture = new HandlerFixture(configureInventoryTarget: state != "unconfigured");
+        fixture.Scripts.Script = LocalHostInventoryPackageMetadata.CreateDefinition(
+            fixture.Clock.CoordinationUtcNow);
+        if (state == "missing")
+        {
+            fixture.Workers.WorkerNode = null;
+        }
+        else if (state == "disabled")
+        {
+            fixture.Workers.WorkerNode!.Disable();
+        }
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
+                new RequestLocalHostInventoryCommand(),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Theory]
@@ -1636,8 +1667,12 @@ public sealed class ApplicationHandlerTests
 
     private sealed class HandlerFixture
     {
-        public HandlerFixture()
+        public HandlerFixture(bool configureInventoryTarget = true)
         {
+            Workers.WorkerNode = new WorkerNode(
+                TargetWorkerNodeId,
+                "inventory-worker",
+                Clock.CoordinationUtcNow);
             CreateHandler = new CreateDraftJobHandler(
                 Scripts,
                 Jobs,
@@ -1647,11 +1682,14 @@ public sealed class ApplicationHandlerTests
                 CurrentUser);
             RequestLocalHostInventoryHandler = new RequestLocalHostInventoryHandler(
                 Scripts,
+                Workers,
                 Jobs,
                 Audits,
                 UnitOfWork,
                 Clock,
-                CurrentUser);
+                CurrentUser,
+                new LocalHostInventoryRequestTarget(
+                    configureInventoryTarget ? TargetWorkerNodeId : null));
             AddTargetHandler = new AddJobTargetHandler(Jobs, Audits, UnitOfWork, Clock);
             SetParameterHandler = new SetJobParameterHandler(
                 Jobs,
@@ -1699,6 +1737,7 @@ public sealed class ApplicationHandlerTests
         }
 
         public FakeJobRepository Jobs { get; } = new();
+        public WorkerNodeId TargetWorkerNodeId { get; } = WorkerNodeId.New();
         public FakeScriptRepository Scripts { get; } = new();
         public FakeCredentialRepository Credentials { get; } = new();
         public FakeWorkerRepository Workers { get; } = new();

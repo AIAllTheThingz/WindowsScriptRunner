@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Jobs;
+using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Infrastructure;
 using WindowsScriptRunner.Web.Security;
 
@@ -13,6 +15,14 @@ builder.Services.AddRazorPages();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApplication();
 builder.Services.AddWebPortalApplication();
+builder.Services.AddSingleton(_ =>
+{
+    var configured = builder.Configuration[
+        "Automation:LocalHostInventory:ApprovedWorkerNodeId"];
+    return Guid.TryParse(configured, out var workerNodeId) && workerNodeId != Guid.Empty
+        ? new LocalHostInventoryRequestTarget(new WorkerNodeId(workerNodeId))
+        : new LocalHostInventoryRequestTarget(null);
+});
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 builder.Services.AddSingleton<IAuthenticatedPrincipalMapper, WindowsPrincipalMapper>();

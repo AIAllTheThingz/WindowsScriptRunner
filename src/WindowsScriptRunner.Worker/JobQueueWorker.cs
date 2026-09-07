@@ -74,6 +74,7 @@ public sealed class JobQueueWorker(
                         .GetRequiredService<IJobQueueCandidateSource>()
                         .FindCandidatesAsync(
                             handlerRegistry.SupportedRoutes,
+                            identity.NodeId,
                             Math.Min(
                                 configured.ClaimCandidateBatchSize,
                                 availableSlots),

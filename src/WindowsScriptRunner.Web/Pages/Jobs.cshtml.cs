@@ -24,7 +24,7 @@ public sealed class JobsModel(RequestLocalHostInventoryHandler requestHandler) :
             Response.StatusCode = StatusCodes.Status409Conflict;
             ModelState.AddModelError(
                 string.Empty,
-                "The reviewed Local Host Inventory package is unavailable. Contact an administrator before trying again.");
+                "Local Host Inventory is unavailable. Contact an administrator before trying again.");
             return Page();
         }
     }

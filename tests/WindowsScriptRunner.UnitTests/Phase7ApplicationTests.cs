@@ -335,6 +335,7 @@ public sealed class Phase7ApplicationTests
                 LocalHostInventoryPackageMetadata.CreateDefinition(Time);
             var version = Assert.Single(definition.Versions);
             var requester = new UserIdentity("DOMAIN\\requester");
+            var workerId = WorkerNodeId.New();
             var job = Job.CreateDraft(
                 JobId.New(),
                 definition.Id,
@@ -342,11 +343,13 @@ public sealed class Phase7ApplicationTests
                 ExecutionPhase.DryRun,
                 requester,
                 Time);
-            job.AddTarget(new TargetName("local-worker"), requester, Time);
+            job.AddTarget(
+                LocalHostInventoryWorkerTargetPolicy.CreateTarget(workerId),
+                requester,
+                Time);
             job.Submit(definition, requester, Time);
             job.MarkValidated(requester, Time);
             job.QueueDryRun(requester, Time);
-            var workerId = WorkerNodeId.New();
             var actor = new UserIdentity($"worker:{workerId}");
             var credentials = job.AcquireWorkLease(
                 JobLeaseId.New(),

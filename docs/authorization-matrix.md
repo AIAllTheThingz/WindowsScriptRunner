@@ -47,5 +47,10 @@ The review and decision requirements deliberately do not treat a group as eviden
 `/health`, `/health/live`, `/health/ready`, and static assets are anonymous application surfaces; the
 operator must explicitly verify these responses after IIS Windows Authentication is enabled. No route
 uploads scripts, dispatches a worker directly, retrieves credentials, starts PowerShell, downloads raw
-execution output, or supplies generic reporting. The Jobs request targets the local Worker host, which
-is the eligible Worker for queue claiming; it does not target the IIS or browser machine.
+execution output, or supplies generic reporting. The Jobs request remains browser-parameterless and
+targets exactly the approved Worker host whose stable `Worker:NodeId` matches
+`Automation:LocalHostInventory:ApprovedWorkerNodeId` (environment key
+`Automation__LocalHostInventory__ApprovedWorkerNodeId`). It stores one `worker:<canonical-guid>`
+target and does not target the IIS or browser machine. Missing, empty, or invalid configuration, or
+a missing or disabled registered Worker, fails closed before writes; a legacy `local-worker` job is
+not silently retargeted.

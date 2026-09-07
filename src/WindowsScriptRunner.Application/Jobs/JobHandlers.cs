@@ -15,14 +15,14 @@ namespace WindowsScriptRunner.Application.Jobs;
 
 public sealed class RequestLocalHostInventoryHandler(
     IScriptDefinitionRepository scriptRepository,
+    IWorkerNodeRepository workerRepository,
     IJobRepository jobRepository,
     IAuditWriter auditWriter,
     IUnitOfWork unitOfWork,
     IWorkerCoordinationClock coordinationClock,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    LocalHostInventoryRequestTarget requestTarget)
 {
-    private static readonly TargetName LocalWorkerTarget = new("local-worker");
-
     public async Task<JobId> HandleAsync(
         RequestLocalHostInventoryCommand command,
         CancellationToken cancellationToken)
@@ -33,6 +33,18 @@ public sealed class RequestLocalHostInventoryHandler(
         {
             throw new ApplicationValidationException(
                 "Local Host Inventory requests require an authenticated Windows SID.");
+        }
+
+        var workerNodeId = requestTarget.WorkerNodeId
+            ?? throw new ApplicationConflictException(
+                "The approved Local Host Inventory worker is not configured.");
+        var worker = await workerRepository.GetByIdAsync(workerNodeId, cancellationToken)
+            ?? throw new ApplicationConflictException(
+                "The approved Local Host Inventory worker is unavailable.");
+        if (!worker.IsEnabled)
+        {
+            throw new ApplicationConflictException(
+                "The approved Local Host Inventory worker is unavailable.");
         }
 
         var definition = await scriptRepository.GetByIdAsync(
@@ -49,7 +61,10 @@ public sealed class RequestLocalHostInventoryHandler(
             Domain.ExecutionPhase.DryRun,
             requester,
             now);
-        job.AddTarget(LocalWorkerTarget, requester, now);
+        job.AddTarget(
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(workerNodeId),
+            requester,
+            now);
         job.Submit(definition, requester, now);
         job.MarkValidated(requester, now);
         job.QueueDryRun(requester, now);

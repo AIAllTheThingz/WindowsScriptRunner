@@ -8,20 +8,27 @@ Unless otherwise noted, commands ran from the repository root.
 
 Validation date: 2026-09-07, America/Chicago.
 
-- Source under review: the PR #17 follow-up working tree based on `91cf2a6`; the earlier 752-test receipt remains below as
-  historical validation for the preceding baseline.
+- Source under review: the PR #17 follow-up working tree based on `965bf93`. The earlier 759-test
+  receipt predates the bounded Worker binding fix; the fresh receipt below supersedes it. The earlier
+  752-test receipt remains below as historical validation for the preceding baseline.
 - With the pinned user-local SDK `10.0.302`, `dotnet tool restore`, `dotnet restore`, and
   `dotnet build --configuration Release` each exited 0; the build reported 0 warnings and 0 errors.
-- `dotnet test --configuration Release --no-build` exited 0: 759 passed, 0 failed, 0 skipped
-  (Unit 420, Security 114, SQL Server 57, Worker 55, PowerShell 110, Integration 3).
-- `dotnet format --verify-no-changes` exited 0. The EF pending-model check exited 0 and reported
-  no changes to the model since the last migration.
+- `dotnet test --configuration Release --no-build` exited 0: 770 passed, 0 failed, 0 skipped
+  (Unit 425, Security 117, SQL Server 58, Worker 57, PowerShell 110, Integration 3).
+- `dotnet format --verify-no-changes` exited 0 after normalizing line endings in the 24 touched
+  C# files reported by the first check to the repository's CRLF convention. The EF pending-model
+  check exited 0 and reported no changes to the model since the last migration.
+- The initial EF command selected the Web startup project and failed before checking the model.
+  The corrected command uses Infrastructure for both project and startup project; no dependency
+  was added. The complete validation sequence was repeated after the line-ending correction.
 - The default local `MSSQLSERVER` instance was used with
   `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` unset. Raw command logs are outside the repository under
-  `%TEMP%\WindowsScriptRunner-validation-pr17-20260907`; no secrets or connection values were printed.
+  `%TEMP%\WindowsScriptRunner-validation-pr17-final2-20260907`; no secrets or connection values were printed.
 - Review follow-up: the IIS SSL flag concern was resolved against Microsoft documentation and
-  native-provider metadata; package-policy metadata now matches the Worker catalog. Scoped Medium
-  security, peer, and Pony reviews found no remaining issues.
+  native-provider metadata; package-policy metadata now matches the Worker catalog. The Worker-binding
+  correction is covered at submission, SQL discovery before the batch limit, acquisition, and execution
+  preflight, including legacy leases. Final scoped Medium security, peer, and Pony Ultra reviews found
+  no actionable issues or fixture masking.
 
 ## Pre-review full-suite verification
 

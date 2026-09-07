@@ -36,8 +36,12 @@ Web does not:
   work; or
 - include production IIS configuration.
 
-The local Worker host is the eligible queue claimant; the request does not run on the IIS or browser
-machine. No generic package discovery or upload exists. Negotiate sign-out is a Windows/browser-session
+The request binds the approved Worker host whose stable `Worker:NodeId` matches
+`Automation:LocalHostInventory:ApprovedWorkerNodeId` (environment key
+`Automation__LocalHostInventory__ApprovedWorkerNodeId`); it stores one `worker:<canonical-guid>`
+target and does not run on the IIS or browser machine. Missing or invalid binding configuration and
+missing or disabled registration fail closed before writes, and legacy `local-worker` jobs are not
+silently retargeted. No generic package discovery or upload exists. Negotiate sign-out is a Windows/browser-session
 concern, not an application cookie operation. IIS/TLS/SPN/Kerberos/browser-zone validation and
 deployment hardening remain Phase 9 work. See [Windows authentication](../../docs/windows-authentication.md),
 [authorization matrix](../../docs/authorization-matrix.md), and [approval workflow](../../docs/approval-workflow.md).

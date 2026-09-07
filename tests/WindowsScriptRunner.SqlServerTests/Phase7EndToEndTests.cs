@@ -43,6 +43,7 @@ public sealed class Phase7EndToEndTests
 
         try
         {
+            var workerId = WorkerNodeId.New();
             var configuration = Configuration(
                 database.ConnectionString,
                 allowedRoot,
@@ -51,6 +52,8 @@ public sealed class Phase7EndToEndTests
             services.AddLogging(builder => builder.AddProvider(logs));
             services.AddApplication();
             services.AddWebPortalApplication();
+            services.AddSingleton(
+                new LocalHostInventoryRequestTarget(workerId));
             services.AddInfrastructure(configuration);
             services.AddProductionAutomation(configuration);
             services.AddSingleton<ICurrentUser>(
@@ -65,7 +68,6 @@ public sealed class Phase7EndToEndTests
                         .RegisterAsync(CancellationToken.None));
             }
 
-            var workerId = WorkerNodeId.New();
             Job job;
             DateTimeOffset now;
             await using (var seed = provider.CreateAsyncScope())
@@ -106,6 +108,7 @@ public sealed class Phase7EndToEndTests
                         .GetRequiredService<IJobQueueCandidateSource>()
                         .FindCandidatesAsync(
                             LocalHostInventoryPackageMetadata.SupportedRoutes,
+                            workerId,
                             10,
                             now,
                             CancellationToken.None));

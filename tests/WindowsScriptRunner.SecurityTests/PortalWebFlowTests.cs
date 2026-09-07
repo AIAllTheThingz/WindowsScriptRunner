@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Contracts.Jobs;
 using WindowsScriptRunner.Domain;
@@ -22,6 +23,7 @@ using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Reports;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Domain.ValueObjects;
+using WindowsScriptRunner.Domain.Workers;
 using WindowsScriptRunner.Web.Pages.Reports.LocalHostInventory;
 using WindowsScriptRunner.Web.Security;
 
@@ -138,7 +140,9 @@ public sealed class PortalWebFlowTests
         Assert.Equal(ExecutionPhase.DryRun, job.RequestedPhase);
         Assert.Equal(JobStatus.DryRunQueued, job.Status);
         Assert.Equal($"sid:{RequesterSid}", job.RequestedBy.Value);
-        Assert.Equal("local-worker", Assert.Single(job.Targets).Name.Value);
+        Assert.Equal(
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(factory.State.InventoryWorker.Id),
+            Assert.Single(job.Targets).Name);
         Assert.Empty(job.Parameters);
         Assert.Equal(1, factory.State.AuditCount);
         Assert.Equal(1, factory.State.CommitCount);
@@ -188,7 +192,7 @@ public sealed class PortalWebFlowTests
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains(
-            "Local Host Inventory package is unavailable",
+            "Local Host Inventory is unavailable",
             await response.Content.ReadAsStringAsync(),
             StringComparison.Ordinal);
         Assert.Null(factory.State.RequestedJob);
@@ -690,7 +694,9 @@ public sealed class PortalWebFlowTests
         return WebUtility.HtmlDecode(token.Groups[1].Value);
     }
 
-    private sealed class PortalWebApplicationFactory : WebApplicationFactory<WindowsPrincipalMapper>
+    private sealed class PortalWebApplicationFactory(
+        bool includeApprovedWorker = true,
+        string? approvedWorkerNodeId = null) : WebApplicationFactory<WindowsPrincipalMapper>
     {
         internal PortalState State { get; } = PortalState.Create();
 
@@ -704,8 +710,9 @@ public sealed class PortalWebFlowTests
             builder.UseSetting("WindowsAuthorization:ReportReaderGroupSids:0", ReportReaderGroupSid);
             builder.UseSetting("WindowsAuthorization:ApproverGroupSids:0", ApproverGroupSid);
             builder.UseSetting("WindowsAuthorization:AdministratorGroupSids:0", AdministratorGroupSid);
-            builder.ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
-                new Dictionary<string, string?>
+            builder.ConfigureAppConfiguration(configuration =>
+            {
+                var settings = new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:WindowsScriptRunner"] =
                         "Server=localhost;Database=WindowsScriptRunnerPortalTests;Integrated Security=true;TrustServerCertificate=true",
@@ -713,7 +720,15 @@ public sealed class PortalWebFlowTests
                     ["WindowsAuthorization:ReportReaderGroupSids:0"] = ReportReaderGroupSid,
                     ["WindowsAuthorization:ApproverGroupSids:0"] = ApproverGroupSid,
                     ["WindowsAuthorization:AdministratorGroupSids:0"] = AdministratorGroupSid,
-                }));
+                };
+                if (includeApprovedWorker)
+                {
+                    settings["Automation:LocalHostInventory:ApprovedWorkerNodeId"] =
+                        approvedWorkerNodeId ?? State.InventoryWorker.Id.Value.ToString("D");
+                }
+
+                configuration.AddInMemoryCollection(settings);
+            });
             builder.ConfigureTestServices(services =>
             {
                 services.AddAuthentication(options =>
@@ -737,6 +752,7 @@ public sealed class PortalWebFlowTests
                 services.RemoveAll<IJobAuthorizationResourceReader>();
                 services.RemoveAll<IScriptDefinitionRepository>();
                 services.RemoveAll<IJobReportRepository>();
+                services.RemoveAll<IWorkerNodeRepository>();
                 services.RemoveAll<IAuditWriter>();
                 services.RemoveAll<IUnitOfWork>();
                 services.RemoveAll<IWorkerCoordinationClock>();
@@ -749,6 +765,7 @@ public sealed class PortalWebFlowTests
                 services.AddScoped<IJobAuthorizationResourceReader, PortalJobAuthorizationResourceReader>();
                 services.AddScoped<IScriptDefinitionRepository, PortalScriptRepository>();
                 services.AddScoped<IJobReportRepository, PortalReportRepository>();
+                services.AddScoped<IWorkerNodeRepository, PortalWorkerRepository>();
                 services.AddScoped<IAuditWriter, PortalAuditWriter>();
                 services.AddScoped<IUnitOfWork, PortalUnitOfWork>();
                 services.AddSingleton<IWorkerCoordinationClock, PortalClock>();
@@ -827,6 +844,7 @@ public sealed class PortalWebFlowTests
             Job job,
             ScriptDefinition script,
             ScriptDefinition inventoryScript,
+            WorkerNode inventoryWorker,
             JobReport report,
             JobReport otherReport,
             UserIdentity otherRequester,
@@ -835,6 +853,7 @@ public sealed class PortalWebFlowTests
             Job = job;
             Script = script;
             InventoryScript = inventoryScript;
+            InventoryWorker = inventoryWorker;
             Report = report;
             OtherReport = otherReport;
             OtherRequester = otherRequester;
@@ -844,6 +863,7 @@ public sealed class PortalWebFlowTests
         internal Job Job { get; }
         internal ScriptDefinition Script { get; }
         internal ScriptDefinition InventoryScript { get; }
+        internal WorkerNode InventoryWorker { get; }
         internal Job? RequestedJob { get; set; }
         internal JobReport Report { get; }
         internal JobReport OtherReport { get; }
@@ -860,6 +880,7 @@ public sealed class PortalWebFlowTests
             var otherRequester = new UserIdentity($"sid:{SecondRequesterSid}");
             var system = new UserIdentity("system:portal-test");
             var inventoryScript = LocalHostInventoryPackageMetadata.CreateDefinition(started);
+            var inventoryWorker = new WorkerNode(WorkerNodeId.New(), "inventory-worker", started);
             var parameter = new ScriptParameterDefinition(
                 ScriptParameterDefinitionId.New(),
                 "Credential",
@@ -958,6 +979,7 @@ public sealed class PortalWebFlowTests
                 job,
                 script,
                 inventoryScript,
+                inventoryWorker,
                 report,
                 otherReport,
                 otherRequester,
@@ -1019,6 +1041,64 @@ public sealed class PortalWebFlowTests
             throw new NotSupportedException();
 
         public Task UpdateAsync(ScriptDefinition definition, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, "")]
+    [InlineData(true, "not-a-worker-id")]
+    public async Task InventoryRequestReportsUnavailableWorkerConfigurationWithoutWriting(
+        bool includeConfiguration,
+        string? configuredWorkerNodeId)
+    {
+        using var factory = new PortalWebApplicationFactory(
+            includeConfiguration,
+            configuredWorkerNodeId);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        var get = await SendAsAsync(
+            client,
+            HttpMethod.Get,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid);
+        var response = await SendAsAsync(
+            client,
+            HttpMethod.Post,
+            "/Jobs",
+            RequesterSid,
+            OperatorGroupSid,
+            new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = ExtractAntiforgeryToken(
+                    await get.Content.ReadAsStringAsync()),
+            });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains(
+            "Local Host Inventory is unavailable",
+            await response.Content.ReadAsStringAsync(),
+            StringComparison.Ordinal);
+        Assert.Null(factory.State.RequestedJob);
+        Assert.Equal(0, factory.State.AuditCount);
+        Assert.Equal(0, factory.State.CommitCount);
+    }
+
+    private sealed class PortalWorkerRepository(PortalState state) : IWorkerNodeRepository
+    {
+        public Task<WorkerNode?> GetByIdAsync(
+            WorkerNodeId id,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<WorkerNode?>(
+                state.InventoryWorker.Id == id ? state.InventoryWorker : null);
+
+        public Task AddAsync(WorkerNode workerNode, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task UpdateAsync(WorkerNode workerNode, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 

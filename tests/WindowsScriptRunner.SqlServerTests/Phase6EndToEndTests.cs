@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -97,7 +98,10 @@ public sealed class Phase6EndToEndTests
                     ExecutionPhase.DryRun,
                     requester,
                     now);
-                job.AddTarget(new TargetName("local-worker"), requester, now);
+                job.AddTarget(
+                    LocalHostInventoryWorkerTargetPolicy.CreateTarget(workerId),
+                    requester,
+                    now);
                 job.Submit(definition, requester, now);
                 job.MarkValidated(requester, now);
                 job.QueueDryRun(requester, now);
@@ -117,6 +121,7 @@ public sealed class Phase6EndToEndTests
                         .GetRequiredService<IJobQueueCandidateSource>()
                         .FindCandidatesAsync(
                             LocalHostInventoryPackageMetadata.SupportedRoutes,
+                            workerId,
                             10,
                             now,
                             CancellationToken.None));

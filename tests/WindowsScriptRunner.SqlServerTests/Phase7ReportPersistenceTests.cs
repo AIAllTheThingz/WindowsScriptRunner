@@ -388,7 +388,10 @@ public sealed class Phase7ReportPersistenceTests
                 ExecutionPhase.DryRun,
                 requester,
                 now);
-            job.AddTarget(new TargetName("local-worker"), requester, now);
+            job.AddTarget(
+                LocalHostInventoryWorkerTargetPolicy.CreateTarget(workerId),
+                requester,
+                now);
             job.Submit(definition, requester, now);
             job.MarkValidated(requester, now);
             job.QueueDryRun(requester, now);

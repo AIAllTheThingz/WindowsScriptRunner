@@ -22,9 +22,14 @@ public sealed class TransactionAndConcurrencyTests
     {
         await using var database = await SqlServerDatabase.CreateAsync();
         var script = LocalHostInventoryPackageMetadata.CreateDefinition(SqlServerTestData.Time);
+        var worker = new WorkerNode(
+            WorkerNodeId.New(),
+            "inventory-worker",
+            SqlServerTestData.Time);
         await using (var seed = new PersistenceTestScope(database))
         {
             await seed.Scripts.AddAsync(script, CancellationToken.None);
+            await seed.Workers.AddAsync(worker, CancellationToken.None);
             await seed.UnitOfWork.CommitAsync(CancellationToken.None);
         }
 
@@ -32,6 +37,7 @@ public sealed class TransactionAndConcurrencyTests
         {
             var handler = new RequestLocalHostInventoryHandler(
                 request.Scripts,
+                request.Workers,
                 request.Jobs,
                 request.Audits,
                 new ConcurrentScriptDisableUnitOfWork(
@@ -39,7 +45,8 @@ public sealed class TransactionAndConcurrencyTests
                     request.UnitOfWork,
                     script.Id),
                 new FixedClock(SqlServerTestData.Time.AddMinutes(1)),
-                new FixedCurrentUser(SqlServerTestData.Requester));
+                new FixedCurrentUser(SqlServerTestData.Requester),
+                new LocalHostInventoryRequestTarget(worker.Id));
 
             await Assert.ThrowsAsync<ApplicationConflictException>(
                 () => handler.HandleAsync(

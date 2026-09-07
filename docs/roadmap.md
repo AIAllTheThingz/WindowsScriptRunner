@@ -32,8 +32,8 @@ Status meanings:
 
 Phase 6 was merged before its dependent Phase 7 work. Subsequent merged work adopted the pinned
 Public-AI-Governance baseline, removed redundant code and assets, and corrected SQL and full-suite
-test portability through PRs #11–#16. The current PR #17 full-suite record is 759 passed, 0 failed, and 0
-skipped; see the [validation report](validation-report.md).
+test portability through PRs #11–#16. The current PR #17 follow-up record is 770 passed, 0 failed,
+and 0 skipped after the bounded Worker binding change; see the [validation report](validation-report.md).
 
 The Phase 9 foundation is implemented, but it is not production-readiness evidence. Phase 9B now
 adds guarded target-machine deployment, native IIS/Hosting Bundle preflight, certificate and SNI
@@ -68,7 +68,10 @@ Required work:
    handling.
 8. Provide and validate a supported authorized submission path, either a protected Web flow or a
    reviewed operator procedure, for the existing pinned package with its local-only, parameterless,
-   ReadOnly/DryRun constraints, requester identity, target selection, and audit evidence.
+   ReadOnly/DryRun constraints, requester identity, approved Worker binding via
+   `Automation:LocalHostInventory:ApprovedWorkerNodeId`, one `worker:<canonical-guid>` target, and
+   audit evidence. Missing or invalid binding and disabled registration must fail closed; legacy
+   `local-worker` jobs must not be silently retargeted.
 9. Deploy an immutable release, verify Web and Worker startup, run the reviewed package end to end,
    then rehearse upgrade and rollback.
 10. Run security, privacy, accessibility, failure, recovery, and capacity checks appropriate to the

@@ -15,6 +15,7 @@ as open decisions until an accountable owner supplies them:
 | Identities | Web application-pool identity, Worker service identity, database principal, filesystem/service/IIS/SQL permissions, private group-SID record, and approving owner |
 | Release | Source commit, Web and Worker publish roots, migration-script identity separate from runtime identity, reviewed inventory artifact path, SHA-256 hashes, and configuration class |
 | Configuration | Existing standard environment provider, approved process/service/IIS configuration management, private configuration record, certificate renewal owner, and secret rotation procedure; never record secret values or actual private identifiers here |
+| Worker binding | Approved Worker's stable `Worker:NodeId`, matching `Automation:LocalHostInventory:ApprovedWorkerNodeId` (environment key `Automation__LocalHostInventory__ApprovedWorkerNodeId`), registered/enabled status, and one resulting `worker:<canonical-guid>` target; retain actual identifiers only in the protected record |
 | Operations | Health signals, telemetry destination, alert thresholds and routes, retention, redaction, escalation, support owner, certificate renewal owner, and maintenance window |
 | Recovery | Backup location, restore authority, migration/upgrade owner, rollback trigger, rollback authority, and post-restore verification owner |
 | Approval | Security, database, operations, support, and production-readiness reviewers and their recorded decision |
@@ -61,13 +62,20 @@ or other secrets into the repository or publish directory.
 8. Install or upgrade the Worker with an explicit service identity using
    [`Install-WindowsScriptRunnerWorker.ps1`](../deployment/windows-service/Install-WindowsScriptRunnerWorker.ps1).
 9. Configure protected Worker and Web settings, including the SQL connection string, stable Worker
-   node ID, trusted/working roots, and approved Windows group SIDs.
+   node ID, `Automation:LocalHostInventory:ApprovedWorkerNodeId`, trusted/working roots, and
+   approved Windows group SIDs. Confirm the configured value matches the approved enabled Worker
+   registration. Quiesce queue processing and update every Worker to the same release before
+   enabling requests; do not use a mixed-version rollout because older Workers do not enforce this
+   binding.
 10. Configure the HTTPS IIS site with
    [`Install-WindowsScriptRunnerWeb.ps1`](../deployment/iis/Install-WindowsScriptRunnerWeb.ps1).
 11. Verify service, site, certificate binding, authentication/authorization outcomes, and
     `/health/ready` before enabling the reviewed automation package.
 12. Exercise the authorized submission path for the existing pinned local, parameterless,
-    ReadOnly/DryRun package; record requester, target, audit, and typed-report evidence.
+    ReadOnly/DryRun package; verify it stores one `worker:<canonical-guid>` target bound to the
+    approved Worker, fails closed before writes for missing/invalid binding or disabled registration,
+    and record requester, target, audit, and typed-report evidence. Do not silently retarget legacy
+    `local-worker` jobs.
 13. Exercise health, alert, failure, recovery, upgrade, and rollback procedures, then obtain the
     separate production-readiness decision.
 
@@ -137,6 +145,8 @@ and evidence:
 - an approved existing .NET configuration-provider path for protected settings and secret rotation;
 - immutable release, migration-script, and reviewed-artifact source/hash records;
 - telemetry, health, alert, retention, escalation, and support decisions;
-- backup verification, restore, migration, upgrade, and rollback evidence; and
+- backup verification, restore, migration, upgrade, and rollback evidence;
+- the approved Worker binding, matching configuration, enabled registration, and target-to-host
+  identity evidence;
 - an authorized submission path exercised for the existing package, followed by accountable
   production-readiness approval.
