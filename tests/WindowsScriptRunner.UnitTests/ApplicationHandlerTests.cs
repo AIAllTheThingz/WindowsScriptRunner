@@ -62,14 +62,21 @@ public sealed class ApplicationHandlerTests
         Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
     }
 
-    [Fact]
-    public async Task LocalHostInventoryRequestRejectsTamperedPackageWithoutWrites()
+    [Theory]
+    [InlineData("display-name")]
+    [InlineData("description")]
+    [InlineData("disabled")]
+    [InlineData("definition-created-by")]
+    [InlineData("extra-version")]
+    [InlineData("git-commit")]
+    [InlineData("version-created-by")]
+    public async Task LocalHostInventoryRequestRejectsMismatchedCatalogMetadataWithoutWrites(
+        string mismatch)
     {
         var fixture = new HandlerFixture();
-        var definition = LocalHostInventoryPackageMetadata.CreateDefinition(
+        fixture.Scripts.Script = MismatchedInventoryPackage(
+            mismatch,
             fixture.Clock.CoordinationUtcNow);
-        definition.Disable(fixture.Clock.CoordinationUtcNow);
-        fixture.Scripts.Script = definition;
 
         await Assert.ThrowsAsync<ApplicationConflictException>(
             () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
@@ -79,6 +86,62 @@ public sealed class ApplicationHandlerTests
         Assert.Null(fixture.Jobs.Job);
         Assert.Empty(fixture.Audits.Events);
         Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    private static ScriptDefinition MismatchedInventoryPackage(
+        string mismatch,
+        DateTimeOffset createdUtc)
+    {
+        var canonical = LocalHostInventoryPackageMetadata.CreateDefinition(createdUtc);
+        var canonicalVersion = Assert.Single(canonical.Versions);
+        var definitionActor = mismatch == "definition-created-by"
+            ? TestDomainFactory.User
+            : canonical.CreatedBy;
+        var versionActor = mismatch == "version-created-by"
+            ? TestDomainFactory.User
+            : canonicalVersion.CreatedBy;
+        var version = ScriptVersion.Rehydrate(
+            canonicalVersion.Id,
+            canonicalVersion.Version,
+            canonicalVersion.RelativeScriptPath,
+            canonicalVersion.Sha256,
+            mismatch == "git-commit" ? "abcdef0" : canonicalVersion.GitCommitSha,
+            canonicalVersion.MinimumPowerShellVersion,
+            canonicalVersion.DefaultTimeoutMinutes,
+            canonicalVersion.SupportedPhases,
+            canonicalVersion.SupportedReportFormats,
+            canonicalVersion.CreatedUtc,
+            versionActor,
+            canonicalVersion.IsPublished,
+            canonicalVersion.ParameterDefinitions);
+        var versions = new List<ScriptVersion> { version };
+        if (mismatch == "extra-version")
+        {
+            versions.Add(new ScriptVersion(
+                ScriptVersionId.New(),
+                ScriptVersionNumber.Parse("1.0.1"),
+                canonicalVersion.RelativeScriptPath,
+                canonicalVersion.Sha256,
+                null,
+                canonicalVersion.MinimumPowerShellVersion,
+                canonicalVersion.DefaultTimeoutMinutes,
+                canonicalVersion.SupportedPhases,
+                canonicalVersion.SupportedReportFormats,
+                createdUtc,
+                canonicalVersion.CreatedBy));
+        }
+
+        return ScriptDefinition.Rehydrate(
+            canonical.Id,
+            canonical.Name,
+            mismatch == "display-name" ? "Mismatched inventory" : canonical.DisplayName,
+            mismatch == "description" ? "Mismatched description." : canonical.Description,
+            canonical.RiskLevel,
+            mismatch != "disabled" && canonical.IsEnabled,
+            definitionActor,
+            canonical.CreatedUtc,
+            canonical.UpdatedUtc,
+            versions);
     }
 
     [Theory]

@@ -144,11 +144,24 @@ public sealed class PortalWebFlowTests
         Assert.Equal(1, factory.State.CommitCount);
     }
 
-    [Fact]
-    public async Task InventoryRequestReportsUnavailablePinnedPackageWithoutWriting()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InventoryRequestReportsUnavailableOrMismatchedPackageWithoutWriting(
+        bool mismatchMetadata)
     {
         using var factory = new PortalWebApplicationFactory();
-        factory.State.InventoryScript.Disable(DateTimeOffset.MaxValue);
+        if (mismatchMetadata)
+        {
+            factory.State.InventoryScript.UpdateDetails(
+                factory.State.InventoryScript.DisplayName,
+                "Mismatched inventory description.",
+                DateTimeOffset.MaxValue);
+        }
+        else
+        {
+            factory.State.InventoryScript.Disable(DateTimeOffset.MaxValue);
+        }
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,

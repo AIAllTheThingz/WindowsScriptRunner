@@ -4,7 +4,26 @@ Validation date: 2026-07-28
 
 Unless otherwise noted, commands ran from the repository root.
 
-## Latest full-suite verification
+## PR17 follow-up verification
+
+Validation date: 2026-09-07, America/Chicago.
+
+- Source under review: the PR #17 follow-up working tree based on `91cf2a6`; the earlier 752-test receipt remains below as
+  historical validation for the preceding baseline.
+- With the pinned user-local SDK `10.0.302`, `dotnet tool restore`, `dotnet restore`, and
+  `dotnet build --configuration Release` each exited 0; the build reported 0 warnings and 0 errors.
+- `dotnet test --configuration Release --no-build` exited 0: 759 passed, 0 failed, 0 skipped
+  (Unit 420, Security 114, SQL Server 57, Worker 55, PowerShell 110, Integration 3).
+- `dotnet format --verify-no-changes` exited 0. The EF pending-model check exited 0 and reported
+  no changes to the model since the last migration.
+- The default local `MSSQLSERVER` instance was used with
+  `WINDOWSSCRIPTRUNNER_TEST_SQLSERVER` unset. Raw command logs are outside the repository under
+  `%TEMP%\WindowsScriptRunner-validation-pr17-20260907`; no secrets or connection values were printed.
+- Review follow-up: the IIS SSL flag concern was resolved against Microsoft documentation and
+  native-provider metadata; package-policy metadata now matches the Worker catalog. Scoped Medium
+  security, peer, and Pony reviews found no remaining issues.
+
+## Pre-review full-suite verification
 
 Validation date: 2026-09-07, America/Chicago.
 
@@ -45,7 +64,7 @@ Validation date: 2026-09-07, America/Chicago.
   deployment, production configuration, production SQL rollout, and production approval remain
   unvalidated.
 
-## Current full-suite verification
+## Phase 9A baseline verification
 
 Validation date: 2026-09-06, America/Chicago.
 
