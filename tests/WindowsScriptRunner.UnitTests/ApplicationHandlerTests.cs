@@ -3,6 +3,8 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
 using WindowsScriptRunner.Domain.Credentials;
@@ -33,6 +35,166 @@ public sealed class ApplicationHandlerTests
         Assert.Equal(leaseId, request.LeaseId);
         Assert.Equal(workerNodeId, request.WorkerNodeId);
         Assert.Equal(42, request.FencingToken);
+    }
+
+    [Fact]
+    public async Task LocalHostInventoryRequestCreatesOnlyThePinnedQueuedDryRun()
+    {
+        var fixture = new HandlerFixture();
+        fixture.Scripts.Script = LocalHostInventoryPackageMetadata.CreateDefinition(
+            fixture.Clock.CoordinationUtcNow);
+        using var source = new CancellationTokenSource();
+
+        var id = await fixture.RequestLocalHostInventoryHandler.HandleAsync(
+            new RequestLocalHostInventoryCommand(),
+            source.Token);
+
+        var job = Assert.IsType<Job>(fixture.Jobs.Job);
+        Assert.Equal(id, job.Id);
+        Assert.Equal(LocalHostInventoryPackageMetadata.DefinitionId, job.ScriptDefinitionId);
+        Assert.Equal(LocalHostInventoryPackageMetadata.VersionId, job.ScriptVersionId);
+        Assert.Equal(ExecutionPhase.DryRun, job.RequestedPhase);
+        Assert.Equal(JobStatus.DryRunQueued, job.Status);
+        Assert.Equal(fixture.CurrentUser.User, job.RequestedBy);
+        Assert.Equal(
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(fixture.TargetWorkerNodeId),
+            Assert.Single(job.Targets).Name);
+        Assert.Empty(job.Parameters);
+        Assert.Equal("LocalHostInventoryRequested", Assert.Single(fixture.Audits.Events).EventType);
+        Assert.Equal(1, fixture.UnitOfWork.CommitCount);
+        Assert.All(fixture.ObservedTokens, token => Assert.Equal(source.Token, token));
+    }
+
+    [Theory]
+    [InlineData("unconfigured")]
+    [InlineData("missing")]
+    [InlineData("disabled")]
+    public async Task LocalHostInventoryRequestRejectsUnavailableWorkerWithoutWrites(string state)
+    {
+        var fixture = new HandlerFixture(configureInventoryTarget: state != "unconfigured");
+        fixture.Scripts.Script = LocalHostInventoryPackageMetadata.CreateDefinition(
+            fixture.Clock.CoordinationUtcNow);
+        if (state == "missing")
+        {
+            fixture.Workers.WorkerNode = null;
+        }
+        else if (state == "disabled")
+        {
+            fixture.Workers.WorkerNode!.Disable();
+        }
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
+                new RequestLocalHostInventoryCommand(),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    [Theory]
+    [InlineData("display-name")]
+    [InlineData("description")]
+    [InlineData("disabled")]
+    [InlineData("definition-created-by")]
+    [InlineData("extra-version")]
+    [InlineData("git-commit")]
+    [InlineData("version-created-by")]
+    public async Task LocalHostInventoryRequestRejectsMismatchedCatalogMetadataWithoutWrites(
+        string mismatch)
+    {
+        var fixture = new HandlerFixture();
+        fixture.Scripts.Script = MismatchedInventoryPackage(
+            mismatch,
+            fixture.Clock.CoordinationUtcNow);
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
+                new RequestLocalHostInventoryCommand(),
+                CancellationToken.None));
+
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
+    }
+
+    private static ScriptDefinition MismatchedInventoryPackage(
+        string mismatch,
+        DateTimeOffset createdUtc)
+    {
+        var canonical = LocalHostInventoryPackageMetadata.CreateDefinition(createdUtc);
+        var canonicalVersion = Assert.Single(canonical.Versions);
+        var definitionActor = mismatch == "definition-created-by"
+            ? TestDomainFactory.User
+            : canonical.CreatedBy;
+        var versionActor = mismatch == "version-created-by"
+            ? TestDomainFactory.User
+            : canonicalVersion.CreatedBy;
+        var version = ScriptVersion.Rehydrate(
+            canonicalVersion.Id,
+            canonicalVersion.Version,
+            canonicalVersion.RelativeScriptPath,
+            canonicalVersion.Sha256,
+            mismatch == "git-commit" ? "abcdef0" : canonicalVersion.GitCommitSha,
+            canonicalVersion.MinimumPowerShellVersion,
+            canonicalVersion.DefaultTimeoutMinutes,
+            canonicalVersion.SupportedPhases,
+            canonicalVersion.SupportedReportFormats,
+            canonicalVersion.CreatedUtc,
+            versionActor,
+            canonicalVersion.IsPublished,
+            canonicalVersion.ParameterDefinitions);
+        var versions = new List<ScriptVersion> { version };
+        if (mismatch == "extra-version")
+        {
+            versions.Add(new ScriptVersion(
+                ScriptVersionId.New(),
+                ScriptVersionNumber.Parse("1.0.1"),
+                canonicalVersion.RelativeScriptPath,
+                canonicalVersion.Sha256,
+                null,
+                canonicalVersion.MinimumPowerShellVersion,
+                canonicalVersion.DefaultTimeoutMinutes,
+                canonicalVersion.SupportedPhases,
+                canonicalVersion.SupportedReportFormats,
+                createdUtc,
+                canonicalVersion.CreatedBy));
+        }
+
+        return ScriptDefinition.Rehydrate(
+            canonical.Id,
+            canonical.Name,
+            mismatch == "display-name" ? "Mismatched inventory" : canonical.DisplayName,
+            mismatch == "description" ? "Mismatched description." : canonical.Description,
+            canonical.RiskLevel,
+            mismatch != "disabled" && canonical.IsEnabled,
+            definitionActor,
+            canonical.CreatedUtc,
+            canonical.UpdatedUtc,
+            versions);
+    }
+
+    [Theory]
+    [InlineData("DOMAIN\\operator")]
+    [InlineData("sid:S-1-garbage")]
+    [InlineData("sid:S-1-5-21-01001-1002-1003-1004")]
+    [InlineData("sid:S-1-5-32-544")]
+    public async Task LocalHostInventoryRequestRejectsNonCanonicalUserSidBeforeRepositoryAccess(
+        string requester)
+    {
+        var fixture = new HandlerFixture();
+        fixture.CurrentUser.User = new UserIdentity(requester);
+
+        await Assert.ThrowsAsync<ApplicationValidationException>(
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(
+                new RequestLocalHostInventoryCommand(),
+                CancellationToken.None));
+
+        Assert.Empty(fixture.Scripts.ObservedTokens);
+        Assert.Null(fixture.Jobs.Job);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]
@@ -1469,6 +1631,7 @@ public sealed class ApplicationHandlerTests
         var fixture = new HandlerFixture();
         Func<Task>[] calls =
         [
+            () => fixture.RequestLocalHostInventoryHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.CreateHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.AddTargetHandler.HandleAsync(null!, CancellationToken.None),
             () => fixture.SetParameterHandler.HandleAsync(null!, CancellationToken.None),
@@ -1504,8 +1667,12 @@ public sealed class ApplicationHandlerTests
 
     private sealed class HandlerFixture
     {
-        public HandlerFixture()
+        public HandlerFixture(bool configureInventoryTarget = true)
         {
+            Workers.WorkerNode = new WorkerNode(
+                TargetWorkerNodeId,
+                "inventory-worker",
+                Clock.CoordinationUtcNow);
             CreateHandler = new CreateDraftJobHandler(
                 Scripts,
                 Jobs,
@@ -1513,6 +1680,16 @@ public sealed class ApplicationHandlerTests
                 UnitOfWork,
                 Clock,
                 CurrentUser);
+            RequestLocalHostInventoryHandler = new RequestLocalHostInventoryHandler(
+                Scripts,
+                Workers,
+                Jobs,
+                Audits,
+                UnitOfWork,
+                Clock,
+                CurrentUser,
+                new LocalHostInventoryRequestTarget(
+                    configureInventoryTarget ? TargetWorkerNodeId : null));
             AddTargetHandler = new AddJobTargetHandler(Jobs, Audits, UnitOfWork, Clock);
             SetParameterHandler = new SetJobParameterHandler(
                 Jobs,
@@ -1560,6 +1737,7 @@ public sealed class ApplicationHandlerTests
         }
 
         public FakeJobRepository Jobs { get; } = new();
+        public WorkerNodeId TargetWorkerNodeId { get; } = WorkerNodeId.New();
         public FakeScriptRepository Scripts { get; } = new();
         public FakeCredentialRepository Credentials { get; } = new();
         public FakeWorkerRepository Workers { get; } = new();
@@ -1569,6 +1747,7 @@ public sealed class ApplicationHandlerTests
         public FixedJobFingerprintService Fingerprints { get; } = new(TestDomainFactory.Fingerprint);
         public FixedCurrentUser CurrentUser { get; } = new(TestDomainFactory.OtherUser);
         public CreateDraftJobHandler CreateHandler { get; }
+        public RequestLocalHostInventoryHandler RequestLocalHostInventoryHandler { get; }
         public AddJobTargetHandler AddTargetHandler { get; }
         public SetJobParameterHandler SetParameterHandler { get; }
         public SubmitJobHandler SubmitHandler { get; }

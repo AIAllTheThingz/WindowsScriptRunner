@@ -114,6 +114,11 @@ internal sealed class LocalHostInventoryJobWorkHandler(
             throw new AutomationPackageTrustException(
                 "The claimed job script version does not match the supported route.");
         }
+        if (!LocalHostInventoryWorkerTargetPolicy.HasExactTarget(job, work.WorkerNodeId))
+        {
+            throw new AutomationPackageTrustException(
+                "The claimed package job is assigned to a different worker node.");
+        }
 
         var definition = await scope.ServiceProvider
             .GetRequiredService<IScriptDefinitionRepository>()

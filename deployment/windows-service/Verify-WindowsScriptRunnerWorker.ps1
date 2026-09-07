@@ -3,6 +3,9 @@ param(
     [Parameter(Mandatory)]
     [string]$PublishRoot,
 
+    [Parameter(Mandatory)]
+    [string]$ExpectedServiceAccount,
+
     [string]$ServiceName = 'WindowsScriptRunner.Worker',
     [switch]$RequireRunning
 )
@@ -22,8 +25,11 @@ if ($null -eq $service) {
 }
 
 $expectedExecutable = ('"{0}"' -f $workerExecutable)
-if ($service.PathName -notlike "$expectedExecutable*") {
+if (-not ([string]$service.PathName).Equals($expectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Service '$ServiceName' does not point at the expected published executable."
+}
+if (-not ([string]$service.StartName).Equals($ExpectedServiceAccount, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Service '$ServiceName' does not use the expected service account."
 }
 
 if ($service.StartMode -ne 'Auto') {

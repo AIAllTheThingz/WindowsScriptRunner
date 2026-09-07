@@ -34,6 +34,8 @@ The review and decision requirements deliberately do not treat a group as eviden
 | `GET /AccessDenied` | Authenticated; returns 403 guidance. |
 | `GET /Administration` | Administrator policy; no administrative mutation is exposed. |
 | `GET /Jobs/Details/{jobId:guid}` | Authenticated plus View job resource requirement. |
+| `GET /Jobs` | `WindowsScriptRunner.JobOperator`; presents the fixed Local Host Inventory request. |
+| `POST /Jobs` | `WindowsScriptRunner.JobOperator` and antiforgery; atomically queues the fixed local, parameterless, ReadOnly/DryRun request using the canonical authenticated actor. |
 | `GET /Reports/LocalHostInventory` | Authenticated; lists at most 100 typed reports and filters each through View typed report. |
 | `GET /Reports/LocalHostInventory?JobId={jobId}` | Authenticated plus View typed report for that job. Unauthorized lookup is forbidden. |
 | `GET /Reports/LocalHostInventory/Details/{reportId:guid}` | Authenticated plus View typed report for the report's job. |
@@ -42,4 +44,13 @@ The review and decision requirements deliberately do not treat a group as eviden
 | `POST /Approvals/Review/{jobId:guid}?handler=Approve` | Same review/decision authorization and ASP.NET Core antiforgery validation. |
 | `POST /Approvals/Review/{jobId:guid}?handler=Reject` | Same review/decision authorization and ASP.NET Core antiforgery validation. |
 
-`/health`, `/health/live`, `/health/ready`, and static assets are anonymous operational surfaces. No route uploads scripts, dispatches a worker, retrieves credentials, starts PowerShell, downloads raw execution output, or supplies generic reporting.
+`/health`, `/health/live`, `/health/ready`, and static assets are anonymous application surfaces; the
+operator must explicitly verify these responses after IIS Windows Authentication is enabled. No route
+uploads scripts, dispatches a worker directly, retrieves credentials, starts PowerShell, downloads raw
+execution output, or supplies generic reporting. The Jobs request remains browser-parameterless and
+targets exactly the approved Worker host whose stable `Worker:NodeId` matches
+`Automation:LocalHostInventory:ApprovedWorkerNodeId` (environment key
+`Automation__LocalHostInventory__ApprovedWorkerNodeId`). It stores one `worker:<canonical-guid>`
+target and does not target the IIS or browser machine. Missing, empty, or invalid configuration, or
+a missing or disabled registered Worker, fails closed before writes; a legacy `local-worker` job is
+not silently retargeted.

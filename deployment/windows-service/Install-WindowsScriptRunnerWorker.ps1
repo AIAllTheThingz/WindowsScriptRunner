@@ -4,6 +4,9 @@ param(
     [string]$PublishRoot,
 
     [Parameter(Mandatory)]
+    [string]$ExpectedMachineGuid,
+
+    [Parameter(Mandatory)]
     [string]$ServiceAccount,
 
     [string]$ServiceName = 'WindowsScriptRunner.Worker',
@@ -17,6 +20,7 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot '..\common\DeploymentAssertions.ps1')
 
 Assert-WindowsDeploymentHost
+Assert-DeploymentTargetMachine $ExpectedMachineGuid
 if (-not $WhatIfPreference) {
     Assert-DeploymentAdministrator
 }
@@ -55,6 +59,9 @@ if ($null -ne $existingService -and -not $Upgrade) {
 
 $quotedExecutable = '"{0}"' -f $workerExecutable
 $serviceAction = if ($null -eq $existingService) { 'Create' } else { 'Update' }
+$installed = $false
+$verified = $false
+$verification = $null
 
 if ($PSCmdlet.ShouldProcess($ServiceName, "$serviceAction Windows Service using $workerExecutable")) {
     if ($null -ne $existingService -and $existingService.State -eq 'Running') {
@@ -95,6 +102,24 @@ if ($PSCmdlet.ShouldProcess($ServiceName, "$serviceAction Windows Service using 
     if ($Start) {
         Start-Service -Name $ServiceName
     }
+
+    $verification = & (Join-Path $PSScriptRoot 'Verify-WindowsScriptRunnerWorker.ps1') -PublishRoot $resolvedPublishRoot -ServiceName $ServiceName -ExpectedServiceAccount $ServiceAccount -RequireRunning:$Start
+    $installed = $true
+    $verified = $true
+}
+
+$status = if ($installed) {
+    'Applied'
+}
+elseif ($WhatIfPreference) {
+    'WhatIf'
+}
+else {
+    'Declined'
+}
+$started = $false
+if ($null -ne $verification) {
+    $started = $verification.State -eq 'Running'
 }
 
 [pscustomobject]@{
@@ -102,5 +127,8 @@ if ($PSCmdlet.ShouldProcess($ServiceName, "$serviceAction Windows Service using 
     ServiceAccount = $ServiceAccount
     PublishRoot = $resolvedPublishRoot
     Action = $serviceAction
-    Started = [bool]$Start
+    Status = $status
+    Installed = $installed
+    Verified = $verified
+    Started = $started
 }

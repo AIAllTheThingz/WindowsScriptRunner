@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WindowsScriptRunner.Application;
 using WindowsScriptRunner.Application.Abstractions;
+using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
@@ -42,6 +43,7 @@ public sealed class Phase7EndToEndTests
 
         try
         {
+            var workerId = WorkerNodeId.New();
             var configuration = Configuration(
                 database.ConnectionString,
                 allowedRoot,
@@ -49,8 +51,13 @@ public sealed class Phase7EndToEndTests
             var services = new ServiceCollection();
             services.AddLogging(builder => builder.AddProvider(logs));
             services.AddApplication();
+            services.AddWebPortalApplication();
+            services.AddSingleton(
+                new LocalHostInventoryRequestTarget(workerId));
             services.AddInfrastructure(configuration);
             services.AddProductionAutomation(configuration);
+            services.AddSingleton<ICurrentUser>(
+                new FixedCurrentUser(SqlServerTestData.Requester));
             await using var provider = services.BuildServiceProvider();
 
             await using (var registration = provider.CreateAsyncScope())
@@ -61,51 +68,36 @@ public sealed class Phase7EndToEndTests
                         .RegisterAsync(CancellationToken.None));
             }
 
-            var workerId = WorkerNodeId.New();
             Job job;
             DateTimeOffset now;
             await using (var seed = provider.CreateAsyncScope())
             {
-                now = await seed.ServiceProvider
+                var workerNow = await seed.ServiceProvider
                     .GetRequiredService<IWorkerCoordinationClock>()
                     .GetUtcNowAsync(CancellationToken.None);
-                var definition = Assert.IsType<ScriptDefinition>(
-                    await seed.ServiceProvider
-                        .GetRequiredService<IScriptDefinitionRepository>()
-                        .GetByIdAsync(
-                            LocalHostInventoryPackageMetadata.DefinitionId,
-                            CancellationToken.None));
-                var version = Assert.Single(definition.Versions);
                 var worker = new WorkerNode(
                     workerId,
                     "phase7-e2e-worker",
-                    now);
-                worker.RecordHeartbeat(now);
+                    workerNow);
+                worker.RecordHeartbeat(workerNow);
                 await seed.ServiceProvider
                     .GetRequiredService<IWorkerNodeRepository>()
                     .AddAsync(worker, CancellationToken.None);
-
-                var requester = new UserIdentity("DOMAIN\\phase7-e2e");
-                job = Job.CreateDraft(
-                    JobId.New(),
-                    definition.Id,
-                    version.Id,
-                    ExecutionPhase.DryRun,
-                    requester,
-                    now);
-                job.AddTarget(
-                    new TargetName("local-worker"),
-                    requester,
-                    now);
-                job.Submit(definition, requester, now);
-                job.MarkValidated(requester, now);
-                job.QueueDryRun(requester, now);
-                await seed.ServiceProvider
-                    .GetRequiredService<IJobRepository>()
-                    .AddAsync(job, CancellationToken.None);
                 await seed.ServiceProvider
                     .GetRequiredService<IUnitOfWork>()
                     .CommitAsync(CancellationToken.None);
+                var jobId = await seed.ServiceProvider
+                    .GetRequiredService<RequestLocalHostInventoryHandler>()
+                    .HandleAsync(
+                        new RequestLocalHostInventoryCommand(),
+                        CancellationToken.None);
+                job = Assert.IsType<Job>(
+                    await seed.ServiceProvider
+                        .GetRequiredService<IJobRepository>()
+                        .GetByIdAsync(jobId, CancellationToken.None));
+                now = await seed.ServiceProvider
+                    .GetRequiredService<IWorkerCoordinationClock>()
+                    .GetUtcNowAsync(CancellationToken.None);
             }
 
             JobQueueCandidate candidate;
@@ -116,6 +108,7 @@ public sealed class Phase7EndToEndTests
                         .GetRequiredService<IJobQueueCandidateSource>()
                         .FindCandidatesAsync(
                             LocalHostInventoryPackageMetadata.SupportedRoutes,
+                            workerId,
                             10,
                             now,
                             CancellationToken.None));
@@ -201,6 +194,11 @@ public sealed class Phase7EndToEndTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    private sealed class FixedCurrentUser(UserIdentity user) : ICurrentUser
+    {
+        public UserIdentity User { get; } = user;
     }
 
     private static IConfiguration Configuration(

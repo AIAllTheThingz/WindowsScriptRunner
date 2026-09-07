@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
@@ -76,7 +77,7 @@ public sealed class Phase6AutomationTests
             new UserIdentity("DOMAIN\\requester"),
             Time);
         job.AddTarget(
-            new TargetName("local-worker"),
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(WorkerNodeId.New()),
             new UserIdentity("DOMAIN\\requester"),
             Time);
         job.SetParameterValue(
@@ -253,7 +254,10 @@ public sealed class Phase6AutomationTests
             ExecutionPhase.DryRun,
             requester,
             Time);
-        job.AddTarget(new TargetName("local-worker"), requester, Time);
+        job.AddTarget(
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(WorkerNodeId.New()),
+            requester,
+            Time);
         job.Submit(definition, requester, Time);
         return job;
     }

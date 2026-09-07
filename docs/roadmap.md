@@ -1,7 +1,7 @@
 # Windows Script Runner roadmap
 
 This is the single source of truth for project status and execution order. It was reconciled on
-2026-09-07 against `main` at `065cd9a`.
+2026-09-07 against the reviewed Phase 9B baseline at `fe45ee5` (PR #16), with implementation in PR #17.
 
 ## Product boundary
 
@@ -13,7 +13,7 @@ Status meanings:
 
 - **Complete** — merged and validated for the implemented scope.
 - **Next** — the only milestone ready to begin.
-- **Blocked** — intentionally waits for the preceding milestone.
+- **Blocked** — waits for the preceding milestone or an unmet external prerequisite.
 - **Unscheduled** — a possible future capability, not a commitment.
 
 ## Delivered baseline
@@ -32,17 +32,21 @@ Status meanings:
 
 Phase 6 was merged before its dependent Phase 7 work. Subsequent merged work adopted the pinned
 Public-AI-Governance baseline, removed redundant code and assets, and corrected SQL and full-suite
-test portability through PRs #11–#15. The current full-suite record is 742 passed, 0 failed, and 0
-skipped; see the [validation report](validation-report.md).
+test portability through PRs #11–#16. The current PR #17 follow-up record is 770 passed, 0 failed,
+and 0 skipped after the bounded Worker binding change; see the [validation report](validation-report.md).
 
-The Phase 9 foundation is implemented, but it is not production-readiness evidence. No
-representative Windows Server/IIS deployment, production SQL rollout, or production use is claimed.
+The Phase 9 foundation is implemented, but it is not production-readiness evidence. Phase 9B now
+adds guarded target-machine deployment, native IIS/Hosting Bundle preflight, certificate and SNI
+verification, backup verification, and the authenticated fixed Local Host Inventory request path.
+No representative Windows Server/IIS deployment, production SQL rollout, or production use is
+claimed.
 
 ## Execution roadmap
 
 ### Phase 9B — close production-readiness gaps
 
-**Status: Next**
+**Status: Blocked pending the representative environment and accountable production-readiness
+approval recorded in the [deployment runbook](phase-9-deployment.md).**
 
 Use the existing [deployment runbook](phase-9-deployment.md) and deployment scripts against an
 approved representative environment. Do not add product capability during this phase.
@@ -64,7 +68,10 @@ Required work:
    handling.
 8. Provide and validate a supported authorized submission path, either a protected Web flow or a
    reviewed operator procedure, for the existing pinned package with its local-only, parameterless,
-   ReadOnly/DryRun constraints, requester identity, target selection, and audit evidence.
+   ReadOnly/DryRun constraints, requester identity, approved Worker binding via
+   `Automation:LocalHostInventory:ApprovedWorkerNodeId`, one `worker:<canonical-guid>` target, and
+   audit evidence. Missing or invalid binding and disabled registration must fail closed; legacy
+   `local-worker` jobs must not be silently retargeted.
 9. Deploy an immutable release, verify Web and Worker startup, run the reviewed package end to end,
    then rehearse upgrade and rollback.
 10. Run security, privacy, accessibility, failure, recovery, and capacity checks appropriate to the
@@ -126,18 +133,6 @@ These items are deliberately outside Phases 9–11:
 Each item requires its own scoped design, threat analysis, authorization model, failure and recovery
 behavior, tests, and approval before it can enter the execution roadmap. Arbitrary script upload or
 arbitrary command execution is not a planned product capability.
-
-## Decisions required before Phase 9 execution
-
-The repository does not and must not invent these environment-specific decisions:
-
-- supported Windows Server/SQL Server versions and deployment topology;
-- production hostnames, certificates, service identities, group SIDs, and secret provider;
-- telemetry platform, retention policy, operational objectives, and alert routing;
-- backup location, restore authority, maintenance window, and rollback authority; and
-- named operational, security, database, support, review, and approval owners.
-
-Until those decisions are supplied and reviewed, production readiness remains blocked.
 
 ## Maintenance rule
 

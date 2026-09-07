@@ -2,6 +2,7 @@ using System.Globalization;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Application.Workers;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Auditing;
@@ -49,6 +50,12 @@ public sealed class AcquireJobLeaseHandler(
         {
             throw new ApplicationConflictException(
                 "The queue candidate script version no longer matches the requested route.");
+        }
+        if (LocalHostInventoryWorkerTargetPolicy.RequiresTarget(job.ScriptVersionId) &&
+            !LocalHostInventoryWorkerTargetPolicy.HasExactTarget(job, command.WorkerNodeId))
+        {
+            throw new ApplicationConflictException(
+                "The queue candidate is assigned to a different worker node.");
         }
 
         var worker = await workerRepository.GetByIdAsync(

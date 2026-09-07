@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Queue;
 using WindowsScriptRunner.Domain;
+using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
 using WindowsScriptRunner.Infrastructure;
@@ -156,6 +157,7 @@ public sealed class QueryBehaviorTests
 
         var candidates = await source.FindCandidatesAsync(
             SqlServerTestData.Routes(version, JobWorkKind.DryRun),
+            WorkerNodeId.New(),
             5,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
@@ -176,6 +178,7 @@ public sealed class QueryBehaviorTests
         capture.ParameterCounts.Clear();
         var none = await source.FindCandidatesAsync(
             new HashSet<JobWorkRoute>(),
+            WorkerNodeId.New(),
             5,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);

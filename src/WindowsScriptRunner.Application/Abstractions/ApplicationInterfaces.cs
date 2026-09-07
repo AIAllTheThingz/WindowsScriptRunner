@@ -114,6 +114,7 @@ public interface IJobQueueCandidateSource
 {
     Task<IReadOnlyList<JobQueueCandidate>> FindCandidatesAsync(
         IReadOnlySet<JobWorkRoute> supportedRoutes,
+        WorkerNodeId workerNodeId,
         int maximumCount,
         DateTimeOffset now,
         CancellationToken cancellationToken);

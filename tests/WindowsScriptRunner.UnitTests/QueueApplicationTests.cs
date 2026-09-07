@@ -1,11 +1,14 @@
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Application.Workers;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
 using WindowsScriptRunner.Domain.Scripts;
+using WindowsScriptRunner.Domain.ValueObjects;
 using WindowsScriptRunner.Domain.Workers;
 
 namespace WindowsScriptRunner.UnitTests;
@@ -183,6 +186,61 @@ public sealed class QueueApplicationTests
         Assert.Equal(JobStatus.ExecutionQueued, fixture.Jobs.Job!.Status);
         Assert.Null(fixture.Jobs.Job.Lease);
         Assert.Empty(fixture.Audits.Events);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InventoryAcquisitionRejectsWrongOrMultipleTargetsBeforeAnyWrites(
+        bool multipleTargets)
+    {
+        var fixture = new QueueFixture();
+        var intendedWorkerId = WorkerNodeId.New();
+        var wrongWorkerId = WorkerNodeId.New();
+        var definition = LocalHostInventoryPackageMetadata.CreateDefinition(fixture.Clock.UtcNow);
+        var version = Assert.Single(definition.Versions);
+        var requester = new UserIdentity("DOMAIN\\requester");
+        var job = Job.CreateDraft(
+            JobId.New(),
+            definition.Id,
+            version.Id,
+            ExecutionPhase.DryRun,
+            requester,
+            fixture.Clock.UtcNow);
+        job.AddTarget(
+            LocalHostInventoryWorkerTargetPolicy.CreateTarget(intendedWorkerId),
+            requester,
+            fixture.Clock.UtcNow);
+        if (multipleTargets)
+        {
+            job.AddTarget(
+                LocalHostInventoryWorkerTargetPolicy.CreateTarget(wrongWorkerId),
+                requester,
+                fixture.Clock.UtcNow);
+        }
+        job.Submit(definition, requester, fixture.Clock.UtcNow);
+        job.MarkValidated(requester, fixture.Clock.UtcNow);
+        job.QueueDryRun(requester, fixture.Clock.UtcNow);
+        fixture.Jobs.Job = job;
+        var acquiringWorkerId = multipleTargets ? intendedWorkerId : wrongWorkerId;
+        fixture.Workers.Worker = LiveWorker(acquiringWorkerId, fixture.Clock.UtcNow);
+
+        await Assert.ThrowsAsync<ApplicationConflictException>(
+            () => fixture.Acquire.HandleAsync(
+                new AcquireJobLeaseCommand(
+                    job.Id,
+                    JobWorkKind.DryRun,
+                    version.Id,
+                    acquiringWorkerId,
+                    TimeSpan.FromMinutes(2),
+                    TimeSpan.FromMinutes(1)),
+                CancellationToken.None));
+
+        Assert.Equal(0, fixture.Fencing.CallCount);
+        Assert.Equal(JobStatus.DryRunQueued, job.Status);
+        Assert.Null(job.Lease);
+        Assert.Empty(fixture.Audits.Events);
+        Assert.Equal(0, fixture.UnitOfWork.CommitCount);
     }
 
     [Fact]

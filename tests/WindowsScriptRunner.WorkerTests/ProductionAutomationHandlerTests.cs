@@ -4,6 +4,7 @@ using WindowsScriptRunner.Application;
 using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
@@ -89,6 +90,24 @@ public sealed class ProductionAutomationHandlerTests
             value => value.Contains(
                 "inventory-value-that-must-not-be-persisted",
                 StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MismatchedLeaseTargetIsBlockedBeforePowerShellExecution(
+        bool canonicalWrongWorker)
+    {
+        using var fixture = new AutomationHandlerFixture(
+            SuccessfulResult(),
+            legacyTarget: !canonicalWrongWorker,
+            wrongWorkerTarget: canonicalWrongWorker);
+
+        await fixture.Handler.HandleAsync(fixture.Work, CancellationToken.None);
+
+        Assert.Equal(JobStatus.Blocked, fixture.Job.Status);
+        Assert.Null(fixture.Job.Lease);
+        Assert.Equal(0, fixture.Boundary.CallCount);
     }
 
     [Theory]
@@ -318,22 +337,36 @@ public sealed class ProductionAutomationHandlerTests
 
         internal AutomationHandlerFixture(
             PowerShellExecutionResult result,
-            int? failCommitNumber = null)
-            : this((_, _) => Task.FromResult(result), failCommitNumber)
+            int? failCommitNumber = null,
+            bool legacyTarget = false,
+            bool wrongWorkerTarget = false)
+            : this(
+                (_, _) => Task.FromResult(result),
+                failCommitNumber,
+                legacyTarget,
+                wrongWorkerTarget)
         {
         }
 
         internal AutomationHandlerFixture(
             Exception exception,
-            int? failCommitNumber = null)
-            : this((_, _) => Task.FromException<PowerShellExecutionResult>(exception), failCommitNumber)
+            int? failCommitNumber = null,
+            bool legacyTarget = false,
+            bool wrongWorkerTarget = false)
+            : this(
+                (_, _) => Task.FromException<PowerShellExecutionResult>(exception),
+                failCommitNumber,
+                legacyTarget,
+                wrongWorkerTarget)
         {
         }
 
         internal AutomationHandlerFixture(
             Func<PowerShellExecutionRequest, CancellationToken, Task<PowerShellExecutionResult>>
                 execute,
-            int? failCommitNumber = null)
+            int? failCommitNumber = null,
+            bool legacyTarget = false,
+            bool wrongWorkerTarget = false)
         {
             var allowedRoot = Path.Combine(_root, "allowed");
             var workingRoot = Path.Combine(_root, "working");
@@ -384,6 +417,7 @@ public sealed class ProductionAutomationHandlerTests
             Scripts.Definition = definition;
             var version = Assert.Single(definition.Versions);
             var requester = new UserIdentity("DOMAIN\\requester");
+            var workerId = WorkerNodeId.New();
             Job = Job.CreateDraft(
                 JobId.New(),
                 definition.Id,
@@ -392,13 +426,15 @@ public sealed class ProductionAutomationHandlerTests
                 requester,
                 Clock.UtcNow);
             Job.AddTarget(
-                new TargetName("local-worker"),
+                legacyTarget
+                    ? new TargetName("local-worker")
+                    : LocalHostInventoryWorkerTargetPolicy.CreateTarget(
+                        wrongWorkerTarget ? WorkerNodeId.New() : workerId),
                 requester,
                 Clock.UtcNow);
             Job.Submit(definition, requester, Clock.UtcNow);
             Job.MarkValidated(requester, Clock.UtcNow);
             Job.QueueDryRun(requester, Clock.UtcNow);
-            var workerId = WorkerNodeId.New();
             var lease = Job.AcquireWorkLease(
                 JobLeaseId.New(),
                 workerId,

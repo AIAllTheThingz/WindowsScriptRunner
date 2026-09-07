@@ -3,7 +3,9 @@ using WindowsScriptRunner.Application.Abstractions;
 using WindowsScriptRunner.Application.Exceptions;
 using WindowsScriptRunner.Application.Jobs;
 using WindowsScriptRunner.Application.Queue;
+using WindowsScriptRunner.Application.Reports;
 using WindowsScriptRunner.Application.Workers;
+using WindowsScriptRunner.Automation;
 using WindowsScriptRunner.Domain;
 using WindowsScriptRunner.Domain.Identifiers;
 using WindowsScriptRunner.Domain.Jobs;
@@ -14,6 +16,56 @@ namespace WindowsScriptRunner.SqlServerTests;
 
 public sealed class QueuePersistenceTests
 {
+    [Fact]
+    public async Task InventoryDiscoverySkipsOlderWrongTargetBeforeApplyingBatchLimit()
+    {
+        await using var database = await SqlServerDatabase.CreateAsync();
+        var definition = LocalHostInventoryPackageMetadata.CreateDefinition(SqlServerTestData.Time);
+        var version = Assert.Single(definition.Versions);
+        var wrongWorker = Worker("inventory-wrong", SqlServerTestData.Time);
+        var intendedWorker = Worker("inventory-intended", SqlServerTestData.Time);
+        var requester = new UserIdentity("DOMAIN\\inventory-requester");
+
+        Job QueuedJob(WorkerNodeId targetWorkerId, DateTimeOffset time)
+        {
+            var job = Job.CreateDraft(
+                JobId.New(),
+                definition.Id,
+                version.Id,
+                ExecutionPhase.DryRun,
+                requester,
+                time);
+            job.AddTarget(
+                LocalHostInventoryWorkerTargetPolicy.CreateTarget(targetWorkerId),
+                requester,
+                time);
+            job.Submit(definition, requester, time);
+            job.MarkValidated(requester, time);
+            job.QueueDryRun(requester, time);
+            return job;
+        }
+
+        var olderWrongTarget = QueuedJob(wrongWorker.Id, SqlServerTestData.Time);
+        var newerMatchingTarget = QueuedJob(
+            intendedWorker.Id,
+            SqlServerTestData.Time.AddSeconds(1));
+        await SeedAsync(
+            database,
+            definition,
+            [olderWrongTarget, newerMatchingTarget],
+            [wrongWorker, intendedWorker]);
+
+        await using var discovery = new PersistenceTestScope(database);
+        var candidate = Assert.Single(await discovery.Candidates.FindCandidatesAsync(
+            LocalHostInventoryPackageMetadata.SupportedRoutes,
+            intendedWorker.Id,
+            1,
+            SqlServerTestData.Time.AddMinutes(1),
+            CancellationToken.None));
+
+        Assert.Equal(newerMatchingTarget.Id, candidate.JobId);
+    }
+
     [Fact]
     public async Task SqlCoordinationClockDrivesExpiredLeaseDiscovery()
     {
@@ -90,18 +142,22 @@ public sealed class QueuePersistenceTests
         await using var scope = new PersistenceTestScope(database);
         var firstToken = await scope.FencingTokens.GetNextAsync(CancellationToken.None);
         var secondToken = await scope.FencingTokens.GetNextAsync(CancellationToken.None);
+        var discoveryWorker = WorkerNodeId.New();
         var dryRunCandidates = await scope.Candidates.FindCandidatesAsync(
             SqlServerTestData.Routes(version, JobWorkKind.DryRun),
+            discoveryWorker,
             2,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
         var allDryRunCandidates = await scope.Candidates.FindCandidatesAsync(
             SqlServerTestData.Routes(version, JobWorkKind.DryRun),
+            discoveryWorker,
             10,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
         var repeatedDryRunCandidates = await scope.Candidates.FindCandidatesAsync(
             SqlServerTestData.Routes(version, JobWorkKind.DryRun),
+            discoveryWorker,
             10,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
@@ -110,6 +166,7 @@ public sealed class QueuePersistenceTests
                 version,
                 JobWorkKind.DryRun,
                 JobWorkKind.Execute),
+            discoveryWorker,
             10,
             SqlServerTestData.Time.AddDays(1),
             CancellationToken.None);
@@ -254,6 +311,7 @@ public sealed class QueuePersistenceTests
             job.Id,
             Assert.Single(await discoveryOne.Candidates.FindCandidatesAsync(
                 SqlServerTestData.Routes(version, JobWorkKind.Execute),
+                firstWorker.Id,
                 10,
                 claimTime,
                 CancellationToken.None)).JobId);
@@ -261,6 +319,7 @@ public sealed class QueuePersistenceTests
             job.Id,
             Assert.Single(await discoveryTwo.Candidates.FindCandidatesAsync(
                 SqlServerTestData.Routes(version, JobWorkKind.Execute),
+                secondWorker.Id,
                 10,
                 claimTime,
                 CancellationToken.None)).JobId);
@@ -744,6 +803,7 @@ public sealed class QueuePersistenceTests
                 {
                     new(JobWorkKind.Execute, scriptVersionId),
                 },
+                workerId,
                 100,
                 claimTime,
                 CancellationToken.None);
