@@ -62,14 +62,19 @@ Required work:
    runbooks.
 7. Rehearse SQL backup, forward migration, restore, application verification, and data-retention
    handling.
-8. Deploy an immutable release, verify Web and Worker startup, run the reviewed package end to end,
+8. Provide and validate a supported authorized submission path, either a protected Web flow or a
+   reviewed operator procedure, for the existing pinned package with its local-only, parameterless,
+   ReadOnly/DryRun constraints, requester identity, target selection, and audit evidence.
+9. Deploy an immutable release, verify Web and Worker startup, run the reviewed package end to end,
    then rehearse upgrade and rollback.
-9. Run security, privacy, accessibility, failure, recovery, and capacity checks appropriate to the
+10. Run security, privacy, accessibility, failure, recovery, and capacity checks appropriate to the
    selected environment.
 
 Exit gate:
 
 - the exact release artifact, configuration class, and representative environment are recorded;
+- an authorized submission path for the existing package is exercised end to end with its requester,
+  target, audit, and typed-report evidence;
 - deployment, authentication, authorization, health, alerting, backup/restore, upgrade, and rollback
   evidence pass;
 - known limitations and residual risks are either resolved or explicitly accepted by accountable
