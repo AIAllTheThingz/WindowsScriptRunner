@@ -39,7 +39,7 @@ Phases 1–8 are implemented, validated, reviewed, and merged into `main`. Phase
 - Git
 - Stable .NET 10 SDK
 - PowerShell 7.4 or later for real execution tests and the reviewed package
-- SQL Server; SQL Server LocalDB is supported for development and tests
+- SQL Server; the default SQL Server instance on `localhost` is used for development and tests
 
 ## Validate the solution
 

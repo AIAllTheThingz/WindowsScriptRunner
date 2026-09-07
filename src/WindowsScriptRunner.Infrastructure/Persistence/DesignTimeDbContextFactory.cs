@@ -9,7 +9,7 @@ public sealed class DesignTimeDbContextFactory :
     public WindowsScriptRunnerDbContext CreateDbContext(string[] args)
     {
         const string localDesignTimeConnection =
-            "Server=(localdb)\\MSSQLLocalDB;Database=WindowsScriptRunner_DesignTime;" +
+            "Server=localhost;Database=WindowsScriptRunner_DesignTime;" +
             "Integrated Security=true;Encrypt=false";
         var connectionString =
             Environment.GetEnvironmentVariable("ConnectionStrings__WindowsScriptRunner") ??

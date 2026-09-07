@@ -20,10 +20,10 @@ Web and Worker read the database connection from `ConnectionStrings:WindowsScrip
 
 The connection string is intentionally absent from committed application settings. Supply it through a protected environment-specific configuration source such as environment variables, .NET user secrets, or an external secret/configuration provider. Windows integrated authentication and externally supplied SQL authentication are supported by the SQL Server provider. Detailed errors default to false, and sensitive-data logging is disabled.
 
-Local-development-only LocalDB example:
+Local-development-only SQL Server example:
 
 ```text
-Server=(localdb)\MSSQLLocalDB;Database=WindowsScriptRunner_Dev;Integrated Security=true;Encrypt=false
+Server=localhost;Database=WindowsScriptRunner_Dev;Integrated Security=true;Encrypt=false
 ```
 
 Production-oriented encrypted example:

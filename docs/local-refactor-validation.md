@@ -12,7 +12,7 @@ $env:DOTNET_ROOT = $sdkRoot
 $env:PATH = "$sdkRoot;$env:PATH"
 ```
 
-PowerShell integration tests used the bundled `pwsh.exe` 7.6.5. SQL Server tests used the available `MSSQLLocalDB` instance and their disposable database setup.
+PowerShell integration tests used the bundled `pwsh.exe` 7.6.5. SQL Server tests used the available legacy development SQL runtime and their disposable database setup.
 
 Raw validation logs are retained locally outside the repository. The basenames below identify those evidence files; they are not downloadable files in the repository.
 

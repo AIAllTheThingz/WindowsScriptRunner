@@ -540,7 +540,7 @@ public sealed class PortalWebFlowTests
             builder.UseEnvironment("Testing");
             builder.UseSetting(
                 "ConnectionStrings:WindowsScriptRunner",
-                "Server=(localdb)\\MSSQLLocalDB;Database=WindowsScriptRunnerPortalTests;Integrated Security=true;TrustServerCertificate=true");
+                "Server=localhost;Database=WindowsScriptRunnerPortalTests;Integrated Security=true;TrustServerCertificate=true");
             builder.UseSetting("WindowsAuthorization:OperatorGroupSids:0", OperatorGroupSid);
             builder.UseSetting("WindowsAuthorization:ReportReaderGroupSids:0", ReportReaderGroupSid);
             builder.UseSetting("WindowsAuthorization:ApproverGroupSids:0", ApproverGroupSid);
@@ -549,7 +549,7 @@ public sealed class PortalWebFlowTests
                 new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:WindowsScriptRunner"] =
-                        "Server=(localdb)\\MSSQLLocalDB;Database=WindowsScriptRunnerPortalTests;Integrated Security=true;TrustServerCertificate=true",
+                        "Server=localhost;Database=WindowsScriptRunnerPortalTests;Integrated Security=true;TrustServerCertificate=true",
                     ["WindowsAuthorization:OperatorGroupSids:0"] = OperatorGroupSid,
                     ["WindowsAuthorization:ReportReaderGroupSids:0"] = ReportReaderGroupSid,
                     ["WindowsAuthorization:ApproverGroupSids:0"] = ApproverGroupSid,
